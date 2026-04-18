@@ -57,7 +57,7 @@ services:
       - "80"
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=traefik-net"
+      - "traefik.docker.network=${TRAEFIK_NETWORK:-traefik-net}"
 
       # Unico router su HTTPS. Il redirect HTTP→HTTPS è gestito globalmente
       # dall'entrypoint "web" del tuo Traefik (redirections.entrypoint.to=websecure).
@@ -79,3 +79,4 @@ networks:
     driver: bridge
   traefik-net:
     external: true
+    name: ${TRAEFIK_NETWORK:-traefik-net}
