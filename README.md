@@ -91,16 +91,20 @@ EM Equities, US Bonds Short, US Bonds Long, TIPS/Inflation Bonds,
 Gold, Silver, Broad Commodities, Energy, Real Estate (REITs),
 Cash/Money Market, Bitcoin, Crypto Broad
 
-## Deploy con Docker (VPS / server remoto)
+## Deploy con Docker + Traefik (VPS)
 
 Il progetto include `Dockerfile` per backend e frontend + `docker-compose.yml`
-che orchestra Postgres + backend (FastAPI + APScheduler) + frontend (nginx).
+che orchestra Postgres + backend (FastAPI + APScheduler) + frontend (nginx),
+**pronto per essere esposto da Traefik con HTTPS automatico Let's Encrypt**.
 
 ### Prerequisiti sul VPS
 
-- Docker 24+ e Docker Compose plugin (`docker compose version`)
-- ~2 GB RAM, ~5 GB disco
-- Porta 80 (o quella scelta) aperta nel firewall
+- Docker 24+ e Docker Compose plugin
+- Traefik già in esecuzione con:
+  - network `traefik-net` esterno
+  - entrypoints `web` (80) + `websecure` (443)
+  - cert resolver `letsencrypt`
+- Record DNS A del sottodominio (es. `macro.pieranlab.cloud`) che punta all'IP del VPS
 
 ### Setup
 
@@ -111,17 +115,29 @@ cd macro-analyzer
 
 # 2. Crea .env e compila le chiavi API
 cp .env.example .env
-nano .env   # FRED_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, POSTGRES_PASSWORD
+nano .env
+# Variabili da impostare:
+#   APP_DOMAIN=macro.pieranlab.cloud
+#   FRED_API_KEY=...
+#   GEMINI_API_KEY=...
+#   GROQ_API_KEY=...
+#   POSTGRES_PASSWORD=... (robusta)
 
 # 3. Build + avvio in background
 docker compose up -d --build
 
-# 4. Verifica stato
+# 4. Verifica stato + cert Let's Encrypt
 docker compose ps
+docker compose logs -f frontend
 docker compose logs -f backend
 ```
 
-L'app è raggiungibile su `http://<ip-vps>/` — il frontend fa da reverse-proxy verso il backend.
+Traefik emette automaticamente il certificato TLS al primo accesso
+e dirige `https://macro.pieranlab.cloud/` → frontend → API proxy → backend.
+
+> Il frontend è collegato a due network: `traefik-net` (per essere raggiunto
+> da Traefik) e `macro-internal` (per parlare con backend e postgres).
+> Postgres e backend **non** sono esposti su `traefik-net`: restano isolati.
 
 ### Refresh automatico
 
