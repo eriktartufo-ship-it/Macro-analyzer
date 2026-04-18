@@ -2,12 +2,46 @@ import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, Scoreboar
 
 const BASE = "/api/v1";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
-  if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`);
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
   }
-  return res.json() as Promise<T>;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  opts: { retries?: number } = {},
+): Promise<T> {
+  const retries = opts.retries ?? 3;
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(`${BASE}${path}`, init);
+      if (res.ok) return (await res.json()) as T;
+
+      // 4xx (tranne 408/429) = errore del client, non ritentare.
+      if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+        throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+      }
+
+      lastErr = new ApiError(res.status, `${res.status} ${res.statusText}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) {
+        throw e;
+      }
+      lastErr = e;
+    }
+
+    if (attempt < retries) {
+      await sleep(400 * Math.pow(2, attempt));
+    }
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error("Request failed");
 }
 
 export const api = {
@@ -16,7 +50,11 @@ export const api = {
   scoreboard: () => request<Scoreboard>("/scoreboard"),
   dedollarization: () => request<Dedollarization>("/dedollarization"),
   news: () => request<NewsItem[]>("/news"),
-  refresh: () => request<{ status: string }>("/refresh", { method: "POST" }),
+  refresh: () => request<{ status: string }>("/refresh", { method: "POST" }, { retries: 0 }),
   generateDedollarExplanation: () =>
-    request<{ explanation: string; date: string }>("/dedollarization/explanation", { method: "POST" }),
+    request<{ explanation: string; date: string }>(
+      "/dedollarization/explanation",
+      { method: "POST" },
+      { retries: 0 },
+    ),
 };

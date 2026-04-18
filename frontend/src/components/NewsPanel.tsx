@@ -7,7 +7,7 @@ interface Props {
 function sentimentColor(s: number): string {
   if (s > 0.3) return "var(--reflation)";
   if (s > 0.1) return "#6ee7b7";
-  if (s > -0.1) return "var(--muted)";
+  if (s > -0.1) return "var(--text)";
   if (s > -0.3) return "var(--deflation)";
   return "var(--deflation)";
 }
@@ -53,33 +53,33 @@ export function NewsPanel({ news }: Props) {
       <h2>News Sentiment</h2>
 
       {/* Summary bar */}
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        marginBottom: 20,
-        padding: "10px 12px",
-        background: "var(--bg)",
-        borderRadius: 6,
-      }}>
-        <span style={{ fontSize: 13, color: "var(--muted)" }}>Market Mood</span>
-        <span style={{
-          fontSize: 18,
-          fontWeight: 700,
-          color: sentimentColor(avgSentiment),
-        }}>
-          {sentimentLabel(avgSentiment)}
-        </span>
-        <span style={{
-          fontSize: 13,
-          color: "var(--muted)",
-          fontVariantNumeric: "tabular-nums",
-        }}>
-          ({avgSentiment > 0 ? "+" : ""}{(avgSentiment * 100).toFixed(0)}%)
-        </span>
-        <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: "auto" }}>
-          {news.length} headlines analyzed
-        </span>
+      <div
+        className="market-mood"
+        style={{
+          borderLeft: `4px solid ${sentimentColor(avgSentiment)}`,
+        }}
+      >
+        <div className="market-mood-left">
+          <div className="market-mood-label">Market Mood</div>
+          <div
+            className="market-mood-value"
+            style={{ color: sentimentColor(avgSentiment) }}
+          >
+            {sentimentLabel(avgSentiment)}
+          </div>
+        </div>
+        <div className="market-mood-right">
+          <div
+            className="market-mood-pct"
+            style={{ color: sentimentColor(avgSentiment) }}
+          >
+            {avgSentiment > 0 ? "+" : ""}
+            {(avgSentiment * 100).toFixed(0)}%
+          </div>
+          <div className="market-mood-headlines" data-nowrap>
+            {news.length} headlines analyzed
+          </div>
+        </div>
       </div>
 
       {/* News list */}

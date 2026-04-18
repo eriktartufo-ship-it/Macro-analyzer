@@ -1,46 +1,123 @@
 interface Props {
   scores: Record<string, number>;
+  projected?: Record<string, number> | null;
 }
 
 function formatAsset(name: string): string {
   return name.replace(/_/g, " ");
 }
 
-export function AssetRankingTable({ scores }: Props) {
-  const sorted = Object.entries(scores)
-    .map(([asset_class, final_score]) => ({ asset_class, final_score }))
+function scoreColorVar(score: number, maxScore: number): string {
+  const ratio = maxScore > 0 ? score / maxScore : 0;
+  if (ratio >= 0.72) return "var(--reflation)";
+  if (ratio >= 0.55) return "var(--goldilocks)";
+  if (ratio >= 0.38) return "#ec8a1a";
+  return "var(--deflation)";
+}
+
+export function AssetRankingTable({ scores, projected }: Props) {
+  const hasProj = !!projected && Object.keys(projected).length > 0;
+
+  const rows = Object.entries(scores)
+    .map(([asset_class, final_score]) => ({
+      asset_class,
+      final_score,
+      projected_score: projected?.[asset_class] ?? null,
+    }))
     .sort((a, b) => b.final_score - a.final_score);
-  const maxScore = Math.max(...sorted.map((s) => s.final_score), 1);
+
+  const allScores = rows.flatMap((r) =>
+    r.projected_score !== null ? [r.final_score, r.projected_score] : [r.final_score],
+  );
+  const maxScore = Math.max(...allScores, 1);
 
   return (
     <div className="card">
-      <h2>Asset Ranking</h2>
-      <table className="table">
-        <thead>
-          <tr>
-            <th style={{ width: 32 }}>#</th>
-            <th>Asset class</th>
-            <th className="num">Final score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((s, i) => {
-            const pct = (s.final_score / maxScore) * 100;
-            return (
-              <tr key={s.asset_class}>
-                <td style={{ color: "var(--muted)" }}>{i + 1}</td>
-                <td className="asset-name">{formatAsset(s.asset_class)}</td>
-                <td className="num">
-                  <span style={{ fontWeight: 600 }}>{s.final_score.toFixed(1)}</span>
-                  <span className="score-bar">
-                    <span className="score-bar-fill" style={{ width: `${pct}%` }} />
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <h2>Asset Ranking {hasProj && <span style={{ textTransform: "none", fontWeight: 500, color: "var(--muted)" }}>— corrente vs proiezione</span>}</h2>
+      {hasProj && (
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
+          Il colore della barra riflette la forza dell'asset (verde = forte, rosso = debole).
+          La zona tratteggiata evidenzia la variazione attesa al prossimo regime: verde se in salita, rossa se in discesa.
+        </div>
+      )}
+      <div className="scroll-label">← Scorri per vedere tutte le colonne →</div>
+      <div className="table-wrap scroll-hint">
+        <table className="table">
+          <thead>
+            <tr>
+              <th className="num" style={{ width: 44 }}>#</th>
+              <th>Asset class</th>
+              <th className="num">Score</th>
+              {hasProj && <th className="num">Proiezione</th>}
+              {hasProj && <th className="num">Δ</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const pct = (r.final_score / maxScore) * 100;
+              const delta =
+                r.projected_score !== null ? r.projected_score - r.final_score : 0;
+              const deltaAbs = Math.abs(delta);
+              const isFlat = deltaAbs < 0.05;
+              const isUp = delta > 0;
+              const deltaClass = isFlat ? "delta-flat" : isUp ? "delta-up" : "delta-down";
+              const barColor = scoreColorVar(r.final_score, maxScore);
+              const deltaStart =
+                r.projected_score !== null
+                  ? (Math.min(r.final_score, r.projected_score) / maxScore) * 100
+                  : 0;
+              const deltaWidth =
+                r.projected_score !== null ? (deltaAbs / maxScore) * 100 : 0;
+
+              return (
+                <tr key={r.asset_class}>
+                  <td className="rank">{i + 1}</td>
+                  <td className="asset-name">{formatAsset(r.asset_class)}</td>
+                  <td className="num">
+                    <div className="score-stack">
+                      <span className="score-num">{r.final_score.toFixed(1)}</span>
+                      <span className="score-bar" aria-hidden="true">
+                        <span
+                          className="score-bar-fill"
+                          style={{ width: `${pct}%`, background: barColor }}
+                        />
+                        {r.projected_score !== null && !isFlat && (
+                          <span
+                            className={`score-bar-delta ${isUp ? "delta-up" : "delta-down"}`}
+                            style={{ left: `${deltaStart}%`, width: `${deltaWidth}%` }}
+                          />
+                        )}
+                      </span>
+                    </div>
+                  </td>
+                  {hasProj && (
+                    <td className="num">
+                      <span
+                        className={`score-num ${deltaClass}`}
+                        style={{ fontWeight: 600 }}
+                      >
+                        {r.projected_score !== null ? r.projected_score.toFixed(1) : "—"}
+                      </span>
+                    </td>
+                  )}
+                  {hasProj && (
+                    <td className="num">
+                      {r.projected_score !== null ? (
+                        <span className={`score-num ${deltaClass}`} data-nowrap>
+                          {delta > 0 ? "+" : ""}
+                          {delta.toFixed(1)}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--muted)" }}>—</span>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

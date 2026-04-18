@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "./api/client";
 import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, Scoreboard } from "./types";
-import { Header, type Page } from "./components/Header";
+import { Header, type Page, type Theme } from "./components/Header";
 import { RegimeCard } from "./components/RegimeCard";
 import { ProbabilityBars } from "./components/ProbabilityBars";
 import { AssetRankingTable } from "./components/AssetRankingTable";
@@ -9,6 +9,29 @@ import { DedollarizationPage } from "./components/DedollarizationPage";
 import { AnalysisPanel } from "./components/AnalysisPanel";
 import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
 import { NewsPanel } from "./components/NewsPanel";
+
+const THEME_KEY = "macro-theme";
+
+function initialTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    // localStorage non disponibile, fallback a media query
+  }
+  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+  return "light";
+}
+
+async function safe<T>(p: Promise<T>): Promise<T | null> {
+  try {
+    return await p;
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [regime, setRegime] = useState<CurrentRegime | null>(null);
@@ -20,21 +43,35 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<Page>("dashboard");
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // ignore
+    }
+  }, [theme]);
 
   const load = useCallback(async () => {
-    try {
-      setError(null);
-      const [r, s] = await Promise.all([api.currentRegime(), api.scoreboard()]);
-      setRegime(r);
-      setScoreboard(s);
-      try { setExplain(await api.regimeExplain()); } catch { setExplain(null); }
-      try { setDedollar(await api.dedollarization()); } catch { setDedollar(null); }
-      try { setNews(await api.news()); } catch { setNews([]); }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load data");
-    } finally {
-      setLoading(false);
+    setError(null);
+    const [r, s, e, d, n] = await Promise.all([
+      safe(api.currentRegime()),
+      safe(api.scoreboard()),
+      safe(api.regimeExplain()),
+      safe(api.dedollarization()),
+      safe(api.news()),
+    ]);
+    setRegime(r);
+    setScoreboard(s);
+    setExplain(e);
+    setDedollar(d);
+    setNews(n ?? []);
+    if (!r && !s) {
+      setError("Dati non ancora disponibili — attendi il primo refresh oppure premi Refresh data.");
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -63,16 +100,21 @@ export default function App() {
         refreshing={refreshing}
         page={page}
         onPageChange={setPage}
+        theme={theme}
+        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
       />
 
-      {loading && <div className="loading">Loading macro data...</div>}
-      {error && <div className="error">Error: {error}</div>}
+      {loading && <div className="loading">Loading macro data…</div>}
+      {error && !loading && <div className="error">{error}</div>}
 
       {ready && page === "dashboard" && (
         <>
-          <div className="grid">
+          <div className="grid grid-2">
             <RegimeCard data={regime} />
-            <ProbabilityBars probabilities={regime.probabilities} />
+            <ProbabilityBars
+              probabilities={regime.probabilities}
+              projected={explain?.trajectory?.projected_probabilities}
+            />
           </div>
           {explain && <AnalysisPanel explain={explain} />}
           {explain?.trajectory && (
@@ -93,7 +135,12 @@ export default function App() {
         />
       )}
 
-      {ready && page === "assets" && <AssetRankingTable scores={scoreboard.scores} />}
+      {ready && page === "assets" && (
+        <AssetRankingTable
+          scores={scoreboard.scores}
+          projected={explain?.trajectory?.projected_scores}
+        />
+      )}
     </div>
   );
 }

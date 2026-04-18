@@ -57,7 +57,7 @@ export function ProjectedAssetsPanel({ trajectory, currentScores, topN = 5 }: Pr
           : "Regime stabile ma probabilità in movimento: variazioni di score se la drift si concretizza."}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div className="grid grid-2" style={{ gap: 16, marginBottom: 0 }}>
         <AssetList
           title="Top beneficiari"
           accent="var(--reflation)"
@@ -122,7 +122,7 @@ function AssetList({ title, accent, rows, maxAbsDelta }: ListProps) {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 90, justifyContent: "flex-end" }}>
                 <div style={{
-                  width: 48, height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden",
+                  width: 48, height: 4, background: "var(--surface-2)", borderRadius: 2, overflow: "hidden",
                 }}>
                   <div style={{
                     width: `${barPct}%`, height: "100%",

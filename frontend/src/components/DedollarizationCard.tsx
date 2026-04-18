@@ -188,7 +188,7 @@ export function DedollarizationCard({ data, rawIndicators }: Props) {
       <h2>Dedollarization Index</h2>
 
       {/* Header scores */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
+      <div className="grid grid-4" style={{ gap: 12, marginBottom: 20 }}>
         <div>
           <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", marginBottom: 4 }}>
             Cyclical (1Y)

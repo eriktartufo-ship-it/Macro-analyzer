@@ -215,68 +215,34 @@ function PlayerSection({ playerId, player }: { playerId: string; player: PlayerS
   const hint = PLAYER_HINTS[playerId];
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        marginBottom: 10,
-        overflow: "hidden",
-      }}
-    >
+    <div className="player-card">
       <button
         onClick={() => setExpanded((e) => !e)}
-        style={{
-          width: "100%",
-          padding: "10px 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          background: "var(--card-bg)",
-          border: "none",
-          cursor: "pointer",
-          color: "inherit",
-          textAlign: "left",
-        }}
+        className="player-header"
+        aria-expanded={expanded}
       >
-        <span style={{ fontSize: 12, color: "var(--muted)" }}>{expanded ? "▼" : "▶"}</span>
-        <div style={{ flex: 1 }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>{player.label}</span>
-          {hint && (
-            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{hint}</div>
-          )}
-        </div>
-        {redFlags > 0 && (
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              padding: "2px 8px",
-              borderRadius: 4,
-              background: "rgba(239,68,68,0.2)",
-              color: "var(--deflation)",
-            }}
-          >
-            {redFlags} RED FLAG{redFlags > 1 ? "S" : ""}
-          </span>
-        )}
-        <span style={{ fontSize: 11, color: "var(--muted)" }}>
-          {validSignals}/{player.signals.length} segnali
-        </span>
+        <span className="player-header-caret">{expanded ? "▼" : "▶"}</span>
+        <span className="player-header-title">{player.label}</span>
         <span
-          style={{
-            fontSize: 16,
-            fontWeight: 700,
-            color: scoreColor(player.score),
-            width: 60,
-            textAlign: "right",
-            fontVariantNumeric: "tabular-nums",
-          }}
+          className="player-header-score"
+          style={{ color: scoreColor(player.score) }}
         >
           {(player.score * 100).toFixed(0)}%
         </span>
+        <span className="player-header-sub">
+          {hint && <span style={{ flex: 1, minWidth: 140 }}>{hint}</span>}
+          {redFlags > 0 && (
+            <span className="chip chip-danger" data-nowrap>
+              {redFlags} RED FLAG{redFlags > 1 ? "S" : ""}
+            </span>
+          )}
+          <span data-nowrap>
+            {validSignals}/{player.signals.length} segnali
+          </span>
+        </span>
       </button>
       {expanded && (
-        <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div className="player-body">
           {player.signals.map((s) => (
             <SignalRow key={s.key} signal={s} />
           ))}
@@ -454,14 +420,7 @@ export function DedollarizationPage({ data }: Props) {
       <h2 style={{ marginTop: 0, marginBottom: 16 }}>Dedollarization — Analisi completa</h2>
 
       {/* Top scores grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(6, 1fr)",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
+      <div className="grid grid-6" style={{ gap: 12, marginBottom: 20 }}>
         <HorizonScore label="Cyclical (1Y)" value={data.score} />
         <HorizonScore label="Structural (5Y)" value={data.structural_score} />
         <HorizonScore label="Decade (10Y)" value={data.decade_score} />
@@ -478,30 +437,14 @@ export function DedollarizationPage({ data }: Props) {
         </div>
       </div>
 
-      <div
-        style={{
-          padding: "10px 14px",
-          background: "var(--bg)",
-          borderRadius: 6,
-          marginBottom: 18,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="surface" style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>Combined Score</span>
           <span style={{ fontSize: 20, fontWeight: 700, color: scoreColor(data.combined_score) }}>
             {(data.combined_score * 100).toFixed(0)}% — {scoreLabel(data.combined_score)}
           </span>
           {totalRedFlags > 0 && (
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                padding: "4px 10px",
-                borderRadius: 4,
-                background: "rgba(239,68,68,0.2)",
-                color: "var(--deflation)",
-              }}
-            >
+            <span className="chip chip-danger">
               {totalRedFlags} RED FLAG{totalRedFlags > 1 ? "S" : ""} ATTIVI
             </span>
           )}
@@ -514,49 +457,22 @@ export function DedollarizationPage({ data }: Props) {
       </div>
 
       {/* View switcher */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+      <div className="segmented" style={{ marginBottom: 18 }}>
         <button
           onClick={() => setView("players")}
-          style={{
-            padding: "8px 14px",
-            fontSize: 13,
-            fontWeight: 600,
-            background: view === "players" ? "var(--accent)" : "var(--bg)",
-            color: view === "players" ? "#fff" : "var(--muted)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            cursor: "pointer",
-          }}
+          className={view === "players" ? "active" : ""}
         >
           Per Macro-Player
         </button>
         <button
           onClick={() => setView("horizon")}
-          style={{
-            padding: "8px 14px",
-            fontSize: 13,
-            fontWeight: 600,
-            background: view === "horizon" ? "var(--accent)" : "var(--bg)",
-            color: view === "horizon" ? "#fff" : "var(--muted)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            cursor: "pointer",
-          }}
+          className={view === "horizon" ? "active" : ""}
         >
-          Per Orizzonte Temporale
+          Per Orizzonte
         </button>
         <button
           onClick={() => setView("ai")}
-          style={{
-            padding: "8px 14px",
-            fontSize: 13,
-            fontWeight: 600,
-            background: view === "ai" ? "var(--accent)" : "var(--bg)",
-            color: view === "ai" ? "#fff" : "var(--muted)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            cursor: "pointer",
-          }}
+          className={view === "ai" ? "active" : ""}
         >
           Analisi AI
         </button>
@@ -583,14 +499,17 @@ export function DedollarizationPage({ data }: Props) {
               <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10, fontWeight: 600 }}>
                 MACRO PLAYER — EVOLUZIONE TEMPORALE
               </div>
+              <div className="scroll-label">← Scorri per vedere tutti gli orizzonti →</div>
               <div
+                className="scroll-x scroll-hint"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr repeat(5, 70px)",
+                  gridTemplateColumns: "minmax(180px, 1fr) repeat(5, minmax(60px, 70px))",
                   gap: "1px",
-                  background: "var(--border)",
-                  borderRadius: 6,
-                  overflow: "hidden",
+                  background: "var(--divider)",
+                  borderRadius: 8,
+                  overflow: "auto",
+                  border: "1px solid var(--divider)",
                 }}
               >
                 {/* Header */}
@@ -643,17 +562,8 @@ export function DedollarizationPage({ data }: Props) {
           <button
             onClick={generateAi}
             disabled={aiLoading}
-            style={{
-              padding: "10px 18px",
-              fontSize: 13,
-              fontWeight: 600,
-              background: aiLoading ? "var(--bg)" : "var(--accent)",
-              color: aiLoading ? "var(--muted)" : "#fff",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              cursor: aiLoading ? "wait" : "pointer",
-              marginBottom: 16,
-            }}
+            className="btn"
+            style={{ marginBottom: 16 }}
           >
             {aiLoading
               ? "Generazione in corso…"
@@ -662,29 +572,15 @@ export function DedollarizationPage({ data }: Props) {
               : "Genera analisi AI"}
           </button>
 
-          {aiError && (
-            <div
-              style={{
-                padding: "10px 14px",
-                background: "rgba(239,68,68,0.12)",
-                border: "1px solid rgba(239,68,68,0.3)",
-                borderRadius: 6,
-                color: "var(--deflation)",
-                fontSize: 13,
-                marginBottom: 14,
-              }}
-            >
-              {aiError}
-            </div>
-          )}
+          {aiError && <div className="error">{aiError}</div>}
 
           {explanation ? (
             <div
               style={{
-                padding: "14px 16px",
-                background: "linear-gradient(135deg, rgba(124,92,255,0.10), rgba(56,189,248,0.06))",
-                border: "1px solid rgba(124,92,255,0.25)",
-                borderRadius: 8,
+                padding: "16px 18px",
+                background: "var(--accent-bg)",
+                border: "1px solid #c6dafc",
+                borderRadius: 12,
               }}
             >
               <div
@@ -694,12 +590,12 @@ export function DedollarizationPage({ data }: Props) {
                   textTransform: "uppercase",
                   letterSpacing: 0.6,
                   color: "var(--accent)",
-                  marginBottom: 6,
+                  marginBottom: 8,
                 }}
               >
                 Analisi AI — Gemini 2.5 Flash
               </div>
-              <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--text)" }}>
+              <div style={{ fontSize: 14, lineHeight: 1.65, color: "var(--text)" }}>
                 {renderExplanation(explanation)}
               </div>
             </div>
