@@ -59,15 +59,13 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-net"
 
-      # Router HTTP → redirect automatico a HTTPS (gestito da Traefik a livello di entrypoint)
+      # Unico router su HTTPS. Il redirect HTTP→HTTPS è gestito globalmente
+      # dall'entrypoint "web" del tuo Traefik (redirections.entrypoint.to=websecure).
       - "traefik.http.routers.macro.rule=Host(`${APP_DOMAIN:-macro.pieranlab.cloud}`)"
-      - "traefik.http.routers.macro.entrypoints=web"
-
-      # Router HTTPS con Let's Encrypt
-      - "traefik.http.routers.macro-secure.rule=Host(`${APP_DOMAIN:-macro.pieranlab.cloud}`)"
-      - "traefik.http.routers.macro-secure.entrypoints=websecure"
-      - "traefik.http.routers.macro-secure.tls=true"
-      - "traefik.http.routers.macro-secure.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.macro.entrypoints=websecure"
+      - "traefik.http.routers.macro.tls=true"
+      - "traefik.http.routers.macro.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.macro.service=macro"
 
       # Service: Traefik inoltra verso la porta 80 del container nginx
       - "traefik.http.services.macro.loadbalancer.server.port=80"
