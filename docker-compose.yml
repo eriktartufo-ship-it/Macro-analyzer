@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: macro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-macro_analyzer}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Porta NON esposta all'esterno: accessibile solo dalla rete interna docker.
+    # Scommenta se vuoi connetterti da client esterni (es. DBeaver da locale).
+    # ports:
+    #   - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-macro_analyzer}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: macro-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-macro_analyzer}
+      FRED_API_KEY: ${FRED_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      NEWSAPI_KEY: ${NEWSAPI_KEY:-}
+      SCHEDULER_HOUR: ${SCHEDULER_HOUR:-6}
+      SCHEDULER_MINUTE: ${SCHEDULER_MINUTE:-0}
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Persistenza della disk cache FRED tra restart del container
+      - fred-cache:/app/backend/.cache/fred
+    # Internal only: il frontend nginx fa il proxy verso backend:8000.
+    # Scommenta se vuoi accedere direttamente alle API dall'esterno.
+    # ports:
+    #   - "8000:8000"
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: macro-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+
+volumes:
+  pgdata:
+  fred-cache:

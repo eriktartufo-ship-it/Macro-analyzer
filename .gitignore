@@ -1,0 +1,49 @@
+# --- Secrets / env ---
+.env
+.env.local
+.env.*.local
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# --- Node / Vite ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+.npm/
+
+# --- Local database + caches ---
+*.sqlite
+*.sqlite3
+*.db
+backend/.cache/
+backend/alembic.ini.bak
+
+# --- Logs ---
+*.log
+logs/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Docker volume data (se mappata localmente) ---
+pgdata/
