@@ -272,6 +272,7 @@ def calculate_trajectory(
     indicators: dict[str, float],
     news_sentiment: float = 0.0,
     dedollar_score: float = 0.0,
+    current_fit_scores: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """Calcola la traiettoria del regime.
 
@@ -363,6 +364,14 @@ def calculate_trajectory(
     total = sum(projected.values())
     projected = {r: round(p / total, 4) for r, p in projected.items()}
 
+    # Proietta fit scores (scala assoluta, no normalizzazione)
+    projected_fit_scores: dict[str, float] = {}
+    if current_fit_scores:
+        for regime in REGIMES:
+            base = current_fit_scores.get(regime, 0.0)
+            adjusted = base * (1.0 + pressure[regime])
+            projected_fit_scores[regime] = round(max(0.0, min(1.0, adjusted)), 4)
+
     # Regime proiettato
     projected_regime = max(projected, key=projected.get)
 
@@ -409,6 +418,7 @@ def calculate_trajectory(
         "current_regime": current_regime,
         "projected_regime": projected_regime,
         "projected_probabilities": projected,
+        "projected_fit_scores": projected_fit_scores,
         "forces": forces,
         "drift": drift,
         "transition_risk": transition_risk,

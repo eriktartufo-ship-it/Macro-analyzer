@@ -25,6 +25,7 @@ class RegimeResponse(BaseModel):
     regime: str
     probabilities: dict[str, float]
     confidence: float
+    fit_scores: dict[str, float] = {}
 
 
 class SignalResponse(BaseModel):
@@ -117,6 +118,7 @@ class TrajectoryResponse(BaseModel):
     current_regime: str
     projected_regime: str
     projected_probabilities: dict[str, float]
+    projected_fit_scores: dict[str, float] = {}
     forces: list[TrajectoryForce]
     drift: list[TrajectoryDrift]
     transition_risk: float
@@ -128,6 +130,7 @@ class RegimeExplainResponse(BaseModel):
     date: date
     regime: str
     probabilities: dict[str, float]
+    fit_scores: dict[str, float] = {}
     confidence: float
     indicators: dict[str, float]
     top_drivers: list[ConditionDetail]
@@ -147,6 +150,18 @@ class HealthResponse(BaseModel):
 def health_check():
     """Health check endpoint."""
     return {"status": "ok", "version": "1.0.0"}
+
+
+def _extract_fit_scores(record: RegimeClassification) -> dict[str, float]:
+    """Estrae fit_scores dal JSON conditions_met, se presenti."""
+    if not record.conditions_met:
+        return {}
+    try:
+        payload = json.loads(record.conditions_met)
+        fit = payload.get("fit_scores") or {}
+        return {k: float(v) for k, v in fit.items()} if isinstance(fit, dict) else {}
+    except Exception:
+        return {}
 
 
 @router.get("/regime/current", response_model=RegimeResponse)
@@ -170,6 +185,7 @@ def get_current_regime(db: Session = Depends(get_db)):
             "goldilocks": latest.probability_goldilocks,
         },
         confidence=latest.confidence,
+        fit_scores=_extract_fit_scores(latest),
     )
 
 
@@ -193,10 +209,12 @@ def get_regime_explain(db: Session = Depends(get_db)):
         conditions = payload["conditions"]
         indicators = payload.get("indicators", {})
         dedollar_indicators = payload.get("dedollar_indicators", {})
+        fit_scores = payload.get("fit_scores", {}) or {}
     else:
         conditions = payload
         indicators = {}
         dedollar_indicators = {}
+        fit_scores = {}
 
     # Estrai i top driver per il regime dominante
     regime_conditions = conditions.get(latest.regime, {})
@@ -234,6 +252,7 @@ def get_regime_explain(db: Session = Depends(get_db)):
             current_regime=trajectory_data["current_regime"],
             projected_regime=trajectory_data["projected_regime"],
             projected_probabilities=trajectory_data["projected_probabilities"],
+            projected_fit_scores=trajectory_data.get("projected_fit_scores", {}) or {},
             forces=[TrajectoryForce(**f) for f in trajectory_data.get("forces", [])],
             drift=[TrajectoryDrift(**d) for d in trajectory_data.get("drift", [])],
             transition_risk=trajectory_data["transition_risk"],
@@ -250,6 +269,7 @@ def get_regime_explain(db: Session = Depends(get_db)):
             "deflation": latest.probability_deflation,
             "goldilocks": latest.probability_goldilocks,
         },
+        fit_scores=fit_scores,
         confidence=latest.confidence,
         indicators=indicators,
         top_drivers=drivers,
@@ -281,6 +301,7 @@ def get_regime_history(
                 "goldilocks": r.probability_goldilocks,
             },
             confidence=r.confidence,
+            fit_scores=_extract_fit_scores(r),
         )
         for r in records
     ]

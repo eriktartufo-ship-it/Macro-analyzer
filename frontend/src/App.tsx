@@ -123,7 +123,11 @@ export default function App() {
           {regimeHistory.length > 1 && (
             <RegimeTimelineChart
               history={regimeHistory}
-              projected={explain?.trajectory?.projected_probabilities ?? null}
+              projected={
+                explain?.trajectory?.projected_fit_scores ??
+                explain?.trajectory?.projected_probabilities ??
+                null
+              }
             />
           )}
           {explain && <AnalysisPanel explain={explain} />}

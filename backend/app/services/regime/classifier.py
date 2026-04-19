@@ -281,6 +281,11 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     if cpi > 3.5:
         raw_scores["goldilocks"] *= max(0.3, 1.0 - (cpi - 3.5) * 0.2)
 
+    # Fit score indipendenti [0, 1] per regime: somma pesata condizioni post-penalty
+    # ma PRE-normalizzazione. Esprime "quanto lo stato corrente somiglia a questo regime"
+    # in valore assoluto, senza competizione zero-sum.
+    fit_scores = {r: round(max(0.0, min(1.0, s)), 4) for r, s in raw_scores.items()}
+
     # Normalizza in probabilita (somma = 1.0)
     total = sum(raw_scores.values())
     if total == 0:
@@ -318,6 +323,7 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     return {
         "regime": regime,
         "probabilities": probabilities,
+        "fit_scores": fit_scores,
         "confidence": round(confidence, 3),
         "conditions_detail": conditions_detail,
     }

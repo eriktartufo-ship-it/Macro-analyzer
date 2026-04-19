@@ -81,6 +81,7 @@ def daily_refresh():
             indicators=indicators,
             news_sentiment=avg_news_sentiment,
             dedollar_score=dedollar_result.get("combined_score", 0.0),
+            current_fit_scores=regime_result.get("fit_scores"),
         )
         logger.info(
             f"Trajectory: {trajectory['current_regime']} → {trajectory['projected_regime']} "
@@ -1195,6 +1196,7 @@ def _save_results(
         "dedollar_indicators": raw_dedollar or {},
         "trajectory": trajectory or {},
         "news_sentiment": avg_news_sentiment,
+        "fit_scores": regime_result.get("fit_scores", {}),
     }
 
     with Session(engine) as session:

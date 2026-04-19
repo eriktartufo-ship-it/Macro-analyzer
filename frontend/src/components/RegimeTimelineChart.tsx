@@ -6,6 +6,12 @@ interface Props {
   projected?: Record<string, number> | null;
 }
 
+function regimeValue(item: RegimeHistoryItem, regime: Regime): number {
+  const fit = item.fit_scores?.[regime];
+  if (typeof fit === "number") return fit;
+  return item.probabilities[regime];
+}
+
 const REGIMES: Regime[] = ["reflation", "goldilocks", "deflation", "stagflation"];
 
 const PROJECTION_DAYS = 90;
@@ -51,13 +57,13 @@ export function RegimeTimelineChart({ history, projected }: Props) {
       const historyPath = sorted
         .map((p) => {
           const offset = diffDays(firstDate, p.date);
-          return `${xFor(offset).toFixed(1)},${yFor(p.probabilities[regime]).toFixed(1)}`;
+          return `${xFor(offset).toFixed(1)},${yFor(regimeValue(p, regime)).toFixed(1)}`;
         })
         .join(" ");
 
       const projectionPath =
         projected && projected[regime] !== undefined
-          ? `${xFor(historyDays).toFixed(1)},${yFor(lastPoint.probabilities[regime]).toFixed(1)} ${xFor(totalDays).toFixed(1)},${yFor(projected[regime]).toFixed(1)}`
+          ? `${xFor(historyDays).toFixed(1)},${yFor(regimeValue(lastPoint, regime)).toFixed(1)} ${xFor(totalDays).toFixed(1)},${yFor(projected[regime]).toFixed(1)}`
           : null;
 
       return { regime, historyPath, projectionPath };

@@ -16,6 +16,7 @@ export interface CurrentRegime {
   regime: Regime;
   probabilities: RegimeProbabilities;
   confidence: number;
+  fit_scores?: Partial<RegimeProbabilities>;
 }
 
 export type RegimeHistoryItem = CurrentRegime;
@@ -90,6 +91,7 @@ export interface Trajectory {
   current_regime: string;
   projected_regime: string;
   projected_probabilities: Record<string, number>;
+  projected_fit_scores?: Record<string, number>;
   forces: TrajectoryForce[];
   drift: TrajectoryDrift[];
   transition_risk: number;
@@ -111,6 +113,7 @@ export interface RegimeExplain {
   date: string;
   regime: Regime;
   probabilities: RegimeProbabilities;
+  fit_scores?: Partial<RegimeProbabilities>;
   confidence: number;
   indicators: Record<string, number>;
   top_drivers: ConditionDetail[];

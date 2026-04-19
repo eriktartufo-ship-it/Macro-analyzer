@@ -200,6 +200,7 @@ def backfill_regime_history(days: int = 180) -> dict:
                         "dedollar_indicators": {},
                         "trajectory": {},
                         "news_sentiment": 0.0,
+                        "fit_scores": result.get("fit_scores", {}),
                         "backfilled": True,
                     }),
                 ))
