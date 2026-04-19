@@ -212,43 +212,54 @@ body {
   transform: scale(0.94);
 }
 
-/* ───── Navigation tabs (desktop) ───── */
+/* ───── Navigation tabs (desktop) — glass pill ───── */
 
 .nav-tabs {
-  display: flex;
-  gap: 4px;
-  margin-top: 8px;
-  border-bottom: 1px solid var(--divider);
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 10px;
+  margin-bottom: 24px;
+  padding: 5px;
+  background: var(--card);
+  backdrop-filter: blur(24px) saturate(1.7);
+  -webkit-backdrop-filter: blur(24px) saturate(1.7);
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  box-shadow: var(--ring), var(--shadow-1);
   overflow-x: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  max-width: 100%;
 }
 .nav-tabs::-webkit-scrollbar {
   display: none;
 }
 
 .nav-tab {
-  padding: 12px 18px;
+  padding: 8px 18px;
   font-size: 13px;
   font-weight: 600;
   background: transparent;
   color: var(--muted);
   border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.15s, border-color 0.15s;
+  transition: color 0.15s, background 0.15s;
   font-family: inherit;
 }
 
 .nav-tab:hover {
   color: var(--text);
+  background: var(--surface-sunk);
 }
 
 .nav-tab.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--accent-bg);
+}
+.nav-tab.active:hover {
+  background: var(--accent-bg);
 }
 
 /* ───── Bottom nav (mobile) — glass bar ───── */
@@ -361,8 +372,8 @@ body {
 
 .grid {
   display: grid;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .grid-2 {
@@ -382,6 +393,10 @@ body {
 }
 
 @media (max-width: 900px) {
+  .grid {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
   .grid-2 {
     grid-template-columns: 1fr;
   }
@@ -391,6 +406,11 @@ body {
   }
   .grid-6 {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .card + .card,
+  .card + .grid,
+  .grid + .card {
+    margin-top: 12px;
   }
 }
 
@@ -468,16 +488,25 @@ body {
 }
 
 .regime-card-top {
-  flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 6px;
-  padding: 12px 0 18px;
+  padding: 4px 0 12px;
 }
 
-.regime-card-bottom {
-  margin-top: auto;
+.regime-headline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  row-gap: 4px;
+}
+
+.regime-arrow {
+  font-size: 22px;
+  color: var(--muted);
+  font-weight: 400;
+  line-height: 1;
 }
 
 .regime-name {
@@ -485,7 +514,47 @@ body {
   font-weight: 700;
   text-transform: capitalize;
   letter-spacing: -0.022em;
-  line-height: 1.15;
+  line-height: 1.1;
+}
+
+.regime-name.regime-projected {
+  opacity: 0.75;
+}
+
+.regime-trajectory {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  margin-top: 10px;
+  min-height: 0;
+}
+
+.regime-trajectory-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.regime-trajectory-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.regime-forces {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.regime-card-bottom {
+  margin-top: auto;
 }
 
 .regime-meta {
@@ -499,6 +568,15 @@ body {
   align-items: center;
   gap: 12px;
   margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .regime-name {
+    font-size: 26px;
+  }
+  .regime-arrow {
+    font-size: 18px;
+  }
 }
 
 .confidence-bar {
@@ -548,8 +626,8 @@ body {
   left: 0;
   top: 0;
   height: 100%;
-  transition: width 0.3s;
   border-radius: 8px;
+  transition: width 0.3s;
 }
 
 /* Projected fill — ghost bar overlaid above the current one */
@@ -570,13 +648,13 @@ body {
   transition: width 0.3s;
 }
 
-/* Delta zone overlay — highlights just the growth/shrinkage region */
+/* Delta zone overlay — soft rounded corners matching the fill */
 .prob-fill-delta {
   position: absolute;
   top: 0;
   height: 100%;
-  opacity: 0.65;
-  border-radius: 4px;
+  opacity: 0.7;
+  border-radius: 8px;
   background: repeating-linear-gradient(
     45deg,
     currentColor,
@@ -584,9 +662,27 @@ body {
     transparent 4px,
     transparent 8px
   );
-  box-shadow: inset 0 0 0 1px currentColor;
   transition: left 0.3s, width 0.3s;
   pointer-events: none;
+}
+.prob-fill-delta.delta-up {
+  background-color: rgba(48, 164, 108, 0.22);
+}
+.prob-fill-delta.delta-down {
+  background-color: rgba(229, 72, 77, 0.22);
+}
+
+.probabilities-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.probabilities-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 4px;
 }
 
 /* Subtle tick showing where the delta ends when projected < current */
@@ -651,7 +747,7 @@ body {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  min-width: 520px;
+  min-width: 640px;
 }
 
 .table th,
@@ -672,15 +768,20 @@ body {
   background: transparent;
 }
 
-.table td.num,
-.table th.num {
+.table td.num {
   text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th.num {
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
 
 .table td.rank {
   text-align: right;
-  width: 44px;
+  width: 52px;
+  padding-right: 10px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   font-weight: 500;
@@ -698,7 +799,7 @@ body {
 .score-stack {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   width: 100%;
   justify-content: flex-end;
 }
@@ -706,16 +807,17 @@ body {
 .score-num {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  min-width: 56px;
+  min-width: 68px;
   padding-right: 4px;
   text-align: right;
+  white-space: nowrap;
 }
 
 .score-bar {
   position: relative;
   display: inline-block;
-  width: 80px;
-  height: 10px;
+  width: 220px;
+  height: 14px;
   background: var(--surface-sunk);
   border-radius: 999px;
   overflow: hidden;
@@ -733,22 +835,46 @@ body {
   transition: width 0.3s, background 0.3s;
 }
 
-/* Delta zone overlay for asset ranking — highlights only the change region */
+/* Delta zone overlay for asset ranking — soft rounded corners matching the fill */
 .score-bar-delta {
   position: absolute;
   top: 0;
   height: 100%;
-  opacity: 0.7;
-  border-radius: 3px;
+  opacity: 0.85;
+  border-radius: 999px;
   background: repeating-linear-gradient(
     45deg,
     currentColor,
-    currentColor 3px,
-    transparent 3px,
-    transparent 6px
+    currentColor 4px,
+    transparent 4px,
+    transparent 8px
   );
-  box-shadow: inset 0 0 0 1px currentColor;
   pointer-events: none;
+}
+.score-bar-delta.delta-up {
+  background-color: rgba(48, 164, 108, 0.25);
+}
+.score-bar-delta.delta-down {
+  background-color: rgba(229, 72, 77, 0.25);
+}
+
+@media (max-width: 900px) {
+  .score-bar {
+    width: 140px;
+  }
+}
+
+@media (max-width: 640px) {
+  .score-bar {
+    width: 110px;
+    height: 12px;
+  }
+  .score-num {
+    min-width: 60px;
+  }
+  .score-stack {
+    gap: 10px;
+  }
 }
 
 .delta-up {
@@ -771,26 +897,67 @@ body {
   position: relative;
 }
 
+/* Legacy static hint (kept for compatibility, disabled — new pages use ScrollShadow) */
 .scroll-hint::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 36px;
-  pointer-events: none;
-  background: linear-gradient(
-    to right,
-    transparent,
-    var(--page-bg) 80%
-  );
-  opacity: 0;
-  transition: opacity 0.2s;
+  content: none;
 }
 
-@media (max-width: 900px) {
-  .scroll-hint::after {
-    opacity: 0.9;
+/* ScrollShadow — edge fades that stick to the viewport of the scroll container */
+.scroll-shadow {
+  position: relative;
+}
+
+.scroll-shadow-inner {
+  position: relative;
+}
+
+.scroll-shadow::before,
+.scroll-shadow::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+/* Horizontal axis — left/right edge fades */
+.scroll-shadow-x::before,
+.scroll-shadow-x::after {
+  top: 0;
+  bottom: 0;
+  width: 36px;
+}
+.scroll-shadow-x::before {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.14),
+    transparent
+  );
+}
+.scroll-shadow-x::after {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    rgba(0, 0, 0, 0.14),
+    transparent
+  );
+}
+
+.scroll-shadow-x[data-at-start="false"]::before { opacity: 1; }
+.scroll-shadow-x[data-at-end="false"]::after { opacity: 1; }
+
+@media (max-width: 640px) {
+  .scroll-shadow-x::before,
+  .scroll-shadow-x::after {
+    width: 48px;
+  }
+  .scroll-shadow-x::before {
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.32), transparent);
+  }
+  .scroll-shadow-x::after {
+    background: linear-gradient(to left, rgba(0, 0, 0, 0.32), transparent);
   }
 }
 

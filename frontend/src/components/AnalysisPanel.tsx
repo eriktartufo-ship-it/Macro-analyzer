@@ -166,81 +166,66 @@ function trendIcon(type: "level" | "roc", value: number): string {
   return "";
 }
 
-function riskColor(risk: number): string {
-  if (risk > 0.7) return "var(--deflation)";
-  if (risk > 0.4) return "var(--goldilocks)";
-  return "var(--reflation)";
-}
-
 export function AnalysisPanel({ explain }: Props) {
   const hasIndicators = Object.keys(explain.indicators).length > 0;
   const traj = explain.trajectory;
+  const hasForces = !!traj && traj.forces.length > 0;
 
   return (
     <div className="card">
       <h2>Analysis — Why {explain.regime}?</h2>
 
-      {/* TRAJECTORY — Where are we heading? */}
-      {traj && (
+      {/* Driving forces */}
+      {hasForces && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10, fontWeight: 600 }}>
-            REGIME TRAJECTORY
-          </div>
-
-          {/* Header: current → projected */}
-          <div className="surface" style={{ padding: 12, marginBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-              <span className={`regime-${traj.current_regime}`}
-                style={{ fontSize: 18, fontWeight: 700, textTransform: "capitalize" }}>
-                {traj.current_regime}
-              </span>
-              <span style={{ fontSize: 18, color: "var(--muted)" }}>{"\u2192"}</span>
-              <span className={`regime-${traj.projected_regime}`}
-                style={{ fontSize: 18, fontWeight: 700, textTransform: "capitalize" }}>
-                {traj.projected_regime}
-              </span>
-              {traj.current_regime !== traj.projected_regime && (
-                <span className="chip chip-danger" data-nowrap>TRANSITION</span>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 12, fontSize: 12, flexWrap: "wrap" }}>
-              <span style={{ color: riskColor(traj.transition_risk) }} data-nowrap>
-                Transition risk: {(traj.transition_risk * 100).toFixed(0)}%
-              </span>
-              <span style={{ color: "var(--muted)", flex: 1, minWidth: 0 }}>{traj.summary}</span>
-            </div>
-          </div>
-
-          {/* Forces */}
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6, fontWeight: 600 }}>
             DRIVING FORCES
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {traj.forces.map((f, i) => {
+            {traj!.forces.map((f, i) => {
               const forceChipClass =
-                f.type === "news" ? "chip chip-info" :
-                f.type === "dedollarization" ? "chip" :
-                "chip chip-warn";
+                f.type === "news"
+                  ? "chip chip-info"
+                  : f.type === "dedollarization"
+                  ? "chip"
+                  : "chip chip-warn";
               const forceChipStyle =
                 f.type === "dedollarization"
                   ? { background: "rgba(159, 78, 237, 0.15)", color: "var(--stagflation)" }
                   : undefined;
               return (
                 <div key={i} className="row-item" style={{ padding: "8px 12px" }}>
-                  <span className={forceChipClass} style={{ fontSize: 10, padding: "2px 8px", ...forceChipStyle }} data-nowrap>
+                  <span
+                    className={forceChipClass}
+                    style={{ fontSize: 10, padding: "2px 8px", ...forceChipStyle }}
+                    data-nowrap
+                  >
                     {FORCE_TYPE_ICONS[f.type] ?? f.type}
                   </span>
-                  <span className="row-text" style={{ fontSize: 13 }}>{f.description}</span>
-                  <span data-nowrap style={{ fontSize: 12, color: "var(--muted)" }}>{"\u2192"}</span>
-                  <span data-nowrap className={`regime-${f.pushes_toward}`}
-                    style={{ fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>
+                  <span className="row-text" style={{ fontSize: 13 }}>
+                    {f.description}
+                  </span>
+                  <span data-nowrap style={{ fontSize: 12, color: "var(--muted)" }}>
+                    {"\u2192"}
+                  </span>
+                  <span
+                    data-nowrap
+                    className={`regime-${f.pushes_toward}`}
+                    style={{ fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}
+                  >
                     {f.pushes_toward}
                   </span>
-                  <span data-nowrap style={{
-                    fontSize: 11, fontWeight: 600, fontVariantNumeric: "tabular-nums",
-                    color: f.strength > 0 ? "var(--reflation)" : "var(--deflation)",
-                  }}>
-                    {f.strength > 0 ? "+" : ""}{(f.strength * 100).toFixed(0)}%
+                  <span
+                    data-nowrap
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      fontVariantNumeric: "tabular-nums",
+                      color: f.strength > 0 ? "var(--reflation)" : "var(--deflation)",
+                    }}
+                  >
+                    {f.strength > 0 ? "+" : ""}
+                    {(f.strength * 100).toFixed(0)}%
                   </span>
                 </div>
               );

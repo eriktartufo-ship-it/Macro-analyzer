@@ -1,3 +1,5 @@
+import { ScrollShadow } from "./ScrollShadow";
+
 interface Props {
   scores: Record<string, number>;
   projected?: Record<string, number> | null;
@@ -7,12 +9,9 @@ function formatAsset(name: string): string {
   return name.replace(/_/g, " ");
 }
 
-function scoreColorVar(score: number, maxScore: number): string {
-  const ratio = maxScore > 0 ? score / maxScore : 0;
-  if (ratio >= 0.72) return "var(--reflation)";
-  if (ratio >= 0.55) return "var(--goldilocks)";
-  if (ratio >= 0.38) return "#ec8a1a";
-  return "var(--deflation)";
+function deltaBarColor(delta: number | null): string {
+  if (delta === null) return "var(--accent)";
+  return delta >= 0 ? "var(--reflation)" : "var(--deflation)";
 }
 
 export function AssetRankingTable({ scores, projected }: Props) {
@@ -36,12 +35,11 @@ export function AssetRankingTable({ scores, projected }: Props) {
       <h2>Asset Ranking {hasProj && <span style={{ textTransform: "none", fontWeight: 500, color: "var(--muted)" }}>— corrente vs proiezione</span>}</h2>
       {hasProj && (
         <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-          Il colore della barra riflette la forza dell'asset (verde = forte, rosso = debole).
-          La zona tratteggiata evidenzia la variazione attesa al prossimo regime: verde se in salita, rossa se in discesa.
+          Barra verde = proiezione in rialzo, rossa = in ribasso. La zona tratteggiata mostra l'ampiezza del cambio atteso.
         </div>
       )}
       <div className="scroll-label">← Scorri per vedere tutte le colonne →</div>
-      <div className="table-wrap scroll-hint">
+      <ScrollShadow innerClassName="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -58,10 +56,9 @@ export function AssetRankingTable({ scores, projected }: Props) {
               const delta =
                 r.projected_score !== null ? r.projected_score - r.final_score : 0;
               const deltaAbs = Math.abs(delta);
-              const isFlat = deltaAbs < 0.05;
-              const isUp = delta > 0;
-              const deltaClass = isFlat ? "delta-flat" : isUp ? "delta-up" : "delta-down";
-              const barColor = scoreColorVar(r.final_score, maxScore);
+              const isUp = delta >= 0;
+              const deltaClass = isUp ? "delta-up" : "delta-down";
+              const barColor = deltaBarColor(r.projected_score !== null ? delta : null);
               const deltaStart =
                 r.projected_score !== null
                   ? (Math.min(r.final_score, r.projected_score) / maxScore) * 100
@@ -81,7 +78,7 @@ export function AssetRankingTable({ scores, projected }: Props) {
                           className="score-bar-fill"
                           style={{ width: `${pct}%`, background: barColor }}
                         />
-                        {r.projected_score !== null && !isFlat && (
+                        {r.projected_score !== null && deltaWidth > 0.01 && (
                           <span
                             className={`score-bar-delta ${isUp ? "delta-up" : "delta-down"}`}
                             style={{ left: `${deltaStart}%`, width: `${deltaWidth}%` }}
@@ -117,7 +114,7 @@ export function AssetRankingTable({ scores, projected }: Props) {
             })}
           </tbody>
         </table>
-      </div>
+      </ScrollShadow>
     </div>
   );
 }

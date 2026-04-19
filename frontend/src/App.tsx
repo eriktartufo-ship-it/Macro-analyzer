@@ -110,7 +110,7 @@ export default function App() {
       {ready && page === "dashboard" && (
         <>
           <div className="grid grid-2">
-            <RegimeCard data={regime} />
+            <RegimeCard data={regime} trajectory={explain?.trajectory} />
             <ProbabilityBars
               probabilities={regime.probabilities}
               projected={explain?.trajectory?.projected_probabilities}

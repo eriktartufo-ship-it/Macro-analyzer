@@ -74,14 +74,75 @@ Confidence score (0-1) basato su quante condizioni concordano.
 
 Scheduler: APScheduler, run giornaliero alle 06:00 UTC.
 
-## Regole
+## Regole tecniche
 
 - NO path assoluti nel codice (tutto relativo)
 - NO secrets nel codice (solo .env)
-- SEMPRE scrivere test prima del codice (TDD)
 - Coverage minimo 80%
 - Usare type hints ovunque
-- Docstring solo dove la logica non e auto-esplicativa
+- Docstring solo dove la logica non è auto-esplicativa
+
+## Linee guida di sviluppo
+
+### 1. Pensa prima di programmare
+
+Non dare nulla per scontato. Non nascondere i dubbi. Metti in evidenza i compromessi.
+
+Prima di implementare:
+
+- Dichiara esplicitamente i presupposti. In caso di incertezza, chiedi.
+- Se esistono diverse interpretazioni, presentale: non scegliere in silenzio.
+- Se esiste un approccio più semplice, dillo. Esprimi la tua opinione quando necessario.
+- Se qualcosa non è chiaro, fermati. Individua ciò che non ti è chiaro. Chiedi.
+
+### 2. Semplicità prima di tutto
+
+Codice minimo indispensabile per risolvere il problema. Niente di speculativo.
+
+- Nessuna funzionalità oltre a quella richiesta.
+- Nessuna astrazione per codice monouso.
+- Nessuna "flessibilità" o "configurabilità" non richiesta.
+- Nessuna gestione degli errori per scenari impossibili.
+- Se scrivi 200 righe di codice e potresti riscriverle in 50, riscrivile.
+- Chiediti: "Un ingegnere senior direbbe che questo è troppo complicato?" Se sì, semplifica.
+
+### 3. Modifiche mirate
+
+Modifica solo ciò che è necessario. Pulisci solo il tuo codice.
+
+Quando modifichi codice esistente:
+
+- Non "migliorare" codice, commenti o formattazione adiacenti.
+- Non effettuare il refactoring di codice funzionante.
+- Mantieni lo stile esistente, anche se lo faresti diversamente.
+- Se noti del codice inutilizzato non correlato, segnalalo, non eliminarlo.
+
+Quando le tue modifiche creano righe orfane:
+
+- Rimuovi importazioni/variabili/funzioni che le TUE modifiche hanno reso inutilizzate.
+- Non rimuovere codice inutilizzato preesistente a meno che non ti venga richiesto.
+
+Il test: ogni riga modificata deve essere direttamente riconducibile alla richiesta dell'utente.
+
+### 4. Esecuzione orientata agli obiettivi (TDD obbligatorio)
+
+Definisci i criteri di successo. Ripeti il ciclo fino alla verifica.
+
+Trasforma le attività in obiettivi verificabili:
+
+- "Aggiungi la validazione" → "Scrivi test per input non validi, quindi falli superare"
+- "Correggi il bug" → "Scrivi un test che lo riproduca, quindi fallo superare"
+- "Esegui il refactoring di X" → "Assicurati che i test vengano superati prima e dopo"
+
+Per le attività a più fasi, definisci un breve piano:
+
+```text
+1. [Fase] → verifica: [controllo]
+2. [Fase] → verifica: [controllo]
+3. [Fase] → verifica: [controllo]
+```
+
+Criteri di successo rigorosi consentono di eseguire cicli in modo indipendente. Criteri deboli ("fallo funzionare") richiedono chiarimenti costanti.
 
 ## Fasi
 

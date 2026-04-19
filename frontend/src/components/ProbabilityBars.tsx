@@ -24,8 +24,9 @@ export function ProbabilityBars({ probabilities, projected }: Props) {
   const hasProjection = projected && Object.keys(projected).length > 0;
 
   return (
-    <div className="card">
+    <div className="card probabilities-card">
       <h2>Regime Probabilities</h2>
+      <div className="probabilities-list">
       {rows.map(({ regime, value, proj }) => {
         const width = (value / max) * 100;
         const delta = proj !== null ? proj - value : 0;
@@ -64,6 +65,7 @@ export function ProbabilityBars({ probabilities, projected }: Props) {
           </div>
         );
       })}
+      </div>
       {hasProjection && (
         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>
           La zona tratteggiata mostra il cambio atteso: verde se il regime guadagna forza, rossa se la perde.

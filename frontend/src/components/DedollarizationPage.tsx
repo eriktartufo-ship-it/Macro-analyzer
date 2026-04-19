@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import type { Dedollarization, PlayerScore, PlayerSignal } from "../types";
 import { api } from "../api/client";
+import { ScrollShadow } from "./ScrollShadow";
 
 interface Props {
   data: Dedollarization;
@@ -500,15 +501,14 @@ export function DedollarizationPage({ data }: Props) {
                 MACRO PLAYER — EVOLUZIONE TEMPORALE
               </div>
               <div className="scroll-label">← Scorri per vedere tutti gli orizzonti →</div>
-              <div
-                className="scroll-x scroll-hint"
-                style={{
+              <ScrollShadow
+                innerClassName="scroll-x"
+                innerStyle={{
                   display: "grid",
                   gridTemplateColumns: "minmax(180px, 1fr) repeat(5, minmax(60px, 70px))",
                   gap: "1px",
                   background: "var(--divider)",
                   borderRadius: 8,
-                  overflow: "auto",
                   border: "1px solid var(--divider)",
                 }}
               >
@@ -535,7 +535,7 @@ export function DedollarizationPage({ data }: Props) {
                       />
                     );
                   })}
-              </div>
+              </ScrollShadow>
             </div>
           )}
           <HorizonBars label="SEGNALI CICLICI (12 MESI)" items={data.components} meta={CYCLICAL_META} />
