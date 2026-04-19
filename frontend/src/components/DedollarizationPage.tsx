@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import type { Dedollarization, PlayerScore, PlayerSignal } from "../types";
 import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
@@ -309,11 +309,11 @@ function HorizonBars({
 // ── Matrice Player × Orizzonte ──
 
 const HORIZON_COLS = [
-  { key: "20y", label: "20Y" },
-  { key: "10y", label: "10Y" },
-  { key: "5y", label: "5Y" },
-  { key: "1y", label: "1Y" },
   { key: "now", label: "Oggi" },
+  { key: "1y", label: "1Y" },
+  { key: "5y", label: "5Y" },
+  { key: "10y", label: "10Y" },
+  { key: "20y", label: "20Y" },
 ];
 
 const cellStyle: React.CSSProperties = {
@@ -395,6 +395,14 @@ export function DedollarizationPage({ data }: Props) {
   const [explanation, setExplanation] = useState<string | null>(data.explanation ?? null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const generateAi = async () => {
     setAiLoading(true);
@@ -500,42 +508,79 @@ export function DedollarizationPage({ data }: Props) {
               <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10, fontWeight: 600 }}>
                 MACRO PLAYER — EVOLUZIONE TEMPORALE
               </div>
-              <div className="scroll-label">← Scorri per vedere tutti gli orizzonti →</div>
-              <ScrollShadow
-                innerClassName="scroll-x"
-                innerStyle={{
-                  display: "grid",
-                  gridTemplateColumns: "minmax(180px, 1fr) repeat(5, minmax(60px, 70px))",
-                  gap: "1px",
-                  background: "var(--divider)",
-                  borderRadius: 8,
-                  border: "1px solid var(--divider)",
-                }}
-              >
-                {/* Header */}
-                <div style={{ ...cellStyle, fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>Player</div>
-                {HORIZON_COLS.map((col) => (
-                  <div key={col.key} style={{ ...cellStyle, fontWeight: 600, fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
-                    {col.label}
-                  </div>
-                ))}
-                {/* Rows */}
-                {playerEntries
-                  .sort((a, b) => b[1].score - a[1].score)
-                  .map(([id, p]) => {
-                    const accelVal = data.player_acceleration?.[id];
-                    return (
-                      <PlayerHorizonRow
-                        key={id}
-                        playerId={id}
-                        label={p.label}
-                        currentScore={p.score}
-                        history={data.player_history}
-                        acceleration={accelVal}
-                      />
-                    );
-                  })}
-              </ScrollShadow>
+              {isMobile ? (
+                <div className="asset-mobile-list" style={{ marginTop: 0 }}>
+                  {playerEntries
+                    .sort((a, b) => b[1].score - a[1].score)
+                    .map(([id, p]) => {
+                      const accelVal = data.player_acceleration?.[id];
+                      return (
+                        <div key={id} className="asset-mobile-card" style={{ padding: 14 }}>
+                          <div className="asset-mobile-header" style={{ borderBottom: "1px solid var(--stroke)", paddingBottom: 10, marginBottom: 10 }}>
+                            <span className="asset-name" style={{ fontSize: 15 }}>{p.label}</span>
+                            {accelVal !== undefined && (
+                              <span style={{ fontSize: 13, fontWeight: 700, color: accelVal > 0.02 ? "var(--deflation)" : accelVal < -0.02 ? "var(--reflation)" : "var(--muted)" }}>
+                                {accelVal > 0 ? "+" : ""}{(accelVal * 100).toFixed(0)}pp
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
+                            {HORIZON_COLS.map((col) => {
+                              const s = col.key === "now" ? p.score : data.player_history?.[col.key]?.[id] ?? null;
+                              return (
+                                <div key={col.key} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}>
+                                  <span style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", marginBottom: 2 }}>{col.label}</span>
+                                  <span style={{ fontSize: 12, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: s !== null ? scoreColor(s) : "var(--muted)" }}>
+                                    {s !== null ? `${(s * 100).toFixed(0)}%` : "—"}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : (
+                <>
+                  <div className="scroll-label">← Scorri per vedere tutti gli orizzonti →</div>
+                  <ScrollShadow
+                    innerClassName="scroll-x"
+                    innerStyle={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(180px, 1fr) repeat(5, minmax(60px, 70px))",
+                      gap: "1px",
+                      background: "var(--divider)",
+                      borderRadius: 8,
+                      border: "1px solid var(--divider)",
+                    }}
+                  >
+                    {/* Header */}
+                    <div style={{ ...cellStyle, fontWeight: 600, fontSize: 11, color: "var(--muted)" }}>Player</div>
+                    {HORIZON_COLS.map((col) => (
+                      <div key={col.key} style={{ ...cellStyle, fontWeight: 600, fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
+                        {col.label}
+                      </div>
+                    ))}
+                    {/* Rows */}
+                    {playerEntries
+                      .sort((a, b) => b[1].score - a[1].score)
+                      .map(([id, p]) => {
+                        const accelVal = data.player_acceleration?.[id];
+                        return (
+                          <PlayerHorizonRow
+                            key={id}
+                            playerId={id}
+                            label={p.label}
+                            currentScore={p.score}
+                            history={data.player_history}
+                            acceleration={accelVal}
+                          />
+                        );
+                      })}
+                  </ScrollShadow>
+                </>
+              )}
             </div>
           )}
           <HorizonBars label="SEGNALI CICLICI (12 MESI)" items={data.components} meta={CYCLICAL_META} />

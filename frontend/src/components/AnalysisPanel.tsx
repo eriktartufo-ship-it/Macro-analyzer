@@ -194,33 +194,31 @@ export function AnalysisPanel({ explain }: Props) {
                   ? { background: "rgba(159, 78, 237, 0.15)", color: "var(--stagflation)" }
                   : undefined;
               return (
-                <div key={i} className="row-item" style={{ padding: "8px 12px" }}>
+                <div key={i} className="card-row">
                   <span
                     className={forceChipClass}
-                    style={{ fontSize: 10, padding: "2px 8px", ...forceChipStyle }}
+                    style={{ fontSize: 11, padding: "4px 8px", fontWeight: 700, ...forceChipStyle }}
                     data-nowrap
                   >
                     {FORCE_TYPE_ICONS[f.type] ?? f.type}
                   </span>
-                  <span className="row-text" style={{ fontSize: 13 }}>
+                  <span style={{ fontSize: 14 }}>
                     {f.description}
                   </span>
-                  <span data-nowrap style={{ fontSize: 12, color: "var(--muted)" }}>
+                  <span data-nowrap style={{ fontSize: 13, color: "var(--muted)" }}>
                     {"\u2192"}
                   </span>
                   <span
                     data-nowrap
                     className={`regime-${f.pushes_toward}`}
-                    style={{ fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}
+                    style={{ fontSize: 13, fontWeight: 700, textTransform: "capitalize" }}
                   >
                     {f.pushes_toward}
                   </span>
                   <span
                     data-nowrap
+                    className="card-row-value"
                     style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      fontVariantNumeric: "tabular-nums",
                       color: f.strength > 0 ? "var(--reflation)" : "var(--deflation)",
                     }}
                   >
@@ -243,26 +241,25 @@ export function AnalysisPanel({ explain }: Props) {
           {explain.top_drivers.map((d) => (
             <div
               key={d.name}
-              className="row-item"
+              className="card-row"
               style={{
-                padding: "8px 12px",
-                borderLeft: `3px solid ${SIGNAL_COLORS[d.signal]}`,
+                borderLeft: `4px solid ${SIGNAL_COLORS[d.signal]}`,
               }}
             >
               <span
                 data-nowrap
                 style={{
-                  fontSize: 11,
-                  fontWeight: 600,
+                  fontSize: 12,
+                  fontWeight: 700,
                   color: SIGNAL_COLORS[d.signal],
                   textTransform: "uppercase",
-                  minWidth: 60,
+                  minWidth: 70,
                 }}
               >
                 {SIGNAL_LABELS[d.signal]}
               </span>
-              <span className="row-text" style={{ fontSize: 13 }}>{d.description}</span>
-              <span data-nowrap style={{ fontSize: 12, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
+              <span style={{ fontSize: 14 }}>{d.description}</span>
+              <span data-nowrap className="card-row-value" style={{ color: "var(--muted)" }}>
                 {(d.raw_score * 100).toFixed(0)}%
               </span>
             </div>
