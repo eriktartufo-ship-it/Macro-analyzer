@@ -18,6 +18,8 @@ export interface CurrentRegime {
   confidence: number;
 }
 
+export type RegimeHistoryItem = CurrentRegime;
+
 export interface Scoreboard {
   date: string;
   regime: Regime;

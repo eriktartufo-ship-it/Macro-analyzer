@@ -806,6 +806,111 @@ body {
 .bg-stagflation { background: var(--stagflation); }
 .bg-deflation { background: var(--deflation); }
 
+/* ───── Regime timeline chart ───── */
+
+.regime-chart-card h2 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.regime-chart-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.regime-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.regime-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.regime-chart-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.regime-chart {
+  width: 100%;
+  height: 240px;
+  display: block;
+}
+
+.regime-chart-grid {
+  stroke: var(--divider);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.6;
+}
+
+.regime-chart-today {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+}
+
+.regime-chart-axis-label {
+  font-size: 10px;
+  fill: var(--muted);
+  font-family: inherit;
+}
+
+.regime-chart-axis-emph {
+  font-weight: 600;
+  fill: var(--text);
+}
+
+.regime-chart-line-reflation { color: var(--reflation); }
+.regime-chart-line-goldilocks { color: var(--goldilocks); }
+.regime-chart-line-stagflation { color: var(--stagflation); }
+.regime-chart-line-deflation { color: var(--deflation); }
+
+.regime-chart-history {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.regime-chart-projection {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  stroke-linecap: round;
+  opacity: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+
+@media (max-width: 640px) {
+  .regime-chart {
+    height: 200px;
+  }
+  .regime-chart-legend {
+    gap: 10px;
+    font-size: 11px;
+  }
+}
+
 /* ───── Table ───── */
 
 .table-wrap {

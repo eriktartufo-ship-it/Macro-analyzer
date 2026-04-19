@@ -191,6 +191,45 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     if "fed_funds" in latest:
         indicators["fed_funds_rate"] = latest["fed_funds"]
 
+    # --- Nuovi indicatori classifier (Core PCE, Payrolls, IP, BAA, Sentiment) ---
+    if "core_pce" in latest:
+        try:
+            pce_data = fetcher.fetch_and_transform("core_pce")
+            roc_12m = pce_data.get("roc_12m")
+            if roc_12m is not None and not roc_12m.empty:
+                indicators["core_pce_yoy"] = float(roc_12m.dropna().iloc[-1])
+        except Exception:
+            pass
+
+    if "nonfarm_payrolls" in latest:
+        try:
+            pay_data = fetcher.fetch_and_transform("nonfarm_payrolls")
+            roc_12m = pay_data.get("roc_12m")
+            if roc_12m is not None and not roc_12m.empty:
+                indicators["payrolls_roc_12m"] = float(roc_12m.dropna().iloc[-1])
+        except Exception:
+            pass
+
+    if "industrial_production" in latest:
+        try:
+            ip_data = fetcher.fetch_and_transform("industrial_production")
+            roc_12m = ip_data.get("roc_12m")
+            if roc_12m is not None and not roc_12m.empty:
+                indicators["indpro_roc_12m"] = float(roc_12m.dropna().iloc[-1])
+        except Exception:
+            pass
+
+    if "baa_spread" in latest:
+        indicators["baa_spread"] = latest["baa_spread"]
+
+    if "consumer_sentiment" in latest:
+        indicators["consumer_sentiment"] = latest["consumer_sentiment"]
+
+    # Yield curve 10Y-3M: esposto come indicatore informativo (non ancora in REGIME_CONDITIONS
+    # perché altamente correlato a 10y2y — evitiamo il doppio conteggio)
+    if "yield_curve_10y3m" in latest:
+        indicators["yield_curve_10y3m"] = latest["yield_curve_10y3m"]
+
     # --- Forward-looking market indicators ---
     # 10Y Breakeven inflation (expectation)
     if "breakeven_10y" in latest:
@@ -1136,12 +1175,26 @@ def _save_results(
 
     today = date.today()
 
+    # Aggregato sentiment news (weighted by relevance) per persistenza giornaliera:
+    # oggi è solo informativo, in futuro potrà entrare nel classifier una volta
+    # accumulato storico sufficiente.
+    avg_news_sentiment = 0.0
+    if scored_news:
+        relevant = [n for n in scored_news if n.get("relevance", 0) > 0.3]
+        if relevant:
+            total_rel = sum(n["relevance"] for n in relevant)
+            if total_rel > 0:
+                avg_news_sentiment = sum(
+                    n["sentiment"] * n["relevance"] for n in relevant
+                ) / total_rel
+
     # Assembla il JSON di dettaglio con condizioni + indicatori + trajectory
     conditions_payload = {
         "conditions": regime_result["conditions_detail"],
         "indicators": raw_indicators or {},
         "dedollar_indicators": raw_dedollar or {},
         "trajectory": trajectory or {},
+        "news_sentiment": avg_news_sentiment,
     }
 
     with Session(engine) as session:

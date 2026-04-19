@@ -259,3 +259,74 @@ class TestRegimeClassifier:
 
         assert len(REGIMES) == 4
         assert set(REGIMES) == {"reflation", "stagflation", "deflation", "goldilocks"}
+
+    def test_new_indicators_tilt_stagflation(self):
+        """Core PCE alto + spread BAA largo + sentiment basso devono spingere stagflation.
+
+        Scenario borderline (inflation moderatamente alta) reso più netto dai nuovi
+        indicatori: senza di essi stagflation vince appena, con i segnali nuovi
+        aumenta ulteriormente la probabilità.
+        """
+        from app.services.regime.classifier import classify_regime
+
+        base = {
+            "gdp_roc": 0.8,
+            "pmi": 48.5,
+            "cpi_yoy": 4.5,
+            "unrate": 4.5,
+            "unrate_roc": 0.25,
+            "yield_curve_10y2y": 0.0,
+            "initial_claims_roc": 6.0,
+            "lei_roc": -0.8,
+            "fed_funds_rate": 5.0,
+        }
+        enriched = {
+            **base,
+            "core_pce_yoy": 4.2,
+            "payrolls_roc_12m": 0.5,
+            "indpro_roc_12m": -0.2,
+            "baa_spread": 2.8,
+            "consumer_sentiment": 62.0,
+        }
+
+        base_result = classify_regime(base)
+        enriched_result = classify_regime(enriched)
+
+        assert enriched_result["regime"] == "stagflation"
+        assert (
+            enriched_result["probabilities"]["stagflation"]
+            > base_result["probabilities"]["stagflation"]
+        )
+
+    def test_new_indicators_tilt_goldilocks(self):
+        """Core PCE contenuto + spread tight + sentiment alto rafforzano goldilocks."""
+        from app.services.regime.classifier import classify_regime
+
+        base = {
+            "gdp_roc": 2.2,
+            "pmi": 54.0,
+            "cpi_yoy": 2.0,
+            "unrate": 3.7,
+            "unrate_roc": -0.05,
+            "yield_curve_10y2y": 1.2,
+            "initial_claims_roc": -2.0,
+            "lei_roc": 0.4,
+            "fed_funds_rate": 2.0,
+        }
+        enriched = {
+            **base,
+            "core_pce_yoy": 1.9,
+            "payrolls_roc_12m": 1.8,
+            "indpro_roc_12m": 2.2,
+            "baa_spread": 1.4,
+            "consumer_sentiment": 92.0,
+        }
+
+        base_result = classify_regime(base)
+        enriched_result = classify_regime(enriched)
+
+        assert enriched_result["regime"] == "goldilocks"
+        assert (
+            enriched_result["probabilities"]["goldilocks"]
+            > base_result["probabilities"]["goldilocks"]
+        )

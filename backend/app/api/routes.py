@@ -367,6 +367,25 @@ def trigger_refresh():
         raise HTTPException(status_code=500, detail=f"Errore refresh: {str(e)}")
 
 
+@router.post("/regime/backfill")
+def trigger_regime_backfill(days: int = Query(default=180, ge=1, le=3650)):
+    """Ricostruisce lo storico classificazioni regime per gli ultimi N giorni."""
+    from app.services.regime.backfill import backfill_regime_history
+
+    try:
+        stats = backfill_regime_history(days=days)
+        return {
+            "status": "ok",
+            "classified": stats["classified"],
+            "skipped": stats["skipped"],
+            "errors": stats["errors"],
+            "start": stats["start"].isoformat(),
+            "end": stats["end"].isoformat(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore backfill: {str(e)}")
+
+
 @router.get("/assets", response_model=list[str])
 def list_asset_classes():
     """Lista di tutte le asset class monitorate."""

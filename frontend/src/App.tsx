@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "./api/client";
-import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, Scoreboard } from "./types";
+import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
 import { Header, type Page, type Theme } from "./components/Header";
 import { RegimeCard } from "./components/RegimeCard";
 import { ProbabilityBars } from "./components/ProbabilityBars";
+import { RegimeTimelineChart } from "./components/RegimeTimelineChart";
 import { AssetRankingTable } from "./components/AssetRankingTable";
 import { DedollarizationPage } from "./components/DedollarizationPage";
 import { AnalysisPanel } from "./components/AnalysisPanel";
@@ -35,6 +36,7 @@ async function safe<T>(p: Promise<T>): Promise<T | null> {
 
 export default function App() {
   const [regime, setRegime] = useState<CurrentRegime | null>(null);
+  const [regimeHistory, setRegimeHistory] = useState<RegimeHistoryItem[]>([]);
   const [scoreboard, setScoreboard] = useState<Scoreboard | null>(null);
   const [dedollar, setDedollar] = useState<Dedollarization | null>(null);
   const [explain, setExplain] = useState<RegimeExplain | null>(null);
@@ -56,14 +58,16 @@ export default function App() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [r, s, e, d, n] = await Promise.all([
+    const [r, h, s, e, d, n] = await Promise.all([
       safe(api.currentRegime()),
+      safe(api.regimeHistory(180)),
       safe(api.scoreboard()),
       safe(api.regimeExplain()),
       safe(api.dedollarization()),
       safe(api.news()),
     ]);
     setRegime(r);
+    setRegimeHistory(h ?? []);
     setScoreboard(s);
     setExplain(e);
     setDedollar(d);
@@ -116,6 +120,12 @@ export default function App() {
               projected={explain?.trajectory?.projected_probabilities}
             />
           </div>
+          {regimeHistory.length > 1 && (
+            <RegimeTimelineChart
+              history={regimeHistory}
+              projected={explain?.trajectory?.projected_probabilities ?? null}
+            />
+          )}
           {explain && <AnalysisPanel explain={explain} />}
           {explain?.trajectory && (
             <ProjectedAssetsPanel

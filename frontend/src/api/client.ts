@@ -1,4 +1,4 @@
-import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, Scoreboard } from "../types";
+import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "../types";
 
 const BASE = "/api/v1";
 
@@ -46,6 +46,7 @@ async function request<T>(
 
 export const api = {
   currentRegime: () => request<CurrentRegime>("/regime/current"),
+  regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>("/scoreboard"),
   dedollarization: () => request<Dedollarization>("/dedollarization"),
