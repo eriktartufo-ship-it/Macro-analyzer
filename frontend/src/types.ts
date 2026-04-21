@@ -135,6 +135,33 @@ export interface PlayerHistoryItem {
   players: Record<string, number>;
 }
 
+export interface RegimeConditionMeta {
+  name: string;
+  weight: number;
+  description: string;
+}
+
+export interface AssetRegimeStats {
+  hit_rate: number;
+  avg_return: number;
+  vol: number;
+  sharpe: number;
+}
+
+export interface DataSnapshot {
+  date: string | null;
+  regime: Regime | null;
+  regime_conditions: Record<string, RegimeConditionMeta[]>;
+  asset_regime_data: Record<string, Record<string, AssetRegimeStats>>;
+  asset_dedollar_sensitivity: Record<string, number>;
+  current_indicators: Record<string, number>;
+  current_dedollar_indicators: Record<string, number>;
+  current_probabilities: Record<string, number>;
+  current_fit_scores: Record<string, number>;
+  current_asset_scores: Record<string, number>;
+  current_dedollar_combined: number | null;
+}
+
 export interface RegimeExplain {
   date: string;
   regime: Regime;

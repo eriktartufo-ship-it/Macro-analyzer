@@ -10,6 +10,7 @@ import { DedollarizationPage } from "./components/DedollarizationPage";
 import { AnalysisPanel } from "./components/AnalysisPanel";
 import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
 import { NewsPanel } from "./components/NewsPanel";
+import { DataPage } from "./components/DataPage";
 
 const THEME_KEY = "macro-theme";
 
@@ -155,6 +156,8 @@ export default function App() {
           projected={explain?.trajectory?.projected_scores}
         />
       )}
+
+      {ready && page === "data" && <DataPage />}
     </div>
   );
 }

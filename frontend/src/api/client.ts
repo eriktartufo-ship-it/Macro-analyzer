@@ -1,5 +1,6 @@
 import type {
   CurrentRegime,
+  DataSnapshot,
   DedollarHistoryItem,
   Dedollarization,
   MacroIndicatorsHistoryItem,
@@ -69,6 +70,7 @@ export const api = {
     request<MacroIndicatorsHistoryItem[]>(`/macro-indicators/history?days=${days}`),
   dedollarPlayerHistory: (days = 365) =>
     request<PlayerHistoryItem[]>(`/dedollarization/player-history?days=${days}`),
+  dataSnapshot: () => request<DataSnapshot>("/data-snapshot"),
   news: () => request<NewsItem[]>("/news"),
   refresh: () => request<{ status: string }>("/refresh", { method: "POST" }, { retries: 0 }),
   generateDedollarExplanation: () =>

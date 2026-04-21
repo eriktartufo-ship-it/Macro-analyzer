@@ -71,6 +71,33 @@ class PlayerHistoryItem(BaseModel):
     players: dict[str, float]
 
 
+class RegimeConditionMeta(BaseModel):
+    name: str
+    weight: float
+    description: str
+
+
+class AssetRegimeStats(BaseModel):
+    hit_rate: float
+    avg_return: float
+    vol: float
+    sharpe: float
+
+
+class DataSnapshotResponse(BaseModel):
+    date: date | None
+    regime: str | None
+    regime_conditions: dict[str, list[RegimeConditionMeta]]
+    asset_regime_data: dict[str, dict[str, AssetRegimeStats]]
+    asset_dedollar_sensitivity: dict[str, float]
+    current_indicators: dict[str, float]
+    current_dedollar_indicators: dict[str, float]
+    current_probabilities: dict[str, float]
+    current_fit_scores: dict[str, float]
+    current_asset_scores: dict[str, float]
+    current_dedollar_combined: float | None
+
+
 class NewsItemResponse(BaseModel):
     date: date
     source: str
@@ -467,6 +494,112 @@ def trigger_full_backfill(days: int = Query(default=365, ge=30, le=3650)):
 def list_asset_classes():
     """Lista di tutte le asset class monitorate."""
     return ASSET_CLASSES
+
+
+@router.get("/data-snapshot", response_model=DataSnapshotResponse)
+def get_data_snapshot(db: Session = Depends(get_db)):
+    """Snapshot completo: formule (pesi condizioni + tabelle asset×regime) + valori raw correnti."""
+    from app.services.regime.classifier import REGIME_CONDITIONS
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+    from app.services.dedollarization.scorer import ASSET_DEDOLLAR_SENSITIVITY
+
+    regime_conditions = {
+        regime: [
+            RegimeConditionMeta(name=name, weight=cfg["weight"], description=cfg["description"])
+            for name, cfg in conds.items()
+        ]
+        for regime, conds in REGIME_CONDITIONS.items()
+    }
+
+    asset_regime_data = {
+        asset: {
+            regime: AssetRegimeStats(**stats)
+            for regime, stats in per_regime.items()
+        }
+        for asset, per_regime in ASSET_REGIME_DATA.items()
+    }
+
+    latest_regime = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .first()
+    )
+    current_indicators: dict[str, float] = {}
+    current_dedollar_indicators: dict[str, float] = {}
+    current_probabilities: dict[str, float] = {}
+    current_fit_scores: dict[str, float] = {}
+    snapshot_date = None
+    regime_name: str | None = None
+    if latest_regime:
+        snapshot_date = latest_regime.date
+        regime_name = latest_regime.regime
+        current_probabilities = {
+            "reflation": latest_regime.probability_reflation,
+            "stagflation": latest_regime.probability_stagflation,
+            "deflation": latest_regime.probability_deflation,
+            "goldilocks": latest_regime.probability_goldilocks,
+        }
+        if latest_regime.conditions_met:
+            try:
+                payload = json.loads(latest_regime.conditions_met)
+                raw_ind = payload.get("indicators") or {}
+                if isinstance(raw_ind, dict):
+                    current_indicators = {
+                        k: float(v) for k, v in raw_ind.items()
+                        if isinstance(v, (int, float))
+                    }
+                raw_ded = payload.get("dedollar_indicators") or {}
+                if isinstance(raw_ded, dict):
+                    current_dedollar_indicators = {
+                        k: float(v) for k, v in raw_ded.items()
+                        if isinstance(v, (int, float))
+                    }
+                fs = payload.get("fit_scores") or {}
+                if isinstance(fs, dict):
+                    current_fit_scores = {
+                        k: float(v) for k, v in fs.items()
+                        if isinstance(v, (int, float))
+                    }
+            except Exception:
+                pass
+
+    # Asset scores e dedollar combined dalla data più recente
+    current_asset_scores: dict[str, float] = {}
+    if snapshot_date:
+        signals = (
+            db.query(DailySignal)
+            .filter(DailySignal.date == snapshot_date)
+            .all()
+        )
+        current_asset_scores = {s.asset_class: s.final_score for s in signals}
+
+    current_dedollar_combined: float | None = None
+    latest_sec = (
+        db.query(SecularTrend)
+        .filter(SecularTrend.trend_name == "dedollarization")
+        .order_by(SecularTrend.date.desc())
+        .first()
+    )
+    if latest_sec:
+        try:
+            payload = json.loads(latest_sec.components) if latest_sec.components else {}
+            current_dedollar_combined = payload.get("combined_score", latest_sec.score)
+        except Exception:
+            current_dedollar_combined = latest_sec.score
+
+    return DataSnapshotResponse(
+        date=snapshot_date,
+        regime=regime_name,
+        regime_conditions=regime_conditions,
+        asset_regime_data=asset_regime_data,
+        asset_dedollar_sensitivity=dict(ASSET_DEDOLLAR_SENSITIVITY),
+        current_indicators=current_indicators,
+        current_dedollar_indicators=current_dedollar_indicators,
+        current_probabilities=current_probabilities,
+        current_fit_scores=current_fit_scores,
+        current_asset_scores=current_asset_scores,
+        current_dedollar_combined=current_dedollar_combined,
+    )
 
 
 @router.get("/dedollarization", response_model=DedollarizationResponse)

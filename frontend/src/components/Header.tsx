@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 
-export type Page = "dashboard" | "sentiment" | "dedollar" | "assets";
+export type Page = "dashboard" | "sentiment" | "dedollar" | "assets" | "data";
 export type Theme = "light" | "dark";
 
 interface Props {
@@ -25,6 +25,7 @@ const TABS: Tab[] = [
   { id: "sentiment", label: "Sentiment", short: "News", icon: "◈" },
   { id: "dedollar", label: "Dedollarizzazione", short: "USD", icon: "◉" },
   { id: "assets", label: "Asset Ranking", short: "Assets", icon: "≡" },
+  { id: "data", label: "Data", short: "Data", icon: "▤" },
 ];
 
 export function Header({ date, onRefresh, refreshing, page, onPageChange, theme, onThemeToggle }: Props) {
