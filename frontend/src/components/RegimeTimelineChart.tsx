@@ -69,18 +69,19 @@ export function RegimeTimelineChart({ history, projected }: Props) {
       return { regime, historyPath, projectionPath };
     });
 
-    // X-axis labels: start, monthly markers, today, end
+    // X-axis labels: start, month markers (stride adattivo), today, end
     const xLabels: Array<{ x: number; label: string; emphasize?: boolean }> = [];
-    // Monthly history labels
     const startD = new Date(firstDate);
     const endD = new Date(lastDate);
-    const cursor = new Date(startD.getFullYear(), startD.getMonth() + 1, 1);
+    // Per 12 mesi usiamo step bimestrale per non affollare
+    const monthStride = historyDays > 200 ? 2 : 1;
+    const cursor = new Date(startD.getFullYear(), startD.getMonth() + monthStride, 1);
     while (cursor <= endD) {
       const offset = diffDays(firstDate, cursor.toISOString().slice(0, 10));
-      if (offset >= 10 && offset <= historyDays - 10) {
+      if (offset >= 10 && offset <= historyDays - 20) {
         xLabels.push({ x: xFor(offset), label: monthLabel(cursor.toISOString()) });
       }
-      cursor.setMonth(cursor.getMonth() + 1);
+      cursor.setMonth(cursor.getMonth() + monthStride);
     }
     xLabels.push({ x: xFor(historyDays), label: "oggi", emphasize: true });
     if (projected) {
@@ -98,7 +99,7 @@ export function RegimeTimelineChart({ history, projected }: Props) {
     <div className="card regime-chart-card">
       <h2>
         Regime Timeline
-        <span className="regime-chart-sub">— 6 mesi storici + proiezione 3 mesi</span>
+        <span className="regime-chart-sub">— 12 mesi storici + proiezione 3 mesi</span>
       </h2>
 
       <div className="regime-chart-legend">

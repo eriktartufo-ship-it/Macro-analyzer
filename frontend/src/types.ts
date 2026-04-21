@@ -109,6 +109,32 @@ export interface NewsItem {
   affected_assets: Record<string, number>;
 }
 
+export interface DedollarHistoryItem {
+  date: string;
+  combined_score: number;
+  cyclical_score: number;
+  structural_score: number;
+  decade_score: number;
+  twenty_year_score: number | null;
+  geopolitical_score: number;
+  acceleration: number;
+}
+
+export interface SignalsHistoryItem {
+  date: string;
+  scores: Record<string, number>;
+}
+
+export interface MacroIndicatorsHistoryItem {
+  date: string;
+  indicators: Record<string, number>;
+}
+
+export interface PlayerHistoryItem {
+  date: string;
+  players: Record<string, number>;
+}
+
 export interface RegimeExplain {
   date: string;
   regime: Regime;

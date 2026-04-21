@@ -1,7 +1,14 @@
 import React, { useState, useEffect } from "react";
-import type { Dedollarization, PlayerScore, PlayerSignal } from "../types";
+import type {
+  DedollarHistoryItem,
+  Dedollarization,
+  PlayerHistoryItem,
+  PlayerScore,
+  PlayerSignal,
+} from "../types";
 import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
+import { MultiLineChart, type ChartPoint, type ChartSeries } from "./MultiLineChart";
 
 interface Props {
   data: Dedollarization;
@@ -209,11 +216,25 @@ function SignalRow({ signal }: { signal: PlayerSignal }) {
   );
 }
 
-function PlayerSection({ playerId, player }: { playerId: string; player: PlayerScore }) {
+function PlayerSection({
+  playerId,
+  player,
+  history,
+}: {
+  playerId: string;
+  player: PlayerScore;
+  history: Array<{ date: string; players: Record<string, number> }>;
+}) {
   const [expanded, setExpanded] = useState(true);
+  const [chartOpen, setChartOpen] = useState(false);
   const redFlags = player.signals.filter((s) => s.red_flag).length;
   const validSignals = player.signals.filter((s) => s.value !== null).length;
   const hint = PLAYER_HINTS[playerId];
+
+  const chartPoints: ChartPoint[] = history.map((h) => ({
+    date: h.date,
+    values: { [playerId]: h.players[playerId] ?? null },
+  }));
 
   return (
     <div className="player-card">
@@ -240,8 +261,40 @@ function PlayerSection({ playerId, player }: { playerId: string; player: PlayerS
           <span data-nowrap>
             {validSignals}/{player.signals.length} segnali
           </span>
+          {chartPoints.length > 1 && (
+            <span
+              role="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setChartOpen((o) => !o);
+              }}
+              className="chip"
+              style={{
+                cursor: "pointer",
+                background: chartOpen ? "var(--accent-bg)" : "transparent",
+                border: "1px solid var(--divider)",
+              }}
+              data-nowrap
+            >
+              {chartOpen ? "▾ chart" : "▸ chart"}
+            </span>
+          )}
         </span>
       </button>
+      {chartOpen && chartPoints.length > 1 && (
+        <div style={{ padding: "4px 12px 8px 12px", background: "var(--bg)" }}>
+          <MultiLineChart
+            title={`${player.label} — ultimi 12 mesi`}
+            points={chartPoints}
+            series={[{ key: playerId, label: player.label, color: "var(--accent)" }]}
+            yDomain={[0, 1]}
+            yFormat={(v) => `${Math.round(v * 100)}%`}
+            height={180}
+            compact
+            showLegend={false}
+          />
+        </div>
+      )}
       {expanded && (
         <div className="player-body">
           {player.signals.map((s) => (
@@ -390,12 +443,22 @@ function accelLabel(accel: number): { text: string; color: string } {
 
 // ── Pagina principale ──
 
+const DEDOLLAR_SERIES: ChartSeries[] = [
+  { key: "combined_score", label: "Combined", color: "var(--accent)" },
+  { key: "cyclical_score", label: "Cyclical 1Y", color: "var(--reflation)" },
+  { key: "structural_score", label: "Structural 5Y", color: "var(--goldilocks)" },
+  { key: "decade_score", label: "Decade 10Y", color: "var(--stagflation)" },
+  { key: "geopolitical_score", label: "Geopolitical", color: "var(--deflation)" },
+];
+
 export function DedollarizationPage({ data }: Props) {
   const [view, setView] = useState<"horizon" | "players" | "ai">("players");
   const [explanation, setExplanation] = useState<string | null>(data.explanation ?? null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [history, setHistory] = useState<DedollarHistoryItem[]>([]);
+  const [playerHistory, setPlayerHistory] = useState<PlayerHistoryItem[]>([]);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 640);
@@ -403,6 +466,40 @@ export function DedollarizationPage({ data }: Props) {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .dedollarizationHistory(365)
+      .then((rows) => {
+        if (alive) setHistory(rows);
+      })
+      .catch(() => {
+        if (alive) setHistory([]);
+      });
+    api
+      .dedollarPlayerHistory(365)
+      .then((rows) => {
+        if (alive) setPlayerHistory(rows);
+      })
+      .catch(() => {
+        if (alive) setPlayerHistory([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const historyPoints: ChartPoint[] = history.map((r) => ({
+    date: r.date,
+    values: {
+      combined_score: r.combined_score,
+      cyclical_score: r.cyclical_score,
+      structural_score: r.structural_score,
+      decade_score: r.decade_score,
+      geopolitical_score: r.geopolitical_score,
+    },
+  }));
 
   const generateAi = async () => {
     setAiLoading(true);
@@ -465,6 +562,19 @@ export function DedollarizationPage({ data }: Props) {
         </div>
       </div>
 
+      {historyPoints.length > 1 && (
+        <div style={{ marginBottom: 18 }}>
+          <MultiLineChart
+            title="Dedollarization Timeline"
+            subtitle="12 mesi storici — score per orizzonte"
+            points={historyPoints}
+            series={DEDOLLAR_SERIES}
+            yDomain={[0, 1]}
+            yFormat={(v) => `${Math.round(v * 100)}%`}
+          />
+        </div>
+      )}
+
       {/* View switcher */}
       <div className="segmented" style={{ marginBottom: 18 }}>
         <button
@@ -495,7 +605,7 @@ export function DedollarizationPage({ data }: Props) {
             </div>
           )}
           {playerEntries.map(([id, player]) => (
-            <PlayerSection key={id} playerId={id} player={player} />
+            <PlayerSection key={id} playerId={id} player={player} history={playerHistory} />
           ))}
         </div>
       )}

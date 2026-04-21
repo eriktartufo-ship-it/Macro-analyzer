@@ -1,4 +1,15 @@
-import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "../types";
+import type {
+  CurrentRegime,
+  DedollarHistoryItem,
+  Dedollarization,
+  MacroIndicatorsHistoryItem,
+  NewsItem,
+  PlayerHistoryItem,
+  RegimeExplain,
+  RegimeHistoryItem,
+  Scoreboard,
+  SignalsHistoryItem,
+} from "../types";
 
 const BASE = "/api/v1";
 
@@ -50,6 +61,14 @@ export const api = {
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>("/scoreboard"),
   dedollarization: () => request<Dedollarization>("/dedollarization"),
+  dedollarizationHistory: (days = 365) =>
+    request<DedollarHistoryItem[]>(`/dedollarization/history?days=${days}`),
+  signalsHistory: (days = 365) =>
+    request<SignalsHistoryItem[]>(`/signals/history?days=${days}`),
+  macroIndicatorsHistory: (days = 365) =>
+    request<MacroIndicatorsHistoryItem[]>(`/macro-indicators/history?days=${days}`),
+  dedollarPlayerHistory: (days = 365) =>
+    request<PlayerHistoryItem[]>(`/dedollarization/player-history?days=${days}`),
   news: () => request<NewsItem[]>("/news"),
   refresh: () => request<{ status: string }>("/refresh", { method: "POST" }, { retries: 0 }),
   generateDedollarExplanation: () =>

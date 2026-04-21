@@ -1,4 +1,7 @@
-import type { RegimeExplain } from "../types";
+import { useEffect, useState } from "react";
+import type { MacroIndicatorsHistoryItem, RegimeExplain } from "../types";
+import { api } from "../api/client";
+import { MultiLineChart, type ChartPoint } from "./MultiLineChart";
 
 interface Props {
   explain: RegimeExplain;
@@ -171,6 +174,26 @@ export function AnalysisPanel({ explain }: Props) {
   const traj = explain.trajectory;
   const hasForces = !!traj && traj.forces.length > 0;
 
+  const [history, setHistory] = useState<MacroIndicatorsHistoryItem[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .macroIndicatorsHistory(365)
+      .then((rows) => {
+        if (alive) setHistory(rows);
+      })
+      .catch(() => {
+        if (alive) setHistory([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const toggle = (key: string) => setExpanded((cur) => (cur === key ? null : key));
+
   return (
     <div className="card">
       <h2>Analysis — Why {explain.regime}?</h2>
@@ -278,17 +301,32 @@ export function AnalysisPanel({ explain }: Props) {
               const meta = INDICATOR_META[key];
               if (!meta) return null;
               const arrow = trendIcon(meta.type, value);
+              const isExpanded = expanded === key;
+              const points: ChartPoint[] = history
+                .filter((h) => typeof h.indicators[key] === "number")
+                .map((h) => ({ date: h.date, values: { [key]: h.indicators[key] } }));
+              const canChart = points.length > 1;
+
               return (
                 <div
                   key={key}
+                  onClick={() => canChart && toggle(key)}
                   style={{
                     padding: "8px 12px",
                     background: "var(--bg)",
                     borderRadius: 6,
+                    cursor: canChart ? "pointer" : "default",
                   }}
+                  role={canChart ? "button" : undefined}
+                  aria-expanded={canChart ? isExpanded : undefined}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 13, fontWeight: 500 }}>
+                      {canChart && (
+                        <span style={{ marginRight: 6, fontSize: 11, color: "var(--muted)" }}>
+                          {isExpanded ? "▼" : "▶"}
+                        </span>
+                      )}
                       {meta.label}
                       {meta.type === "roc" && (
                         <span style={{ fontSize: 10, color: "var(--muted)", marginLeft: 6 }}>
@@ -303,6 +341,19 @@ export function AnalysisPanel({ explain }: Props) {
                   <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3 }}>
                     {meta.explain(value)}
                   </div>
+                  {isExpanded && canChart && (
+                    <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 6 }}>
+                      <MultiLineChart
+                        title={`${meta.label} — ultimi 12 mesi`}
+                        points={points}
+                        series={[{ key, label: meta.label, color: "var(--accent)" }]}
+                        yFormat={(v) => `${v.toFixed(2)}${meta.unit}`}
+                        height={180}
+                        compact
+                        showLegend={false}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}

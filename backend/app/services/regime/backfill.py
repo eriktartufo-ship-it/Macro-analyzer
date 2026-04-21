@@ -147,7 +147,7 @@ def _build_indicators_as_of(
     return indicators
 
 
-def backfill_regime_history(days: int = 180) -> dict:
+def backfill_regime_history(days: int = 365) -> dict:
     """Calcola e upserta classificazioni regime per gli ultimi `days` giorni.
 
     Le serie FRED necessarie vengono fetchate una sola volta; poi per ogni

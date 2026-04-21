@@ -115,6 +115,13 @@ def daily_refresh():
             trajectory=trajectory,
         )
 
+        # 9. Rolling window: mantieni solo gli ultimi 365 giorni
+        try:
+            from app.services.backfill import prune_old_records
+            prune_old_records(days_to_keep=365)
+        except Exception as e:
+            logger.warning(f"Prune rolling window fallito (non bloccante): {e}")
+
         logger.info("Refresh giornaliero completato con successo")
 
     except Exception as e:

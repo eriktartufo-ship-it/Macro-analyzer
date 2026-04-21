@@ -60,7 +60,7 @@ export default function App() {
     setError(null);
     const [r, h, s, e, d, n] = await Promise.all([
       safe(api.currentRegime()),
-      safe(api.regimeHistory(180)),
+      safe(api.regimeHistory(365)),
       safe(api.scoreboard()),
       safe(api.regimeExplain()),
       safe(api.dedollarization()),

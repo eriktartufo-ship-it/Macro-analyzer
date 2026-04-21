@@ -45,6 +45,32 @@ class ScoreboardResponse(BaseModel):
     scores: dict[str, float]
 
 
+class DedollarHistoryItem(BaseModel):
+    date: date
+    combined_score: float
+    cyclical_score: float
+    structural_score: float
+    decade_score: float
+    twenty_year_score: float | None = None
+    geopolitical_score: float = 0.0
+    acceleration: float = 0.0
+
+
+class SignalsHistoryItem(BaseModel):
+    date: date
+    scores: dict[str, float]
+
+
+class MacroIndicatorsHistoryItem(BaseModel):
+    date: date
+    indicators: dict[str, float]
+
+
+class PlayerHistoryItem(BaseModel):
+    date: date
+    players: dict[str, float]
+
+
 class NewsItemResponse(BaseModel):
     date: date
     source: str
@@ -389,7 +415,7 @@ def trigger_refresh():
 
 
 @router.post("/regime/backfill")
-def trigger_regime_backfill(days: int = Query(default=180, ge=1, le=3650)):
+def trigger_regime_backfill(days: int = Query(default=365, ge=1, le=3650)):
     """Ricostruisce lo storico classificazioni regime per gli ultimi N giorni."""
     from app.services.regime.backfill import backfill_regime_history
 
@@ -405,6 +431,36 @@ def trigger_regime_backfill(days: int = Query(default=180, ge=1, le=3650)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore backfill: {str(e)}")
+
+
+@router.post("/backfill/all")
+def trigger_full_backfill(days: int = Query(default=365, ge=30, le=3650)):
+    """Backfill completo: regime + dedollarization + asset scores + prune."""
+    from app.services.backfill import backfill_all
+
+    try:
+        stats = backfill_all(days=days)
+        return {
+            "status": "ok",
+            "days": stats["days"],
+            "regime": {
+                "classified": stats["regime"]["classified"],
+                "skipped": stats["regime"]["skipped"],
+                "errors": stats["regime"]["errors"],
+            },
+            "dedollar": {
+                "classified": stats["dedollar"]["classified"],
+                "skipped": stats["dedollar"]["skipped"],
+                "errors": stats["dedollar"]["errors"],
+            },
+            "asset_scores": {
+                "written": stats["asset_scores"]["written"],
+                "errors": stats["asset_scores"]["errors"],
+            },
+            "pruned": stats["pruned"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore backfill completo: {str(e)}")
 
 
 @router.get("/assets", response_model=list[str])
@@ -475,6 +531,148 @@ def get_dedollarization(db: Session = Depends(get_db)):
         player_acceleration=player_acceleration_data,
         explanation=explanation,
     )
+
+
+@router.get("/dedollarization/history", response_model=list[DedollarHistoryItem])
+def get_dedollarization_history(
+    days: int = Query(default=365, ge=1, le=3650),
+    db: Session = Depends(get_db),
+):
+    """Storico score dedollarizzazione (combined + per orizzonte)."""
+    records = (
+        db.query(SecularTrend)
+        .filter(SecularTrend.trend_name == "dedollarization")
+        .order_by(SecularTrend.date.desc())
+        .limit(days)
+        .all()
+    )
+
+    items: list[DedollarHistoryItem] = []
+    for r in records:
+        payload = json.loads(r.components) if r.components else {}
+        if "components" in payload:
+            cyclical = payload.get("score", r.score)
+            structural = payload.get("structural_score", 0.0)
+            decade = payload.get("decade_score", 0.0)
+            twenty = payload.get("twenty_year_score")
+            geopolitical = payload.get("geopolitical_score", 0.0)
+            acceleration = payload.get("acceleration", 0.0)
+            combined = payload.get("combined_score", r.score)
+        else:
+            cyclical = r.score
+            structural = 0.0
+            decade = 0.0
+            twenty = None
+            geopolitical = 0.0
+            acceleration = 0.0
+            combined = r.score
+
+        items.append(DedollarHistoryItem(
+            date=r.date,
+            combined_score=combined,
+            cyclical_score=cyclical,
+            structural_score=structural,
+            decade_score=decade,
+            twenty_year_score=twenty,
+            geopolitical_score=geopolitical,
+            acceleration=acceleration,
+        ))
+    return items
+
+
+@router.get("/macro-indicators/history", response_model=list[MacroIndicatorsHistoryItem])
+def get_macro_indicators_history(
+    days: int = Query(default=365, ge=1, le=3650),
+    db: Session = Depends(get_db),
+):
+    """Storico indicatori macro (estratti dal payload conditions_met)."""
+    records = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .limit(days)
+        .all()
+    )
+
+    out: list[MacroIndicatorsHistoryItem] = []
+    for r in reversed(records):
+        if not r.conditions_met:
+            continue
+        try:
+            payload = json.loads(r.conditions_met)
+        except Exception:
+            continue
+        indicators = payload.get("indicators") or {}
+        if not isinstance(indicators, dict):
+            continue
+        clean: dict[str, float] = {}
+        for k, v in indicators.items():
+            try:
+                clean[k] = float(v)
+            except (TypeError, ValueError):
+                continue
+        if clean:
+            out.append(MacroIndicatorsHistoryItem(date=r.date, indicators=clean))
+    return out
+
+
+@router.get("/dedollarization/player-history", response_model=list[PlayerHistoryItem])
+def get_dedollar_player_history(
+    days: int = Query(default=365, ge=1, le=3650),
+    db: Session = Depends(get_db),
+):
+    """Storico daily score per macro-player (by_player[id].score)."""
+    records = (
+        db.query(SecularTrend)
+        .filter(SecularTrend.trend_name == "dedollarization")
+        .order_by(SecularTrend.date.desc())
+        .limit(days)
+        .all()
+    )
+
+    out: list[PlayerHistoryItem] = []
+    for r in reversed(records):
+        if not r.components:
+            continue
+        try:
+            payload = json.loads(r.components)
+        except Exception:
+            continue
+        by_player = payload.get("by_player") or {}
+        if not isinstance(by_player, dict):
+            continue
+        players: dict[str, float] = {}
+        for pid, pdata in by_player.items():
+            if isinstance(pdata, dict) and "score" in pdata:
+                try:
+                    players[pid] = float(pdata["score"])
+                except (TypeError, ValueError):
+                    continue
+        if players:
+            out.append(PlayerHistoryItem(date=r.date, players=players))
+    return out
+
+
+@router.get("/signals/history", response_model=list[SignalsHistoryItem])
+def get_signals_history(
+    days: int = Query(default=365, ge=1, le=3650),
+    db: Session = Depends(get_db),
+):
+    """Storico score finali per asset class (formato pivot: {date, scores})."""
+    from datetime import timedelta
+
+    cutoff = date.today() - timedelta(days=days)
+    records = (
+        db.query(DailySignal)
+        .filter(DailySignal.date >= cutoff)
+        .order_by(DailySignal.date.asc())
+        .all()
+    )
+
+    by_date: dict[date, dict[str, float]] = {}
+    for s in records:
+        by_date.setdefault(s.date, {})[s.asset_class] = s.final_score
+
+    return [SignalsHistoryItem(date=d, scores=scores) for d, scores in by_date.items()]
 
 
 @router.post("/dedollarization/explanation")
