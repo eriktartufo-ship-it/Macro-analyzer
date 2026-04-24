@@ -3,6 +3,7 @@ import type {
   DataSnapshot,
   DedollarHistoryItem,
   Dedollarization,
+  HMMPrediction,
   MacroIndicatorsHistoryItem,
   NewsItem,
   PlayerHistoryItem,
@@ -10,6 +11,7 @@ import type {
   RegimeHistoryItem,
   Scoreboard,
   SignalsHistoryItem,
+  TransitionMatrix,
 } from "../types";
 
 const BASE = "/api/v1";
@@ -71,6 +73,12 @@ export const api = {
   dedollarPlayerHistory: (days = 365) =>
     request<PlayerHistoryItem[]>(`/dedollarization/player-history?days=${days}`),
   dataSnapshot: () => request<DataSnapshot>("/data-snapshot"),
+  transitionMatrix: (horizonDays = 30, projectSteps = 0) =>
+    request<TransitionMatrix>(
+      `/regime/transition-matrix?horizon_days=${horizonDays}&project_steps=${projectSteps}`,
+    ),
+  hmmPrediction: (nStates = 4) =>
+    request<HMMPrediction>(`/regime/hmm?n_states=${nStates}`, undefined, { retries: 0 }),
   news: () => request<NewsItem[]>("/news"),
   refresh: () => request<{ status: string }>("/refresh", { method: "POST" }, { retries: 0 }),
   generateDedollarExplanation: () =>

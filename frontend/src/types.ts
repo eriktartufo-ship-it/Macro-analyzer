@@ -162,6 +162,30 @@ export interface DataSnapshot {
   current_dedollar_combined: number | null;
 }
 
+export interface TransitionMatrix {
+  horizon_days: number;
+  regimes: string[];
+  counts: Record<string, Record<string, number>>;
+  probabilities: Record<string, Record<string, number>>;
+  avg_duration_days: Record<string, number>;
+  self_transition_probability: Record<string, number>;
+  total_observations: number;
+  date_from: string | null;
+  date_to: string | null;
+  projected_probabilities: Record<string, number> | null;
+}
+
+export interface HMMPrediction {
+  regimes: string[];
+  probabilities: Record<string, number>;
+  current_state: number;
+  state_to_regime: Record<number, string>;
+  n_training: number;
+  log_likelihood: number;
+  feature_means: Record<string, number>;
+  feature_stds: Record<string, number>;
+}
+
 export interface RegimeExplain {
   date: string;
   regime: Regime;

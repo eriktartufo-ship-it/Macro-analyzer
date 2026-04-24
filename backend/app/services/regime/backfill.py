@@ -41,6 +41,13 @@ _CLASSIFIER_SERIES = (
     "industrial_production",
     "baa_spread",
     "consumer_sentiment",
+    # Indicatori finanziari / aspettative — estendono il classifier con segnali
+    # che il rule-based non usava finora. Molte di queste serie iniziano dopo
+    # il 1970 (VIX dal 1990, breakeven dal 2003, NFCI dal 1971 settimanale).
+    "vix",
+    "nfci",
+    "breakeven_10y",
+    "housing_starts",
 )
 
 
@@ -144,7 +151,121 @@ def _build_indicators_as_of(
     if v is not None:
         indicators["consumer_sentiment"] = v
 
+    # --- Nuovi indicatori finanziari / aspettative ---
+    v = last_before("vix")
+    if v is not None:
+        indicators["vix"] = v
+
+    v = last_before("nfci")
+    if v is not None:
+        indicators["nfci"] = v
+
+    v = last_before("breakeven_10y")
+    if v is not None:
+        indicators["breakeven_10y"] = v
+
+    # housing_starts e' monthly, 12 periodi = 1 anno
+    v = roc("housing_starts", 12)
+    if v is not None:
+        indicators["housing_starts_roc_12m"] = v
+
     return indicators
+
+
+def backfill_regime_history_long(
+    start_date: date,
+    end_date: date | None = None,
+    step_days: int = 30,
+) -> dict:
+    """Backfill storico a lungo raggio (anni/decadi).
+
+    Differenza rispetto a `backfill_regime_history`:
+      - accetta `start_date` esplicito (es. 1970-01-01) invece di offset in giorni
+      - iterazione a passi di `step_days` (default 30 = ~mensile) per essere
+        usabile su 50+ anni senza generare centinaia di migliaia di record
+
+    La classificazione usa lo STESSO rule-based classifier corrente: i record
+    storici riflettono come il classifier odierno vedrebbe quelle date. Serve
+    da training per HMM e come ground-truth per la transition matrix.
+
+    Args:
+        start_date: data iniziale inclusa
+        end_date: data finale (default: oggi)
+        step_days: passo tra una classificazione e l'altra
+
+    Returns:
+        Stats dict identico a `backfill_regime_history`
+    """
+    if end_date is None:
+        end_date = date.today()
+    if start_date >= end_date:
+        raise ValueError(f"start_date {start_date} >= end_date {end_date}")
+
+    fetcher = FredFetcher()
+    series: dict[str, pd.Series] = {}
+
+    logger.info(
+        f"Backfill storico: fetch {len(_CLASSIFIER_SERIES)} serie FRED "
+        f"({start_date} → {end_date}, step={step_days}d)"
+    )
+    for name in _CLASSIFIER_SERIES:
+        try:
+            series[name] = fetcher.fetch_series(name, start_date=start_date, end_date=end_date)
+        except Exception as e:
+            logger.warning(f"Backfill: impossibile fetchare {name}: {e}")
+
+    stats = {"classified": 0, "skipped": 0, "errors": 0,
+             "start": start_date, "end": end_date, "step_days": step_days}
+
+    with Session(engine) as session:
+        d = start_date
+        while d <= end_date:
+            try:
+                indicators = _build_indicators_as_of(series, d)
+                if not {"gdp_roc", "cpi_yoy", "unrate"}.issubset(indicators):
+                    stats["skipped"] += 1
+                    d += timedelta(days=step_days)
+                    continue
+
+                result = classify_regime(indicators)
+
+                session.query(RegimeClassification).filter_by(date=d).delete()
+                session.add(RegimeClassification(
+                    date=d,
+                    regime=result["regime"],
+                    probability_reflation=result["probabilities"]["reflation"],
+                    probability_stagflation=result["probabilities"]["stagflation"],
+                    probability_deflation=result["probabilities"]["deflation"],
+                    probability_goldilocks=result["probabilities"]["goldilocks"],
+                    confidence=result["confidence"],
+                    conditions_met=json.dumps({
+                        "conditions": result["conditions_detail"],
+                        "indicators": indicators,
+                        "dedollar_indicators": {},
+                        "trajectory": {},
+                        "news_sentiment": 0.0,
+                        "fit_scores": result.get("fit_scores", {}),
+                        "backfilled": True,
+                        "historical": True,
+                    }),
+                ))
+                stats["classified"] += 1
+                if stats["classified"] % 50 == 0:
+                    session.commit()
+                    logger.info(f"Backfill storico: {stats['classified']} classificati ({d})")
+            except Exception as e:
+                logger.warning(f"Backfill errore per {d}: {e}")
+                stats["errors"] += 1
+
+            d += timedelta(days=step_days)
+
+        session.commit()
+
+    logger.info(
+        f"Backfill storico completato: classified={stats['classified']} "
+        f"skipped={stats['skipped']} errors={stats['errors']}"
+    )
+    return stats
 
 
 def backfill_regime_history(days: int = 365) -> dict:

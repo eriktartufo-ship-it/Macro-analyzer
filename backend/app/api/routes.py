@@ -98,6 +98,42 @@ class DataSnapshotResponse(BaseModel):
     current_dedollar_combined: float | None
 
 
+class TransitionMatrixResponse(BaseModel):
+    horizon_days: int
+    regimes: list[str]
+    counts: dict[str, dict[str, int]]
+    probabilities: dict[str, dict[str, float]]
+    avg_duration_days: dict[str, float]
+    self_transition_probability: dict[str, float]
+    total_observations: int
+    date_from: date | None
+    date_to: date | None
+    projected_probabilities: dict[str, float] | None = None
+
+
+class HMMResponse(BaseModel):
+    regimes: list[str]
+    probabilities: dict[str, float]
+    current_state: int
+    state_to_regime: dict[int, str]
+    n_training: int
+    log_likelihood: float
+    feature_means: dict[str, float]
+    feature_stds: dict[str, float]
+
+
+class SmoothedPointResponse(BaseModel):
+    date: date
+    raw: dict[str, float]
+    smoothed: dict[str, float]
+
+
+class SmoothedHistoryResponse(BaseModel):
+    points: list[SmoothedPointResponse]
+    transition_horizon_days: int
+    total_observations: int
+
+
 class NewsItemResponse(BaseModel):
     date: date
     source: str
@@ -331,6 +367,114 @@ def get_regime_explain(db: Session = Depends(get_db)):
     )
 
 
+@router.get("/regime/transition-matrix", response_model=TransitionMatrixResponse)
+def get_transition_matrix(
+    horizon_days: int = Query(default=30, ge=1, le=365),
+    project_steps: int = Query(default=0, ge=0, le=24,
+        description="Se >0, proietta le probabilita correnti moltiplicando la matrice N volte"),
+    db: Session = Depends(get_db),
+):
+    """Matrice di transizione empirica tra regimi macro.
+
+    Conta le transizioni osservate in `RegimeClassification` a orizzonte `horizon_days`.
+    Se `project_steps` > 0, restituisce anche la proiezione delle probabilita correnti
+    dopo N passi (ogni passo = `horizon_days` giorni).
+    """
+    from app.services.regime.transition_matrix import (
+        compute_transition_matrix,
+        project_probabilities,
+    )
+
+    result = compute_transition_matrix(db, horizon_days=horizon_days)
+
+    projected: dict[str, float] | None = None
+    if project_steps > 0 and result.total_observations > 0:
+        latest = (
+            db.query(RegimeClassification)
+            .order_by(RegimeClassification.date.desc())
+            .first()
+        )
+        if latest:
+            current = {
+                "reflation": latest.probability_reflation,
+                "stagflation": latest.probability_stagflation,
+                "deflation": latest.probability_deflation,
+                "goldilocks": latest.probability_goldilocks,
+            }
+            projected = project_probabilities(
+                result.probabilities, current, steps=project_steps
+            )
+
+    return TransitionMatrixResponse(
+        horizon_days=result.horizon_days,
+        regimes=result.regimes,
+        counts=result.counts,
+        probabilities=result.probabilities,
+        avg_duration_days=result.avg_duration_days,
+        self_transition_probability=result.self_transition_probability,
+        total_observations=result.total_observations,
+        date_from=result.date_range[0],
+        date_to=result.date_range[1],
+        projected_probabilities=projected,
+    )
+
+
+@router.get("/regime/hmm", response_model=HMMResponse)
+def get_regime_hmm(
+    n_states: int = Query(default=4, ge=2, le=8),
+    db: Session = Depends(get_db),
+):
+    """Classificatore HMM gaussiano sulle feature macro storiche.
+
+    Addestra on-demand un GaussianHMM e mappa gli stati latenti ai 4 regimi
+    rule-based via majority vote. Restituisce la distribuzione posteriore
+    sullo stato corrente. Richiede >= 60 osservazioni storiche: se il DB e'
+    vuoto, invoca prima /regime/backfill/historical.
+    """
+    from app.services.regime.hmm_classifier import fit_and_predict_hmm
+
+    try:
+        result = fit_and_predict_hmm(db, n_states=n_states)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return HMMResponse(
+        regimes=result.regimes,
+        probabilities=result.probabilities,
+        current_state=result.current_state,
+        state_to_regime=result.state_to_regime,
+        n_training=result.n_training,
+        log_likelihood=result.log_likelihood,
+        feature_means=result.feature_means,
+        feature_stds=result.feature_stds,
+    )
+
+
+@router.get("/regime/smoothed-history", response_model=SmoothedHistoryResponse)
+def get_regime_smoothed_history(
+    days: int = Query(default=365 * 5, ge=30, le=365 * 60),
+    transition_horizon_days: int = Query(default=30, ge=7, le=180),
+    db: Session = Depends(get_db),
+):
+    """Storico probabilita regime con smoothing temporale forward-backward.
+
+    Usa la transition matrix empirica come prior di persistenza e le posteriori
+    rule-based come emission. Restituisce per ogni data sia il posterior raw sia
+    quello smoothed: confronto visibile tra segnale istantaneo e filtrato.
+    """
+    from app.services.regime.smoothing import smooth_history
+
+    result = smooth_history(db, days=days, transition_horizon_days=transition_horizon_days)
+    return SmoothedHistoryResponse(
+        points=[
+            SmoothedPointResponse(date=p.date, raw=p.raw, smoothed=p.smoothed)
+            for p in result.points
+        ],
+        transition_horizon_days=result.transition_horizon_days,
+        total_observations=result.total_observations,
+    )
+
+
 @router.get("/regime/history", response_model=list[RegimeResponse])
 def get_regime_history(
     days: int = Query(default=30, ge=1, le=365),
@@ -458,6 +602,38 @@ def trigger_regime_backfill(days: int = Query(default=365, ge=1, le=3650)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore backfill: {str(e)}")
+
+
+@router.post("/regime/backfill/historical")
+def trigger_regime_backfill_historical(
+    start: date = Query(default=date(1970, 1, 1)),
+    end: date | None = Query(default=None),
+    step_days: int = Query(default=30, ge=1, le=365),
+):
+    """Backfill storico a lungo raggio (training HMM / transition matrix).
+
+    Default 1970-01-01 → oggi con step mensile. Usa rule-based classifier
+    sulle serie FRED troncate as-of. I pillar minimi ({gdp_roc, cpi_yoy, unrate})
+    coprono l'intervallo 1948-oggi; indicatori piu recenti (LEI '82, BAA '86)
+    vengono semplicemente ignorati quando non disponibili.
+    """
+    from app.services.regime.backfill import backfill_regime_history_long
+
+    try:
+        stats = backfill_regime_history_long(
+            start_date=start, end_date=end, step_days=step_days
+        )
+        return {
+            "status": "ok",
+            "classified": stats["classified"],
+            "skipped": stats["skipped"],
+            "errors": stats["errors"],
+            "start": stats["start"].isoformat(),
+            "end": stats["end"].isoformat(),
+            "step_days": stats["step_days"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore backfill storico: {str(e)}")
 
 
 @router.post("/backfill/all")

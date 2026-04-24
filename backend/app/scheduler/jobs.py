@@ -274,6 +274,15 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         except Exception:
             pass
 
+    # Housing starts YoY (monthly, 12 periods)
+    try:
+        hs_data = fetcher.fetch_and_transform("housing_starts")
+        roc_12m = hs_data.get("roc_12m") if hs_data else None
+        if roc_12m is not None and not roc_12m.empty:
+            indicators["housing_starts_roc_12m"] = float(roc_12m.dropna().iloc[-1])
+    except Exception:
+        pass
+
     return indicators
 
 

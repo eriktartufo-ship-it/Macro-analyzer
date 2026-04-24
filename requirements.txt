@@ -16,6 +16,13 @@ fredapi>=0.5.2
 requests>=2.32.3
 feedparser>=6.0.11
 
+# Machine learning (HMM regime classifier)
+# NOTA: hmmlearn richiede compilatore C su Python 3.14 Windows (no wheel).
+# Usiamo una implementazione Baum-Welch pure-numpy + scikit-learn GaussianMixture
+# per l'inizializzazione. Scipy e' necessario (logsumexp).
+scikit-learn>=1.5.0
+scipy>=1.14.0
+
 # Scheduler
 apscheduler>=3.10.4
 

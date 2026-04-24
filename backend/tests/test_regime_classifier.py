@@ -228,6 +228,11 @@ class TestRegimeClassifier:
             "initial_claims_roc": 50.0,
             "lei_roc": -5.0,
             "fed_funds_rate": 5.0,
+            # Segnali finanziari coerenti con deflation severa
+            "vix": 45.0,
+            "nfci": 0.8,
+            "breakeven_10y": 0.8,
+            "housing_starts_roc_12m": -25.0,
         }
         result = classify_regime(indicators)
 

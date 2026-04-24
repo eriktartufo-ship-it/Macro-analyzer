@@ -135,3 +135,105 @@ class TestFinalScoring:
         scores = calculate_final_scores(probabilities)
 
         assert scores["us_equities_growth"] > scores["us_bonds_long"]
+
+
+class TestRegressions:
+    """Test di regressione per bug noti corretti (rev. 2)."""
+
+    def test_cash_not_dominant_in_stagflation(self):
+        """Bug fix: il cash perde potere d'acquisto in stagflation (real return negativo)
+        quindi non deve essere dominante. Deve scorare sotto 40."""
+        from app.services.scoring.engine import calculate_final_scores
+
+        probabilities = {
+            "reflation": 0.05,
+            "stagflation": 0.80,
+            "deflation": 0.10,
+            "goldilocks": 0.05,
+        }
+        scores = calculate_final_scores(probabilities)
+
+        assert scores["cash_money_market"] < 40, (
+            f"Cash in stagflation = {scores['cash_money_market']}, atteso <40"
+        )
+
+    def test_cash_not_dominant_in_reflation(self):
+        """Bug fix: il cash in reflation ha real return ~0, non deve battere gli equity."""
+        from app.services.scoring.engine import calculate_final_scores
+
+        probabilities = {
+            "reflation": 0.80,
+            "stagflation": 0.05,
+            "deflation": 0.05,
+            "goldilocks": 0.10,
+        }
+        scores = calculate_final_scores(probabilities)
+
+        assert scores["us_equities_growth"] > scores["cash_money_market"] + 15, (
+            f"Growth {scores['us_equities_growth']} vs Cash {scores['cash_money_market']}"
+        )
+
+    def test_long_bonds_collapse_in_stagflation(self):
+        """Bug fix: long bonds sono il peggior asset in stagflation (duration + inflation)."""
+        from app.services.scoring.engine import calculate_final_scores
+
+        probabilities = {
+            "reflation": 0.05,
+            "stagflation": 0.80,
+            "deflation": 0.05,
+            "goldilocks": 0.10,
+        }
+        scores = calculate_final_scores(probabilities)
+
+        assert scores["us_bonds_long"] < 25, (
+            f"Long bonds in stagflation = {scores['us_bonds_long']}, atteso <25"
+        )
+
+    def test_energy_collapse_in_deflation(self):
+        """Energia in deflation: 2008 WTI -77%, 2020 WTI negative. Score molto basso."""
+        from app.services.scoring.engine import calculate_final_scores
+
+        probabilities = {
+            "reflation": 0.05,
+            "stagflation": 0.05,
+            "deflation": 0.85,
+            "goldilocks": 0.05,
+        }
+        scores = calculate_final_scores(probabilities)
+
+        assert scores["energy"] < 20, (
+            f"Energy in deflation = {scores['energy']}, atteso <20"
+        )
+
+    def test_cash_king_in_pure_deflation(self):
+        """In deflation estrema il cash diventa re (positive real return)."""
+        from app.services.scoring.engine import calculate_final_scores
+
+        probabilities = {
+            "reflation": 0.05,
+            "stagflation": 0.05,
+            "deflation": 0.85,
+            "goldilocks": 0.05,
+        }
+        scores = calculate_final_scores(probabilities)
+
+        # Cash deve battere equities e crypto in deflation pura
+        assert scores["cash_money_market"] > scores["us_equities_growth"]
+        assert scores["cash_money_market"] > scores["bitcoin"]
+        assert scores["cash_money_market"] > scores["broad_commodities"]
+
+    def test_gold_strong_in_stagflation(self):
+        """Gold e' il classico hedge stagflation: deve scorare alto."""
+        from app.services.scoring.engine import calculate_final_scores
+
+        probabilities = {
+            "reflation": 0.05,
+            "stagflation": 0.85,
+            "deflation": 0.05,
+            "goldilocks": 0.05,
+        }
+        scores = calculate_final_scores(probabilities)
+
+        assert scores["gold"] > 65, f"Gold in stagflation = {scores['gold']}"
+        assert scores["gold"] > scores["us_bonds_long"]
+        assert scores["gold"] > scores["us_equities_growth"]

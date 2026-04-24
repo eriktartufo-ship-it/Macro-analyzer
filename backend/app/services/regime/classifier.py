@@ -18,56 +18,68 @@ REGIMES = ["reflation", "stagflation", "deflation", "goldilocks"]
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
 REGIME_CONDITIONS = {
     "reflation": {
-        "gdp_strong": {"weight": 0.15, "description": "GDP ROC > 2%"},
-        "pmi_expansion": {"weight": 0.13, "description": "PMI > 50"},
-        "inflation_rising": {"weight": 0.11, "description": "CPI YoY > 2.5%"},
-        "unemployment_low_or_falling": {"weight": 0.09, "description": "Unemployment < 5% o ROC < 0"},
-        "claims_falling": {"weight": 0.07, "description": "Initial claims ROC < 0"},
-        "lei_positive": {"weight": 0.07, "description": "LEI ROC > 0"},
-        "yield_curve_steep": {"weight": 0.07, "description": "10Y-2Y spread > 0.5"},
-        "policy_accommodative": {"weight": 0.07, "description": "Fed funds < 3%"},
-        "payrolls_growth": {"weight": 0.09, "description": "Nonfarm payrolls YoY > 1.5%"},
-        "indpro_growth": {"weight": 0.08, "description": "Industrial production YoY > 2%"},
-        "credit_spread_tight": {"weight": 0.07, "description": "BAA-10Y spread < 2%"},
+        "gdp_strong": {"weight": 0.13, "description": "GDP ROC > 2%"},
+        "pmi_expansion": {"weight": 0.11, "description": "PMI > 50"},
+        "inflation_rising": {"weight": 0.09, "description": "CPI YoY > 2.5%"},
+        "unemployment_low_or_falling": {"weight": 0.08, "description": "Unemployment < 5% o ROC < 0"},
+        "claims_falling": {"weight": 0.06, "description": "Initial claims ROC < 0"},
+        "lei_positive": {"weight": 0.06, "description": "LEI ROC > 0"},
+        "yield_curve_steep": {"weight": 0.06, "description": "10Y-2Y spread > 0.5"},
+        "policy_accommodative": {"weight": 0.06, "description": "Fed funds < 3%"},
+        "payrolls_growth": {"weight": 0.08, "description": "Nonfarm payrolls YoY > 1.5%"},
+        "indpro_growth": {"weight": 0.07, "description": "Industrial production YoY > 2%"},
+        "credit_spread_tight": {"weight": 0.06, "description": "BAA-10Y spread < 2%"},
+        "housing_expansion": {"weight": 0.05, "description": "Housing starts YoY > 3%"},
+        "financial_conditions_loose": {"weight": 0.05, "description": "NFCI < -0.1 (credit easy)"},
+        "vix_low": {"weight": 0.04, "description": "VIX < 18 (risk-on)"},
     },
     "stagflation": {
-        "inflation_high": {"weight": 0.20, "description": "CPI YoY > 4%"},
-        "gdp_weak": {"weight": 0.16, "description": "GDP ROC < 1.5%"},
-        "pmi_weak": {"weight": 0.12, "description": "PMI < 50"},
-        "unemployment_rising": {"weight": 0.09, "description": "Unemployment ROC > 0.2"},
-        "policy_restrictive": {"weight": 0.06, "description": "Fed funds > 4%"},
-        "lei_negative": {"weight": 0.06, "description": "LEI ROC < 0"},
-        "claims_rising": {"weight": 0.05, "description": "Initial claims ROC > 5%"},
-        "yield_curve_stress": {"weight": 0.05, "description": "10Y-2Y spread < 0.5"},
-        "core_pce_high": {"weight": 0.10, "description": "Core PCE YoY > 3.5% (Fed-preferred)"},
-        "credit_spread_wide": {"weight": 0.07, "description": "BAA-10Y spread > 2.3%"},
-        "sentiment_low": {"weight": 0.04, "description": "Consumer sentiment < 70"},
+        "inflation_high": {"weight": 0.17, "description": "CPI YoY > 4%"},
+        "gdp_weak": {"weight": 0.13, "description": "GDP ROC < 1.5%"},
+        "pmi_weak": {"weight": 0.10, "description": "PMI < 50"},
+        "unemployment_rising": {"weight": 0.08, "description": "Unemployment ROC > 0.2"},
+        "policy_restrictive": {"weight": 0.05, "description": "Fed funds > 4%"},
+        "lei_negative": {"weight": 0.05, "description": "LEI ROC < 0"},
+        "claims_rising": {"weight": 0.04, "description": "Initial claims ROC > 5%"},
+        "yield_curve_stress": {"weight": 0.04, "description": "10Y-2Y spread < 0.5"},
+        "core_pce_high": {"weight": 0.08, "description": "Core PCE YoY > 3.5% (Fed-preferred)"},
+        "credit_spread_wide": {"weight": 0.06, "description": "BAA-10Y spread > 2.3%"},
+        "sentiment_low": {"weight": 0.03, "description": "Consumer sentiment < 70"},
+        "breakeven_high": {"weight": 0.08, "description": "Breakeven 10Y > 2.5% (inflation expect)"},
+        "vix_elevated": {"weight": 0.05, "description": "VIX > 25 (risk-off)"},
+        "housing_slowdown": {"weight": 0.04, "description": "Housing starts YoY < 0"},
     },
     "deflation": {
-        "gdp_negative_or_decelerating": {"weight": 0.17, "description": "GDP ROC < 1%"},
-        "pmi_contraction": {"weight": 0.15, "description": "PMI < 50"},
-        "inflation_low": {"weight": 0.14, "description": "CPI YoY < 2%"},
-        "lei_negative": {"weight": 0.10, "description": "LEI ROC < 0"},
-        "claims_rising": {"weight": 0.08, "description": "Initial claims ROC > 0"},
-        "unemployment_rising": {"weight": 0.08, "description": "Unemployment ROC > 0"},
-        "yield_curve_flat_or_inverted": {"weight": 0.06, "description": "10Y-2Y spread < 0.5"},
-        "credit_stress": {"weight": 0.05, "description": "Claims spike + yield inversion"},
-        "indpro_contraction": {"weight": 0.07, "description": "Industrial production YoY < 0"},
-        "payrolls_slowdown": {"weight": 0.06, "description": "Nonfarm payrolls YoY < 0.8%"},
-        "credit_spread_wide": {"weight": 0.04, "description": "BAA-10Y spread > 2.5%"},
+        "gdp_negative_or_decelerating": {"weight": 0.14, "description": "GDP ROC < 1%"},
+        "pmi_contraction": {"weight": 0.12, "description": "PMI < 50"},
+        "inflation_low": {"weight": 0.12, "description": "CPI YoY < 2%"},
+        "lei_negative": {"weight": 0.09, "description": "LEI ROC < 0"},
+        "claims_rising": {"weight": 0.07, "description": "Initial claims ROC > 0"},
+        "unemployment_rising": {"weight": 0.07, "description": "Unemployment ROC > 0"},
+        "yield_curve_flat_or_inverted": {"weight": 0.05, "description": "10Y-2Y spread < 0.5"},
+        "credit_stress": {"weight": 0.04, "description": "Claims spike + yield inversion"},
+        "indpro_contraction": {"weight": 0.06, "description": "Industrial production YoY < 0"},
+        "payrolls_slowdown": {"weight": 0.05, "description": "Nonfarm payrolls YoY < 0.8%"},
+        "credit_spread_wide": {"weight": 0.03, "description": "BAA-10Y spread > 2.5%"},
+        "vix_spike": {"weight": 0.06, "description": "VIX > 30 (panic)"},
+        "nfci_tight": {"weight": 0.05, "description": "NFCI > 0.3 (credit stress)"},
+        "breakeven_collapse": {"weight": 0.05, "description": "Breakeven 10Y < 1.5%"},
     },
     "goldilocks": {
-        "gdp_moderate": {"weight": 0.14, "description": "GDP ROC 1.5-3%"},
-        "inflation_low": {"weight": 0.16, "description": "CPI YoY < 2.5%"},
-        "unemployment_very_low": {"weight": 0.13, "description": "Unemployment < 4%"},
-        "pmi_healthy": {"weight": 0.11, "description": "PMI 52-57"},
-        "yield_curve_normal": {"weight": 0.08, "description": "10Y-2Y spread 0.5-2.0"},
-        "claims_low": {"weight": 0.06, "description": "Initial claims ROC < -3%"},
-        "policy_neutral": {"weight": 0.06, "description": "Fed funds 1-3%"},
-        "lei_positive": {"weight": 0.05, "description": "LEI ROC > 0"},
-        "core_pce_contained": {"weight": 0.08, "description": "Core PCE YoY < 2.3%"},
-        "credit_spread_tight": {"weight": 0.07, "description": "BAA-10Y spread < 1.8%"},
-        "sentiment_high": {"weight": 0.06, "description": "Consumer sentiment > 82"},
+        "gdp_moderate": {"weight": 0.11, "description": "GDP ROC 1.5-3%"},
+        "inflation_low": {"weight": 0.13, "description": "CPI YoY < 2.5%"},
+        "unemployment_very_low": {"weight": 0.11, "description": "Unemployment < 4%"},
+        "pmi_healthy": {"weight": 0.09, "description": "PMI 52-57"},
+        "yield_curve_normal": {"weight": 0.07, "description": "10Y-2Y spread 0.5-2.0"},
+        "claims_low": {"weight": 0.05, "description": "Initial claims ROC < -3%"},
+        "policy_neutral": {"weight": 0.05, "description": "Fed funds 1-3%"},
+        "lei_positive": {"weight": 0.04, "description": "LEI ROC > 0"},
+        "core_pce_contained": {"weight": 0.07, "description": "Core PCE YoY < 2.3%"},
+        "credit_spread_tight": {"weight": 0.06, "description": "BAA-10Y spread < 1.8%"},
+        "sentiment_high": {"weight": 0.05, "description": "Consumer sentiment > 82"},
+        "vix_calm": {"weight": 0.06, "description": "VIX < 16 (tranquility)"},
+        "financial_conditions_easy": {"weight": 0.06, "description": "NFCI < -0.3"},
+        "breakeven_stable": {"weight": 0.05, "description": "Breakeven 10Y 1.7-2.3%"},
     },
 }
 
@@ -92,6 +104,12 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     indpro_roc = indicators.get("indpro_roc_12m", 1.5)
     baa_spread = indicators.get("baa_spread", 2.0)
     sentiment = indicators.get("consumer_sentiment", 75.0)
+    # Indicatori finanziari e di aspettative (default neutri)
+    vix = indicators.get("vix", 18.0)  # fear gauge, storicamente 12-20 calm
+    nfci = indicators.get("nfci", 0.0)  # Chicago Fed FCI, 0 = neutral, + = tight
+    breakeven = indicators.get("breakeven_10y", 2.0)  # inflation expectations
+    yield_3m = indicators.get("yield_curve_10y3m", 1.0)  # 10y-3m spread
+    housing_roc = indicators.get("housing_starts_roc_12m", 0.0)  # housing YoY
 
     # --- REFLATION conditions ---
     if condition_name == "gdp_strong":
@@ -195,6 +213,44 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     elif condition_name == "sentiment_low":
         return _sigmoid(-sentiment, center=-70.0, scale=7.0)
 
+    # --- Nuove condizioni: VIX / NFCI / Breakeven / Housing ---
+    elif condition_name == "vix_low":
+        # Risk-on: VIX sotto 18 (contributo reflation)
+        return _sigmoid(-vix, center=-18.0, scale=3.0)
+    elif condition_name == "vix_calm":
+        # Tranquilita totale: VIX < 16 (goldilocks)
+        return _sigmoid(-vix, center=-16.0, scale=2.0)
+    elif condition_name == "vix_elevated":
+        # Stress: VIX > 25 (stagflation)
+        return _sigmoid(vix, center=25.0, scale=3.0)
+    elif condition_name == "vix_spike":
+        # Panic: VIX > 30 (deflation classica)
+        return _sigmoid(vix, center=30.0, scale=4.0)
+    elif condition_name == "financial_conditions_loose":
+        # NFCI negativo = credit easy (reflation)
+        return _sigmoid(-nfci, center=0.1, scale=0.15)
+    elif condition_name == "financial_conditions_easy":
+        # NFCI < -0.3 = condizioni molto accomodanti (goldilocks)
+        return _sigmoid(-nfci, center=0.3, scale=0.2)
+    elif condition_name == "nfci_tight":
+        # NFCI > 0.3 = stress creditizio (deflation)
+        return _sigmoid(nfci, center=0.3, scale=0.2)
+    elif condition_name == "breakeven_high":
+        # Breakeven > 2.5% = aspettative inflazione (stagflation/reflation)
+        return _sigmoid(breakeven, center=2.5, scale=0.3)
+    elif condition_name == "breakeven_collapse":
+        # Breakeven < 1.5% = deflation expectation
+        return _sigmoid(-breakeven, center=-1.5, scale=0.3)
+    elif condition_name == "breakeven_stable":
+        # Breakeven 1.7-2.3% = Fed target = goldilocks
+        return _bell(breakeven, center=2.0, width=0.3)
+    elif condition_name == "housing_expansion":
+        # Housing YoY > 3% = reflation
+        return _sigmoid(housing_roc, center=3.0, scale=3.0)
+    elif condition_name == "housing_slowdown":
+        # Housing YoY < 0 = stagflation/recession signal
+        return _sigmoid(-housing_roc, center=0.0, scale=3.0)
+
     # Fallback
     return 0.5
 
@@ -264,10 +320,16 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     # Cross-regime adjustments: differenziatori chiave
     cpi = indicators.get("cpi_yoy", 2.0)
     gdp = indicators.get("gdp_roc", 0.0)
+    unrate = indicators.get("unrate", 4.5)
 
     # Deflation richiede inflation NON alta — penalizza se CPI > 3.5%
     if cpi > 3.5:
         raw_scores["deflation"] *= max(0.3, 1.0 - (cpi - 3.5) * 0.15)
+    # Deflation richiede economia debole — penalizza se unemployment basso E GDP positivo
+    # (il 90s in goldilocks non dovrebbe catturare fit_deflation alto)
+    if unrate < 5.0 and gdp > 1.0:
+        health_penalty = max(0.4, 1.0 - (5.0 - unrate) * 0.15 - (gdp - 1.0) * 0.10)
+        raw_scores["deflation"] *= health_penalty
     # Stagflation richiede inflation ALTA — penalizza se CPI < 3%
     if cpi < 3.0:
         raw_scores["stagflation"] *= max(0.2, cpi / 3.0)

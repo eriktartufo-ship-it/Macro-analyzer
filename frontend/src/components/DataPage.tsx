@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { RegimeDynamicsPanel } from "./RegimeDynamicsPanel";
 import { ScrollShadow } from "./ScrollShadow";
 import type { DataSnapshot, Regime } from "../types";
 
@@ -113,13 +114,13 @@ export function DataPage() {
             body={
               <>
                 <code>
-                  score(a) = Σ<sub>r</sub> prob(r) · [hit_rate(a,r) · 0.40 + sharpe_norm(a,r) · 0.60] · 100
+                  score(a) = Σ<sub>r</sub> prob(r) · [0.25·hit(a,r) + 0.50·real_ret_norm(a,r) + 0.25·sharpe_norm(a,r)] · 100
                   + secular_bonus(a) + news(a) − penalty(a)
                 </code>
                 <p>
-                  <em>sharpe_norm</em> è lo Sharpe scalato 0–1 rispetto al max assoluto della matrice.
-                  Il <em>secular_bonus</em> dipende dalla sensibilità dell'asset alla dedollarizzazione
-                  moltiplicata per il combined score.
+                  <em>real_ret_norm = clamp((real_ret + 0.30) / 0.60, 0, 1)</em> (range −30% / +30% reale,
+                  inflation-adjusted 12m). <em>sharpe_norm = clamp((sharpe + 1) / 3, 0, 1)</em>.
+                  Il peso 50% sul real return evita il bug del cash (sharpe falsamente alto in regimi avversi).
                 </p>
               </>
             }
@@ -357,6 +358,8 @@ export function DataPage() {
           </table>
         </ScrollShadow>
       </div>
+
+      <RegimeDynamicsPanel />
 
       <div className="card">
         <h2>Macro indicators ({macroEntries.length})</h2>
