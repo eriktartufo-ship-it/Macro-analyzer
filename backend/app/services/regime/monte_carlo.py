@@ -146,7 +146,11 @@ def _compute_regime_bands(paths: np.ndarray) -> list[RegimeBand]:
     return bands
 
 
-def _compute_asset_bands(paths: np.ndarray, assets: list[str]) -> list[AssetBand]:
+def _compute_asset_bands(
+    paths: np.ndarray,
+    assets: list[str],
+    force_include_dedollar: bool | None = None,
+) -> list[AssetBand]:
     """Per ogni path e step, calcola asset_scores assumendo 1-hot sul regime corrente.
     Aggrega per asset i percentili sui path."""
     n_paths, n_periods = paths.shape
@@ -156,7 +160,7 @@ def _compute_asset_bands(paths: np.ndarray, assets: list[str]) -> list[AssetBand
     pure_scores = np.zeros((len(REGIMES), n_assets))
     for k, regime in enumerate(REGIMES):
         probs = {r: (1.0 if r == regime else 0.0) for r in REGIMES}
-        scores = calculate_final_scores(probs)
+        scores = calculate_final_scores(probs, force_include_dedollar=force_include_dedollar)
         pure_scores[k, :] = [scores.get(a, 0.0) for a in assets]
 
     # asset_scores shape (n_paths, n_periods, n_assets)
@@ -186,6 +190,7 @@ def run_monte_carlo(
     initial_distribution: dict[str, float] | None = None,
     assets: list[str] | None = None,
     seed: int = 42,
+    force_include_dedollar: bool | None = None,
 ) -> MonteCarloResult:
     """Esegue Monte Carlo regime + asset scores.
 
@@ -240,7 +245,7 @@ def run_monte_carlo(
 
     regime_bands = _compute_regime_bands(paths)
     assets_list = assets or list(ASSET_CLASSES)
-    asset_bands = _compute_asset_bands(paths, assets_list)
+    asset_bands = _compute_asset_bands(paths, assets_list, force_include_dedollar=force_include_dedollar)
 
     notes: list[str] = []
     if tm.total_observations < 100:

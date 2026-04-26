@@ -186,6 +186,70 @@ export interface HMMPrediction {
   feature_stds: Record<string, number>;
 }
 
+export interface TermPremiumPoint {
+  date: string;
+  fitted_yield: number;
+  term_premium: number;
+  expected_path: number;
+}
+
+export interface TermPremiumStat {
+  regime: string;
+  n_observations: number;
+  mean_fitted: number | null;
+  mean_term_premium: number | null;
+  mean_expected_path: number | null;
+  pct_term_premium_positive: number | null;
+}
+
+export interface TermPremiumReport {
+  common_period: [string, string];
+  threshold: number;
+  n_observations: number;
+  points: TermPremiumPoint[];
+  by_regime: TermPremiumStat[];
+}
+
+export interface FactorRegimeStat {
+  factor: string;
+  regime: string;
+  n_observations: number;
+  mean_annual: number | null;
+  vol_annual: number | null;
+  sharpe: number | null;
+  win_rate: number | null;
+}
+
+export interface FactorRegimeReport {
+  threshold: number;
+  n_months_analyzed: number;
+  factor_keys: string[];
+  regimes: string[];
+  common_period: [string, string];
+  stats: FactorRegimeStat[];
+}
+
+export interface SmoothedSeriesPoint {
+  date: string;
+  raw: number;
+  filtered: number;
+  smoothed: number;
+}
+
+export interface SmoothedIndicator {
+  series_name: string;
+  description: string;
+  lambda_used: number;
+  n_points: number;
+  variance_reduction: number;
+  points: SmoothedSeriesPoint[];
+}
+
+export interface SmoothableIndicator {
+  key: string;
+  description: string;
+}
+
 export interface ScoreComparisonItem {
   asset: string;
   pure_score: number;

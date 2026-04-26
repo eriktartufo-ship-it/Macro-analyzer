@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import { useDedollarBonus } from "../hooks/useDedollarBonus";
 
 export type Page = "dashboard" | "sentiment" | "dedollar" | "assets" | "data";
 export type Theme = "light" | "dark";
@@ -31,6 +32,7 @@ const TABS: Tab[] = [
 export function Header({ date, onRefresh, refreshing, page, onPageChange, theme, onThemeToggle }: Props) {
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0, opacity: 0 });
   const [mobilePillStyle, setMobilePillStyle] = useState({ left: 0, width: 0, opacity: 0 });
+  const [dedollarOn, setDedollarOn] = useDedollarBonus();
   
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const mobileTabsRef = useRef<(HTMLButtonElement | null)[]>([]);
@@ -71,6 +73,22 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
           </div>
         </div>
         <div className="header-actions">
+          <button
+            className="theme-toggle glass-active"
+            onClick={() => setDedollarOn(!dedollarOn)}
+            aria-label={dedollarOn ? "Disattiva dedollar bonus" : "Attiva dedollar bonus"}
+            title={
+              dedollarOn
+                ? "Dedollar bonus ATTIVO — gli asset score includono il bias"
+                : "Dedollar bonus DISATTIVO — score puro data-driven"
+            }
+            style={{
+              color: dedollarOn ? "var(--reflation, #10b981)" : undefined,
+              fontWeight: dedollarOn ? 700 : 400,
+            }}
+          >
+            $
+          </button>
           <button
             className="theme-toggle glass-active"
             onClick={onThemeToggle}

@@ -160,6 +160,21 @@ FRED_SERIES = {
         "frequency": "monthly",
         "transform": "level",
     },
+    # --- Term premium decomposition (Adrian-Crump-Moench) ---
+    # Decompone yield 10Y in expected path (cosa il mercato prevede per Fed)
+    # vs term premium (compensation per rischio duration). Standard NY Fed.
+    "acm_term_premium_10y": {
+        "fred_id": "THREEFYTP10",
+        "description": "ACM 10-Year Term Premium (% over expected short rate path)",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    "acm_fitted_yield_10y": {
+        "fred_id": "THREEFY10",
+        "description": "ACM Fitted 10-Year Yield (model-implied)",
+        "frequency": "daily",
+        "transform": "level",
+    },
     # --- Market Expectations (forward-looking) ---
     "breakeven_10y": {
         "fred_id": "T10YIE",

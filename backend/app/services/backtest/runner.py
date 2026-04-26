@@ -54,6 +54,7 @@ def run_full_backtest(
     top_n: int = 5,
     score_threshold: float = 30.0,
     cost_bps: float = 10.0,
+    force_include_dedollar: bool | None = None,
 ) -> FullBacktestResult:
     """Esegue strategy macro-driven + 3 benchmark, allinea date comuni."""
     rp = regime_probs_monthly(db)
@@ -84,6 +85,7 @@ def run_full_backtest(
     macro_weights_full = score_weighted_strategy(
         db, top_n=top_n, score_threshold=score_threshold,
         asset_classes=list(asset_returns_aligned.columns),
+        force_include_dedollar=force_include_dedollar,
     )
     macro_weights = macro_weights_full.reindex(common_index).shift(1).dropna()
 

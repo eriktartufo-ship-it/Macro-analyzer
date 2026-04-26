@@ -40,6 +40,7 @@ def score_weighted_strategy(
     top_n: int = 5,
     score_threshold: float = 30.0,
     asset_classes: list[str] | None = None,
+    force_include_dedollar: bool | None = None,
 ) -> pd.DataFrame:
     """Per ogni mese: calcola asset scores dai regime probs, alloca proporzionalmente
     ai top N asset con score >= threshold. Resto = cash (0% peso).
@@ -54,7 +55,7 @@ def score_weighted_strategy(
     rows = []
     for ts, probs in rp.iterrows():
         prob_dict = {k: float(v) for k, v in probs.items()}
-        scores = calculate_final_scores(prob_dict)
+        scores = calculate_final_scores(prob_dict, force_include_dedollar=force_include_dedollar)
         # Filtra asset richiesti
         scores = {a: s for a, s in scores.items() if a in assets}
         # Sopra threshold, top-N

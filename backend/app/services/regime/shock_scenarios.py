@@ -134,6 +134,7 @@ def _baseline_indicators(db: Session) -> tuple[dict[str, float], str]:
 def run_scenario(
     db: Session, scenario_key: str,
     custom_deltas: dict[str, tuple[str, float]] | None = None,
+    force_include_dedollar: bool | None = None,
 ) -> ScenarioResult:
     """Applica scenario preset (o custom) e ritorna confronto baseline vs shocked."""
     if scenario_key == "custom":
@@ -155,8 +156,12 @@ def run_scenario(
     base_class = classify_regime(baseline)
     shock_class = classify_regime(shocked)
 
-    base_scores = calculate_final_scores(base_class["probabilities"])
-    shock_scores = calculate_final_scores(shock_class["probabilities"])
+    base_scores = calculate_final_scores(
+        base_class["probabilities"], force_include_dedollar=force_include_dedollar,
+    )
+    shock_scores = calculate_final_scores(
+        shock_class["probabilities"], force_include_dedollar=force_include_dedollar,
+    )
 
     deltas_map = {a: shock_scores[a] - base_scores[a] for a in base_scores}
 

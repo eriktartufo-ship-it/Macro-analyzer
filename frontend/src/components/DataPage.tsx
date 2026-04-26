@@ -3,9 +3,12 @@ import { api } from "../api/client";
 import { AssetCalibrationPanel } from "./AssetCalibrationPanel";
 import { BacktestPanel } from "./BacktestPanel";
 import { DedollarComparisonPanel } from "./DedollarComparisonPanel";
+import { FactorRegimePanel } from "./FactorRegimePanel";
 import { MonteCarloPanel } from "./MonteCarloPanel";
 import { RegimeDynamicsPanel } from "./RegimeDynamicsPanel";
 import { RegimeEnsemblePanel } from "./RegimeEnsemblePanel";
+import { SmoothedIndicatorsPanel } from "./SmoothedIndicatorsPanel";
+import { TermPremiumPanel } from "./TermPremiumPanel";
 import { ScrollShadow } from "./ScrollShadow";
 import type { DataSnapshot, Regime } from "../types";
 
@@ -368,9 +371,15 @@ export function DataPage() {
 
       <MonteCarloPanel />
 
+      <SmoothedIndicatorsPanel />
+
+      <TermPremiumPanel />
+
       <RegimeDynamicsPanel />
 
       <AssetCalibrationPanel />
+
+      <FactorRegimePanel />
 
       <DedollarComparisonPanel />
 

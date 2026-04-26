@@ -163,6 +163,65 @@ class CalibrationDiagnostic(BaseModel):
     calibrated: dict[str, float]
 
 
+class TermPremiumPointResponse(BaseModel):
+    date: date
+    fitted_yield: float
+    term_premium: float
+    expected_path: float
+
+
+class TermPremiumStatResponse(BaseModel):
+    regime: str
+    n_observations: int
+    mean_fitted: float | None
+    mean_term_premium: float | None
+    mean_expected_path: float | None
+    pct_term_premium_positive: float | None
+
+
+class TermPremiumReportResponse(BaseModel):
+    common_period: tuple[str, str]
+    threshold: float
+    n_observations: int
+    points: list[TermPremiumPointResponse]
+    by_regime: list[TermPremiumStatResponse]
+
+
+class FactorRegimeStatResponse(BaseModel):
+    factor: str
+    regime: str
+    n_observations: int
+    mean_annual: float | None
+    vol_annual: float | None
+    sharpe: float | None
+    win_rate: float | None
+
+
+class FactorRegimeReportResponse(BaseModel):
+    threshold: float
+    n_months_analyzed: int
+    factor_keys: list[str]
+    regimes: list[str]
+    common_period: tuple[str, str]
+    stats: list[FactorRegimeStatResponse]
+
+
+class SmoothedSeriesPoint(BaseModel):
+    date: date
+    raw: float
+    filtered: float
+    smoothed: float
+
+
+class SmoothedIndicatorResponse(BaseModel):
+    series_name: str
+    description: str
+    lambda_used: float
+    n_points: int
+    variance_reduction: float
+    points: list[SmoothedSeriesPoint]
+
+
 class ScoreComparisonItem(BaseModel):
     asset: str
     pure_score: float           # senza dedollar bonus (puro data-driven)
@@ -611,6 +670,7 @@ def get_regime_monte_carlo(
     n_paths: int = Query(default=500, ge=100, le=5000),
     n_steps: int = Query(default=12, ge=1, le=36),
     horizon_days: int = Query(default=30, ge=7, le=90),
+    include_dedollar: bool | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """Monte Carlo regime trajectories: simula N path dalla transition matrix
@@ -619,7 +679,10 @@ def get_regime_monte_carlo(
     from app.services.regime.monte_carlo import run_monte_carlo
 
     try:
-        r = run_monte_carlo(db, n_paths=n_paths, n_steps=n_steps, horizon_days=horizon_days)
+        r = run_monte_carlo(
+            db, n_paths=n_paths, n_steps=n_steps, horizon_days=horizon_days,
+            force_include_dedollar=include_dedollar,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -658,13 +721,14 @@ def list_scenarios():
 @router.get("/scenarios/run", response_model=ScenarioResponse)
 def run_scenario_endpoint(
     scenario_key: str = Query(..., description="key dal /scenarios/list"),
+    include_dedollar: bool | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """Esegue uno scenario preset: confronto baseline vs shocked (regime + asset scores)."""
     from app.services.regime.shock_scenarios import run_scenario
 
     try:
-        r = run_scenario(db, scenario_key)
+        r = run_scenario(db, scenario_key, force_include_dedollar=include_dedollar)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -691,6 +755,7 @@ def run_backtest_endpoint(
     top_n: int = Query(default=5, ge=1, le=15),
     score_threshold: float = Query(default=30.0, ge=0.0, le=100.0),
     cost_bps: float = Query(default=10.0, ge=0.0, le=100.0),
+    include_dedollar: bool | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """Backtest portfolio score-weighted vs benchmark (60/40, SPY, equal-weight)."""
@@ -706,6 +771,7 @@ def run_backtest_endpoint(
             top_n=top_n,
             score_threshold=score_threshold,
             cost_bps=cost_bps,
+            force_include_dedollar=include_dedollar,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1024,8 +1090,16 @@ def get_current_signals(db: Session = Depends(get_db)):
 
 
 @router.get("/scoreboard", response_model=ScoreboardResponse)
-def get_scoreboard(db: Session = Depends(get_db)):
-    """Dashboard completa: regime + tutti gli scores ordinati."""
+def get_scoreboard(
+    include_dedollar: bool | None = Query(default=None, description="Override env: include dedollar bonus"),
+    db: Session = Depends(get_db),
+):
+    """Dashboard completa: regime + tutti gli scores ordinati.
+
+    Se `include_dedollar` e' specificato, gli score vengono ricalcolati on-the-fly
+    con/senza il secular bonus dedollar. Se omesso, usa i valori in DB (calcolati
+    dal scheduler in base all'env USE_DEDOLLAR_BONUS).
+    """
     regime = (
         db.query(RegimeClassification)
         .order_by(RegimeClassification.date.desc())
@@ -1034,14 +1108,44 @@ def get_scoreboard(db: Session = Depends(get_db)):
     if not regime:
         raise HTTPException(status_code=404, detail="Nessun dato disponibile")
 
-    signals = (
-        db.query(DailySignal)
-        .filter(DailySignal.date == regime.date)
-        .order_by(DailySignal.final_score.desc())
-        .all()
-    )
+    if include_dedollar is None:
+        # Path veloce: leggi gli score precalcolati dal DB
+        signals = (
+            db.query(DailySignal)
+            .filter(DailySignal.date == regime.date)
+            .order_by(DailySignal.final_score.desc())
+            .all()
+        )
+        scores = {s.asset_class: s.final_score for s in signals}
+    else:
+        # Path on-the-fly: ricalcola applicando o saltando il bonus dedollar
+        from app.services.dedollarization.scorer import calculate_secular_bonus
 
-    scores = {s.asset_class: s.final_score for s in signals}
+        probabilities = {
+            "reflation": regime.probability_reflation,
+            "stagflation": regime.probability_stagflation,
+            "deflation": regime.probability_deflation,
+            "goldilocks": regime.probability_goldilocks,
+        }
+        latest_sec = (
+            db.query(SecularTrend)
+            .filter(SecularTrend.trend_name == "dedollarization")
+            .order_by(SecularTrend.date.desc())
+            .first()
+        )
+        if latest_sec is not None:
+            try:
+                payload = json.loads(latest_sec.metadata_json) if latest_sec.metadata_json else {}
+                dedollar_score = payload.get("combined_score", float(latest_sec.score))
+            except Exception:
+                dedollar_score = float(latest_sec.score)
+        else:
+            dedollar_score = 0.0
+        secular_bonus = calculate_secular_bonus(dedollar_score)
+        scores = calculate_final_scores(
+            probabilities, secular_bonus,
+            force_include_dedollar=bool(include_dedollar),
+        )
 
     return ScoreboardResponse(
         date=regime.date,
@@ -1049,6 +1153,158 @@ def get_scoreboard(db: Session = Depends(get_db)):
         confidence=regime.confidence,
         scores=scores,
     )
+
+
+@router.get("/indicators/term-premium", response_model=TermPremiumReportResponse)
+def get_term_premium_report(
+    threshold: float = Query(default=0.40, ge=0.20, le=0.80),
+    days: int = Query(default=365 * 30, ge=365, le=365 * 60),
+    db: Session = Depends(get_db),
+):
+    """Adrian-Crump-Moench term premium decomposition del 10Y yield.
+
+    Decompone yield_10y_fitted ≈ expected_path + term_premium per ogni mese,
+    poi aggrega per regime corrente. Permette di distinguere "Fed prevista
+    hawkish" (path alto) da "mercato vuole risk premium" (term_premium alto).
+    Fonte: NY Fed ACM model via FRED (THREEFY10, THREEFYTP10).
+    """
+    import math
+    from app.services.indicators.term_premium import compute_term_premium_report
+
+    try:
+        r = compute_term_premium_report(db, threshold=threshold, days=days)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    def _nz(x: float) -> float | None:
+        if x is None or (isinstance(x, float) and math.isnan(x)):
+            return None
+        return float(x)
+
+    return TermPremiumReportResponse(
+        common_period=r.common_period,
+        threshold=r.threshold,
+        n_observations=r.n_observations,
+        points=[
+            TermPremiumPointResponse(
+                date=p.date, fitted_yield=p.fitted_yield,
+                term_premium=p.term_premium, expected_path=p.expected_path,
+            )
+            for p in r.points
+        ],
+        by_regime=[
+            TermPremiumStatResponse(
+                regime=s.regime, n_observations=s.n_observations,
+                mean_fitted=_nz(s.mean_fitted),
+                mean_term_premium=_nz(s.mean_term_premium),
+                mean_expected_path=_nz(s.mean_expected_path),
+                pct_term_premium_positive=_nz(s.pct_term_premium_positive),
+            )
+            for s in r.by_regime
+        ],
+    )
+
+
+@router.get("/factors/regime-mapping", response_model=FactorRegimeReportResponse)
+def get_factor_regime_mapping(
+    threshold: float = Query(default=0.40, ge=0.20, le=0.80,
+                              description="Soglia prob_regime per considerare il regime 'attivo'"),
+    db: Session = Depends(get_db),
+):
+    """Performance dei fattori Fama-French (Mkt-RF, SMB, HML, Mom) per regime macro.
+
+    Per ogni fattore × regime, calcola mean_annual, vol_annual, Sharpe e win_rate
+    sui mesi dove `prob(regime) >= threshold`. Fonte dati: Kenneth French Data Library
+    (1926+, free). Permette ranking sub-equity (size/value/momentum) regime-conditional.
+    """
+    import math
+    from app.services.factors.regime_mapping import compute_factor_regime_report
+
+    try:
+        r = compute_factor_regime_report(db, threshold=threshold)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    def _nz(x: float) -> float | None:
+        if x is None or (isinstance(x, float) and math.isnan(x)):
+            return None
+        return float(x)
+
+    return FactorRegimeReportResponse(
+        threshold=r.threshold,
+        n_months_analyzed=r.n_months_analyzed,
+        factor_keys=r.factor_keys,
+        regimes=r.regimes,
+        common_period=r.common_period,
+        stats=[
+            FactorRegimeStatResponse(
+                factor=s.factor, regime=s.regime, n_observations=s.n_observations,
+                mean_annual=_nz(s.mean_annual), vol_annual=_nz(s.vol_annual),
+                sharpe=_nz(s.sharpe), win_rate=_nz(s.win_rate),
+            )
+            for s in r.stats
+        ],
+    )
+
+
+@router.get("/indicators/smoothed", response_model=SmoothedIndicatorResponse)
+def get_smoothed_indicator(
+    series_name: str = Query(..., description="Nome interno serie (es. unrate, initial_claims, lei)"),
+    lam: float = Query(default=10.0, ge=0.5, le=200.0, alias="lambda",
+                        description="R/Q ratio: alto=smoothing aggressivo, basso=segue raw"),
+    days: int = Query(default=365 * 5, ge=180, le=365 * 60),
+):
+    """Kalman 1D smoothing su un indicatore macro rumoroso.
+
+    Restituisce raw + filtered (real-time, causale) + smoothed (retrospective, RTS).
+    Usato per validare visivamente quanto il rumore di una serie compromette la
+    classificazione regime e per debug indicatori sospetti (outlier mensili).
+    """
+    from datetime import date as _date, timedelta
+    import pandas as pd
+    from app.services.indicators.kalman import (
+        NOISY_INDICATORS, smooth_macro_series,
+    )
+
+    try:
+        result = smooth_macro_series(series_name, lam=lam)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Serie sconosciuta: {series_name}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    cutoff = _date.today() - timedelta(days=days)
+    raw = result.raw[result.raw.index >= pd.Timestamp(cutoff)]
+    filt = result.filtered.loc[raw.index]
+    smo = result.smoothed.loc[raw.index]
+
+    points = [
+        SmoothedSeriesPoint(
+            date=idx.date(),
+            raw=float(raw.loc[idx]),
+            filtered=float(filt.loc[idx]),
+            smoothed=float(smo.loc[idx]),
+        )
+        for idx in raw.index
+    ]
+
+    description = NOISY_INDICATORS.get(series_name, "")
+
+    return SmoothedIndicatorResponse(
+        series_name=series_name,
+        description=description,
+        lambda_used=result.lambda_used,
+        n_points=len(points),
+        variance_reduction=result.variance_reduction,
+        points=points,
+    )
+
+
+@router.get("/indicators/smoothed/list")
+def list_smoothed_indicators():
+    """Lista degli indicatori macro per cui il Kalman smoothing e' particolarmente utile."""
+    from app.services.indicators.kalman import NOISY_INDICATORS
+    return [{"key": k, "description": v} for k, v in NOISY_INDICATORS.items()]
 
 
 @router.get("/scoreboard/dedollar-comparison", response_model=ScoreboardDedollarComparison)
@@ -1125,10 +1381,13 @@ def get_scoreboard_dedollar_comparison(db: Session = Depends(get_db)):
 
 
 @router.post("/regime/classify")
-def classify_from_indicators(indicators: dict[str, float]):
+def classify_from_indicators(
+    indicators: dict[str, float],
+    include_dedollar: bool | None = Query(default=None),
+):
     """Classifica regime on-demand da indicatori forniti manualmente."""
     result = classify_regime(indicators)
-    scores = calculate_final_scores(result["probabilities"])
+    scores = calculate_final_scores(result["probabilities"], force_include_dedollar=include_dedollar)
 
     return {
         "regime": result["regime"],

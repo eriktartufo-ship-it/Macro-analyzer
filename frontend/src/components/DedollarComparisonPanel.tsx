@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { useDedollarBonus } from "../hooks/useDedollarBonus";
 import { ScrollShadow } from "./ScrollShadow";
 import type { DedollarComparison } from "../types";
 
@@ -35,6 +36,7 @@ function bar(value: number, maxAbs: number, color: string) {
 export function DedollarComparisonPanel() {
   const [data, setData] = useState<DedollarComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dedollarFlag] = useDedollarBonus();  // re-render quando toggle cambia
 
   useEffect(() => {
     let alive = true;
@@ -45,7 +47,7 @@ export function DedollarComparisonPanel() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [dedollarFlag]);
 
   if (error)
     return (
@@ -63,7 +65,9 @@ export function DedollarComparisonPanel() {
     );
 
   const maxAbsDelta = Math.max(0.01, ...data.items.map((it) => Math.abs(it.dedollar_delta)));
-  const flagColor = data.use_dedollar_bonus_active ? "var(--reflation)" : "var(--muted)";
+  // Stato effettivo applicato all'app: toggle UI ha priorita' su env server-side
+  const userToggleActive = dedollarFlag;
+  const flagColor = userToggleActive ? "var(--reflation)" : "var(--muted)";
 
   return (
     <div className="card">
@@ -88,15 +92,22 @@ export function DedollarComparisonPanel() {
           <div style={{ fontSize: 16, fontWeight: 600 }}>{data.dedollar_combined_score.toFixed(3)}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10, color: "var(--muted)" }}>Scoring engine attivo</div>
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>Toggle UI corrente</div>
           <div style={{ fontSize: 14, fontWeight: 600, color: flagColor }}>
-            {data.use_dedollar_bonus_active ? "ADJUSTED (dedollar ON)" : "PURE (dedollar OFF, default)"}
+            {userToggleActive ? "ADJUSTED (dedollar ON)" : "PURE (dedollar OFF)"}
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 10, color: "var(--muted)" }}>Come attivare il bonus</div>
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>Come cambiare</div>
           <div style={{ fontSize: 11 }}>
-            env <code>USE_DEDOLLAR_BONUS=1</code> → riavvio backend
+            usa il toggle <code>$</code> nell'header — applicato istantaneamente a
+            scoreboard, scenari, monte carlo e backtest.
+            {data.use_dedollar_bonus_active && (
+              <div style={{ marginTop: 4, color: "var(--muted)" }}>
+                (env server <code>USE_DEDOLLAR_BONUS=1</code> attivo: usato come default
+                quando il toggle non e' settato)
+              </div>
+            )}
           </div>
         </div>
       </div>

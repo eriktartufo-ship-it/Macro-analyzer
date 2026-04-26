@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "./api/client";
+import { useDedollarBonus } from "./hooks/useDedollarBonus";
 import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
 import { Header, type Page, type Theme } from "./components/Header";
 import { RegimeCard } from "./components/RegimeCard";
@@ -44,6 +45,7 @@ export default function App() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [dedollarFlag] = useDedollarBonus();
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<Page>("dashboard");
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -81,7 +83,8 @@ export default function App() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [load, dedollarFlag]);
 
   const onRefresh = async () => {
     setRefreshing(true);

@@ -1,3 +1,4 @@
+import { getDedollarBonusFlag } from "../hooks/useDedollarBonus";
 import type {
   BacktestResult,
   CalibrationPayload,
@@ -7,11 +8,15 @@ import type {
   DedollarHistoryItem,
   Dedollarization,
   EnsembleResult,
+  FactorRegimeReport,
   HMMPrediction,
   LeadTimeReport,
   MonteCarloForecast,
   ScenarioPreset,
   ScenarioResult,
+  SmoothableIndicator,
+  SmoothedIndicator,
+  TermPremiumReport,
   MacroIndicatorsHistoryItem,
   NewsItem,
   PlayerHistoryItem,
@@ -66,11 +71,22 @@ async function request<T>(
   throw lastErr instanceof Error ? lastErr : new Error("Request failed");
 }
 
+/** Aggiunge `include_dedollar=true|false` se l'utente ha esplicitamente toggleato.
+ * Se preferenza non settata, omette il param (backend usa env var di default). */
+function dedollarParam(): string {
+  return getDedollarBonusFlag() ? "include_dedollar=true" : "include_dedollar=false";
+}
+
+function withDedollar(qs: string): string {
+  const sep = qs.includes("?") ? "&" : "?";
+  return `${qs}${sep}${dedollarParam()}`;
+}
+
 export const api = {
   currentRegime: () => request<CurrentRegime>("/regime/current"),
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
-  scoreboard: () => request<Scoreboard>("/scoreboard"),
+  scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),
   dedollarization: () => request<Dedollarization>("/dedollarization"),
   dedollarizationHistory: (days = 365) =>
     request<DedollarHistoryItem[]>(`/dedollarization/history?days=${days}`),
@@ -95,7 +111,8 @@ export const api = {
     if (params.topN) q.set("top_n", String(params.topN));
     if (params.threshold !== undefined) q.set("score_threshold", String(params.threshold));
     if (params.costBps !== undefined) q.set("cost_bps", String(params.costBps));
-    return request<BacktestResult>(`/backtest/run${q.toString() ? "?" + q.toString() : ""}`, undefined, { retries: 0 });
+    q.set("include_dedollar", String(getDedollarBonusFlag()));
+    return request<BacktestResult>(`/backtest/run?${q.toString()}`, undefined, { retries: 0 });
   },
   backtestLeadTime: (threshold = 0.35, lookbackMonths = 12) =>
     request<LeadTimeReport>(`/backtest/lead-time?threshold=${threshold}&lookback_months=${lookbackMonths}`, undefined, { retries: 0 }),
@@ -104,12 +121,25 @@ export const api = {
     if (params.nPaths) q.set("n_paths", String(params.nPaths));
     if (params.nSteps) q.set("n_steps", String(params.nSteps));
     if (params.horizonDays) q.set("horizon_days", String(params.horizonDays));
-    return request<MonteCarloForecast>(`/regime/forecast/monte-carlo${q.toString() ? "?" + q.toString() : ""}`, undefined, { retries: 0 });
+    q.set("include_dedollar", String(getDedollarBonusFlag()));
+    return request<MonteCarloForecast>(`/regime/forecast/monte-carlo?${q.toString()}`, undefined, { retries: 0 });
   },
   scenariosList: () => request<ScenarioPreset[]>("/scenarios/list"),
   scenarioRun: (key: string) =>
-    request<ScenarioResult>(`/scenarios/run?scenario_key=${encodeURIComponent(key)}`, undefined, { retries: 0 }),
+    request<ScenarioResult>(
+      withDedollar(`/scenarios/run?scenario_key=${encodeURIComponent(key)}`),
+      undefined, { retries: 0 },
+    ),
   dedollarComparison: () => request<DedollarComparison>("/scoreboard/dedollar-comparison"),
+  factorRegimeMapping: (threshold = 0.40) =>
+    request<FactorRegimeReport>(`/factors/regime-mapping?threshold=${threshold}`),
+  termPremiumReport: (threshold = 0.40, days = 365 * 30) =>
+    request<TermPremiumReport>(`/indicators/term-premium?threshold=${threshold}&days=${days}`),
+  smoothedIndicatorsList: () => request<SmoothableIndicator[]>("/indicators/smoothed/list"),
+  smoothedIndicator: (seriesName: string, lambda = 10.0, days = 365 * 5) =>
+    request<SmoothedIndicator>(
+      `/indicators/smoothed?series_name=${encodeURIComponent(seriesName)}&lambda=${lambda}&days=${days}`,
+    ),
   assetCalibration: () => request<CalibrationPayload>("/asset-calibration", undefined, { retries: 0 }),
   runAssetCalibration: () =>
     request<{ status: string; n_classifications: number }>(
