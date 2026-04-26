@@ -1,9 +1,13 @@
 import type {
+  BacktestResult,
+  CalibrationPayload,
   CurrentRegime,
   DataSnapshot,
   DedollarHistoryItem,
   Dedollarization,
+  EnsembleResult,
   HMMPrediction,
+  LeadTimeReport,
   MacroIndicatorsHistoryItem,
   NewsItem,
   PlayerHistoryItem,
@@ -79,6 +83,25 @@ export const api = {
     ),
   hmmPrediction: (nStates = 4) =>
     request<HMMPrediction>(`/regime/hmm?n_states=${nStates}`, undefined, { retries: 0 }),
+  regimeEnsemble: () => request<EnsembleResult>("/regime/ensemble", undefined, { retries: 0 }),
+  backtestRun: (params: { startYear?: number; endYear?: number; topN?: number; threshold?: number; costBps?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.startYear) q.set("start_year", String(params.startYear));
+    if (params.endYear) q.set("end_year", String(params.endYear));
+    if (params.topN) q.set("top_n", String(params.topN));
+    if (params.threshold !== undefined) q.set("score_threshold", String(params.threshold));
+    if (params.costBps !== undefined) q.set("cost_bps", String(params.costBps));
+    return request<BacktestResult>(`/backtest/run${q.toString() ? "?" + q.toString() : ""}`, undefined, { retries: 0 });
+  },
+  backtestLeadTime: (threshold = 0.35, lookbackMonths = 12) =>
+    request<LeadTimeReport>(`/backtest/lead-time?threshold=${threshold}&lookback_months=${lookbackMonths}`, undefined, { retries: 0 }),
+  assetCalibration: () => request<CalibrationPayload>("/asset-calibration", undefined, { retries: 0 }),
+  runAssetCalibration: () =>
+    request<{ status: string; n_classifications: number }>(
+      "/asset-calibration/run",
+      { method: "POST" },
+      { retries: 0 },
+    ),
   news: () => request<NewsItem[]>("/news"),
   refresh: () => request<{ status: string }>("/refresh", { method: "POST" }, { retries: 0 }),
   generateDedollarExplanation: () =>

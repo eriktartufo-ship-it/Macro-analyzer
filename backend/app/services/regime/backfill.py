@@ -120,8 +120,8 @@ def _build_indicators_as_of(
     if v is not None:
         indicators["initial_claims_roc"] = v
 
-    # LEI (monthly, 6 periodi)
-    v = roc("lei", 6)
+    # LEI (CFNAI 3MA: livello z-score, NON ROC. > 0 = sopra trend, < 0 = sotto)
+    v = last_before("lei")
     if v is not None:
         indicators["lei_roc"] = v
 

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { AssetCalibrationPanel } from "./AssetCalibrationPanel";
+import { BacktestPanel } from "./BacktestPanel";
 import { RegimeDynamicsPanel } from "./RegimeDynamicsPanel";
+import { RegimeEnsemblePanel } from "./RegimeEnsemblePanel";
 import { ScrollShadow } from "./ScrollShadow";
 import type { DataSnapshot, Regime } from "../types";
 
@@ -359,7 +362,13 @@ export function DataPage() {
         </ScrollShadow>
       </div>
 
+      <RegimeEnsemblePanel />
+
       <RegimeDynamicsPanel />
+
+      <AssetCalibrationPanel />
+
+      <BacktestPanel />
 
       <div className="card">
         <h2>Macro indicators ({macroEntries.length})</h2>

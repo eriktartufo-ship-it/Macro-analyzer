@@ -22,13 +22,20 @@ from app.services.scoring.backfill import backfill_asset_scores_history
 
 
 def prune_old_records(days_to_keep: int = 365) -> dict[str, int]:
-    """Elimina record più vecchi di `days_to_keep` giorni per tenere il DB snello."""
+    """Elimina record più vecchi di `days_to_keep` giorni per tenere il DB snello.
+
+    NOTA: i record con `"historical": true` nel JSON conditions_met (generati da
+    `backfill_regime_history_long`) vengono preservati: sono il dataset storico
+    1971+ usato per HMM training, transition matrix e backtesting. Senza questa
+    eccezione, ogni daily refresh distruggerebbe il dataset di training.
+    """
     cutoff = date.today() - timedelta(days=days_to_keep)
     deleted: dict[str, int] = {}
     with Session(engine) as session:
         deleted["regimes"] = (
             session.query(RegimeClassification)
             .filter(RegimeClassification.date < cutoff)
+            .filter(~RegimeClassification.conditions_met.like('%"historical": true%'))
             .delete(synchronize_session=False)
         )
         deleted["daily_signals"] = (

@@ -1,0 +1,1927 @@
+{
+  "version": 1,
+  "calibrated_on": "2026-04-25",
+  "params": {
+    "horizon_months": 12,
+    "regime_threshold": 0.35,
+    "n_min": 8,
+    "n_full": 40,
+    "real_return_max_abs": 0.8,
+    "sharpe_max_abs": 4.0
+  },
+  "n_classifications": 1026,
+  "asset_regime_data": {
+    "us_equities_growth": {
+      "reflation": {
+        "hit_rate": 0.78,
+        "avg_return": 0.12124718153269781,
+        "vol": 0.19126828614547853,
+        "sharpe": 0.6339115803049403,
+        "n_observations": 100,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.6585365853658537,
+        "avg_return": 0.12012321004893661,
+        "vol": 0.28161531600374945,
+        "sharpe": 0.4265506995625809,
+        "n_observations": 41,
+        "source": "measured"
+      },
+      "deflation": {
+        "hit_rate": 0.5013888888888889,
+        "avg_return": -0.020767852689285216,
+        "vol": 0.2630797314064761,
+        "sharpe": 0.01596547894549638,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.8111111111111111,
+        "avg_return": 0.1697652052743347,
+        "vol": 0.2383281408403476,
+        "sharpe": 0.7123170796186332,
+        "n_observations": 90,
+        "source": "measured"
+      }
+    },
+    "us_equities_value": {
+      "reflation": {
+        "hit_rate": 0.79,
+        "avg_return": 0.10907649070109274,
+        "vol": 0.11811937652921466,
+        "sharpe": 0.9234428245912276,
+        "n_observations": 100,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.3694711538461538,
+        "avg_return": -0.09180870783836834,
+        "vol": 0.20129530768169746,
+        "sharpe": -0.45422131803827137,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.5013888888888889,
+        "avg_return": -0.0297315064975347,
+        "vol": 0.2266529540730129,
+        "sharpe": 0.0061988562761944865,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.6888888888888889,
+        "avg_return": 0.05089770848904525,
+        "vol": 0.10863558444098143,
+        "sharpe": 0.4685178318960166,
+        "n_observations": 90,
+        "source": "measured"
+      }
+    },
+    "international_dm_equities": {
+      "reflation": {
+        "hit_rate": 0.5970149253731343,
+        "avg_return": 0.046797852962109095,
+        "vol": 0.15117310649457702,
+        "sharpe": 0.30956467090783674,
+        "n_observations": 67,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.42538461538461536,
+        "avg_return": -0.09508002891616993,
+        "vol": 0.22759749334534435,
+        "sharpe": -0.4248782217359315,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.4702777777777778,
+        "avg_return": -0.04926478706719804,
+        "vol": 0.2333645560314201,
+        "sharpe": -0.12389381863963256,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.4117647058823529,
+        "avg_return": 9.882451892344896e-05,
+        "vol": 0.11786844088544723,
+        "sharpe": 0.0008384306959612159,
+        "n_observations": 68,
+        "source": "measured"
+      }
+    },
+    "em_equities": {
+      "reflation": {
+        "hit_rate": 0.47761194029850745,
+        "avg_return": 0.011139414487312215,
+        "vol": 0.20971257186377376,
+        "sharpe": 0.053117533146978986,
+        "n_observations": 67,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.2909615384615385,
+        "avg_return": -0.17006292279323787,
+        "vol": 0.27696235789652,
+        "sharpe": -0.5904933475553041,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.42500000000000004,
+        "avg_return": -0.08071448791478777,
+        "vol": 0.31844044422857304,
+        "sharpe": -0.06809726599696886,
+        "n_observations": 17,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.46774193548387094,
+        "avg_return": 0.01623502337473406,
+        "vol": 0.1743522009078709,
+        "sharpe": 0.09311625141636598,
+        "n_observations": 62,
+        "source": "measured"
+      }
+    },
+    "us_bonds_short": {
+      "reflation": {
+        "hit_rate": 0.37,
+        "avg_return": -0.008361216880891783,
+        "vol": 0.046980470944086486,
+        "sharpe": -0.17797218105460955,
+        "n_observations": 100,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.7073170731707317,
+        "avg_return": 0.026675493411640244,
+        "vol": 0.04647462768177136,
+        "sharpe": 0.573979711990315,
+        "n_observations": 41,
+        "source": "measured"
+      },
+      "deflation": {
+        "hit_rate": 0.6027777777777777,
+        "avg_return": 0.025663155792010298,
+        "vol": 0.02090527567056001,
+        "sharpe": 1.2947775401780073,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.5222222222222223,
+        "avg_return": 0.0038670230733766704,
+        "vol": 0.03022495816924288,
+        "sharpe": 0.12794138710543457,
+        "n_observations": 90,
+        "source": "measured"
+      }
+    },
+    "us_bonds_long": {
+      "reflation": {
+        "hit_rate": 0.59,
+        "avg_return": 0.020535899351057648,
+        "vol": 0.20206749394720872,
+        "sharpe": 0.10162891096389194,
+        "n_observations": 100,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.6097560975609756,
+        "avg_return": 0.04214534281264915,
+        "vol": 0.1677937641865618,
+        "sharpe": 0.25117347487234254,
+        "n_observations": 41,
+        "source": "measured"
+      },
+      "deflation": {
+        "hit_rate": 0.6545138888888888,
+        "avg_return": 0.0907566944095993,
+        "vol": 0.1355559596967205,
+        "sharpe": 0.6372914259867264,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.6888888888888889,
+        "avg_return": 0.0631887251424047,
+        "vol": 0.14620705683732033,
+        "sharpe": 0.4321865613690088,
+        "n_observations": 90,
+        "source": "measured"
+      }
+    },
+    "tips_inflation_bonds": {
+      "reflation": {
+        "hit_rate": 0.40625,
+        "avg_return": -0.02660663248858537,
+        "vol": 0.06913001496760325,
+        "sharpe": -0.384878153159003,
+        "n_observations": 64,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.3704326923076924,
+        "avg_return": -0.027836947899200246,
+        "vol": 0.07128642918536882,
+        "sharpe": -0.4052544357651815,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.49687499999999996,
+        "avg_return": -0.0013691114637312367,
+        "vol": 0.06993822182147741,
+        "sharpe": 0.18348291448652537,
+        "n_observations": 17,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.5172413793103449,
+        "avg_return": 0.012471257384211131,
+        "vol": 0.0387665216758764,
+        "sharpe": 0.32170173760963794,
+        "n_observations": 58,
+        "source": "measured"
+      }
+    },
+    "gold": {
+      "reflation": {
+        "hit_rate": 0.3880597014925373,
+        "avg_return": -0.01374403788411618,
+        "vol": 0.1365250119108731,
+        "sharpe": -0.10067047562748889,
+        "n_observations": 67,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.8040865384615384,
+        "avg_return": 0.10254196822372648,
+        "vol": 0.14434598543232746,
+        "sharpe": 0.6934242285720311,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.6388888888888888,
+        "avg_return": 0.08269598463484189,
+        "vol": 0.16630573736475124,
+        "sharpe": 0.5726815233867784,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.5882352941176471,
+        "avg_return": 0.0486527606413957,
+        "vol": 0.1347189553156215,
+        "sharpe": 0.36114265084235037,
+        "n_observations": 68,
+        "source": "measured"
+      }
+    },
+    "silver": {
+      "reflation": {
+        "hit_rate": 0.3582089552238806,
+        "avg_return": -0.003733800634303372,
+        "vol": 0.29781298399684736,
+        "sharpe": -0.012537400432289071,
+        "n_observations": 67,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.54375,
+        "avg_return": 0.04570471713035426,
+        "vol": 0.26999698165303904,
+        "sharpe": 0.14408310704096886,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.51875,
+        "avg_return": 0.020534573397589684,
+        "vol": 0.30271846355662324,
+        "sharpe": 0.32672096805036527,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.4264705882352941,
+        "avg_return": 0.01567633884168213,
+        "vol": 0.1956637987304295,
+        "sharpe": 0.08011874932102174,
+        "n_observations": 68,
+        "source": "measured"
+      }
+    },
+    "broad_commodities": {
+      "reflation": {
+        "hit_rate": 0.4,
+        "avg_return": 0.0007398489273304554,
+        "vol": 0.20728184524021953,
+        "sharpe": 0.0035692895654853046,
+        "n_observations": 100,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.07317073170731707,
+        "avg_return": -0.157498868301987,
+        "vol": 0.1446124821357344,
+        "sharpe": -1.0891097779108536,
+        "n_observations": 41,
+        "source": "measured"
+      },
+      "deflation": {
+        "hit_rate": 0.3769444444444444,
+        "avg_return": -0.09865825198538139,
+        "vol": 0.2360057743324161,
+        "sharpe": -0.34872800850057767,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.4666666666666667,
+        "avg_return": 0.006519330464538625,
+        "vol": 0.23791077711099384,
+        "sharpe": 0.02740241759412658,
+        "n_observations": 90,
+        "source": "measured"
+      }
+    },
+    "energy": {
+      "reflation": {
+        "hit_rate": 0.746268656716418,
+        "avg_return": 0.1823314274144333,
+        "vol": 0.25588248797469604,
+        "sharpe": 0.7125592253599781,
+        "n_observations": 67,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.5877403846153846,
+        "avg_return": 0.06045033259445147,
+        "vol": 0.27047464802395055,
+        "sharpe": 0.14753610565843758,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.4326388888888889,
+        "avg_return": -0.15959233770378733,
+        "vol": 0.3408323913839637,
+        "sharpe": -0.26325066474548786,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.40540540540540543,
+        "avg_return": -0.006727811890489153,
+        "vol": 0.2805064688898776,
+        "sharpe": -0.02398451599749161,
+        "n_observations": 74,
+        "source": "measured"
+      }
+    },
+    "real_estate_reits": {
+      "reflation": {
+        "hit_rate": 0.6865671641791045,
+        "avg_return": 0.07933472242794197,
+        "vol": 0.17695277876239243,
+        "sharpe": 0.4483383814756058,
+        "n_observations": 67,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.19591346153846154,
+        "avg_return": -0.17972001977099542,
+        "vol": 0.2136898164083753,
+        "sharpe": -0.8617234292682046,
+        "n_observations": 26,
+        "source": "blended"
+      },
+      "deflation": {
+        "hit_rate": 0.505,
+        "avg_return": -0.017445459547751008,
+        "vol": 0.27561214434530945,
+        "sharpe": -0.04002260478803421,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.6176470588235294,
+        "avg_return": 0.05811184781388973,
+        "vol": 0.12547184321585558,
+        "sharpe": 0.4631465221557076,
+        "n_observations": 68,
+        "source": "measured"
+      }
+    },
+    "cash_money_market": {
+      "reflation": {
+        "hit_rate": 0.42,
+        "avg_return": -0.005647659253856785,
+        "vol": 0.029959697875265374,
+        "sharpe": -0.18850855163394264,
+        "n_observations": 100,
+        "source": "measured"
+      },
+      "stagflation": {
+        "hit_rate": 0.8780487804878049,
+        "avg_return": 0.014798484795988803,
+        "vol": 0.018624662041048394,
+        "sharpe": 0.7945639369655798,
+        "n_observations": 41,
+        "source": "measured"
+      },
+      "deflation": {
+        "hit_rate": 0.4298611111111111,
+        "avg_return": 0.0073363628560868714,
+        "vol": 0.011377999683876577,
+        "sharpe": 0.9299052302514468,
+        "n_observations": 18,
+        "source": "blended"
+      },
+      "goldilocks": {
+        "hit_rate": 0.37777777777777777,
+        "avg_return": -0.0019826061446382845,
+        "vol": 0.022215666794545594,
+        "sharpe": -0.08924360285800899,
+        "n_observations": 90,
+        "source": "measured"
+      }
+    },
+    "bitcoin": {
+      "reflation": {
+        "hit_rate": 0.65,
+        "avg_return": 0.45,
+        "vol": 0.75,
+        "sharpe": 0.6,
+        "n_observations": 0,
+        "source": "prior"
+      },
+      "stagflation": {
+        "hit_rate": 0.3,
+        "avg_return": -0.4,
+        "vol": 0.85,
+        "sharpe": -0.47,
+        "n_observations": 0,
+        "source": "prior"
+      },
+      "deflation": {
+        "hit_rate": 0.25,
+        "avg_return": -0.35,
+        "vol": 0.85,
+        "sharpe": -0.41,
+        "n_observations": 0,
+        "source": "prior"
+      },
+      "goldilocks": {
+        "hit_rate": 0.6,
+        "avg_return": 0.3,
+        "vol": 0.7,
+        "sharpe": 0.43,
+        "n_observations": 0,
+        "source": "prior"
+      }
+    },
+    "crypto_broad": {
+      "reflation": {
+        "hit_rate": 0.6,
+        "avg_return": 0.4,
+        "vol": 0.85,
+        "sharpe": 0.47,
+        "n_observations": 0,
+        "source": "prior"
+      },
+      "stagflation": {
+        "hit_rate": 0.25,
+        "avg_return": -0.5,
+        "vol": 0.9,
+        "sharpe": -0.56,
+        "n_observations": 0,
+        "source": "prior"
+      },
+      "deflation": {
+        "hit_rate": 0.22,
+        "avg_return": -0.45,
+        "vol": 0.95,
+        "sharpe": -0.47,
+        "n_observations": 0,
+        "source": "prior"
+      },
+      "goldilocks": {
+        "hit_rate": 0.55,
+        "avg_return": 0.25,
+        "vol": 0.8,
+        "sharpe": 0.31,
+        "n_observations": 0,
+        "source": "prior"
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "asset": "us_equities_growth",
+      "regime": "reflation",
+      "n_observations": 100,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.78,
+        "avg_return": 0.15,
+        "vol": 0.17,
+        "sharpe": 0.88
+      },
+      "measured": {
+        "hit_rate": 0.78,
+        "real_return": 0.12124718153269781,
+        "vol": 0.19126828614547853,
+        "sharpe": 0.6339115803049403
+      },
+      "calibrated": {
+        "hit_rate": 0.78,
+        "avg_return": 0.12124718153269781,
+        "vol": 0.19126828614547853,
+        "sharpe": 0.6339115803049403
+      }
+    },
+    {
+      "asset": "us_equities_growth",
+      "regime": "stagflation",
+      "n_observations": 41,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.22,
+        "avg_return": -0.2,
+        "vol": 0.26,
+        "sharpe": -0.77
+      },
+      "measured": {
+        "hit_rate": 0.6585365853658537,
+        "real_return": 0.12012321004893661,
+        "vol": 0.28161531600374945,
+        "sharpe": 0.4265506995625809
+      },
+      "calibrated": {
+        "hit_rate": 0.6585365853658537,
+        "avg_return": 0.12012321004893661,
+        "vol": 0.28161531600374945,
+        "sharpe": 0.4265506995625809
+      }
+    },
+    {
+      "asset": "us_equities_growth",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.18,
+        "vol": 0.28,
+        "sharpe": -0.64
+      },
+      "measured": {
+        "hit_rate": 0.9444444444444444,
+        "real_return": 0.3295428713942873,
+        "vol": 0.22585514050072353,
+        "sharpe": 1.4590895326255884
+      },
+      "calibrated": {
+        "hit_rate": 0.5013888888888889,
+        "avg_return": -0.020767852689285216,
+        "vol": 0.2630797314064761,
+        "sharpe": 0.01596547894549638
+      }
+    },
+    {
+      "asset": "us_equities_growth",
+      "regime": "goldilocks",
+      "n_observations": 90,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.82,
+        "avg_return": 0.18,
+        "vol": 0.14,
+        "sharpe": 1.29
+      },
+      "measured": {
+        "hit_rate": 0.8111111111111111,
+        "real_return": 0.1697652052743347,
+        "vol": 0.2383281408403476,
+        "sharpe": 0.7123170796186332
+      },
+      "calibrated": {
+        "hit_rate": 0.8111111111111111,
+        "avg_return": 0.1697652052743347,
+        "vol": 0.2383281408403476,
+        "sharpe": 0.7123170796186332
+      }
+    },
+    {
+      "asset": "us_equities_value",
+      "regime": "reflation",
+      "n_observations": 100,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.74,
+        "avg_return": 0.13,
+        "vol": 0.17,
+        "sharpe": 0.76
+      },
+      "measured": {
+        "hit_rate": 0.79,
+        "real_return": 0.10907649070109274,
+        "vol": 0.11811937652921466,
+        "sharpe": 0.9234428245912276
+      },
+      "calibrated": {
+        "hit_rate": 0.79,
+        "avg_return": 0.10907649070109274,
+        "vol": 0.11811937652921466,
+        "sharpe": 0.9234428245912276
+      }
+    },
+    {
+      "asset": "us_equities_value",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.35,
+        "avg_return": -0.1,
+        "vol": 0.22,
+        "sharpe": -0.45
+      },
+      "measured": {
+        "hit_rate": 0.38461538461538464,
+        "real_return": -0.08543770282376591,
+        "vol": 0.18674721365635102,
+        "sharpe": -0.4575045654013713
+      },
+      "calibrated": {
+        "hit_rate": 0.3694711538461538,
+        "avg_return": -0.09180870783836834,
+        "vol": 0.20129530768169746,
+        "sharpe": -0.45422131803827137
+      }
+    },
+    {
+      "asset": "us_equities_value",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.15,
+        "vol": 0.25,
+        "sharpe": -0.6
+      },
+      "measured": {
+        "hit_rate": 0.9444444444444444,
+        "real_return": 0.23485917920788893,
+        "vol": 0.17528945303364124,
+        "sharpe": 1.3398363400838222
+      },
+      "calibrated": {
+        "hit_rate": 0.5013888888888889,
+        "avg_return": -0.0297315064975347,
+        "vol": 0.2266529540730129,
+        "sharpe": 0.0061988562761944865
+      }
+    },
+    {
+      "asset": "us_equities_value",
+      "regime": "goldilocks",
+      "n_observations": 90,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.7,
+        "avg_return": 0.12,
+        "vol": 0.13,
+        "sharpe": 0.92
+      },
+      "measured": {
+        "hit_rate": 0.6888888888888889,
+        "real_return": 0.05089770848904525,
+        "vol": 0.10863558444098143,
+        "sharpe": 0.4685178318960166
+      },
+      "calibrated": {
+        "hit_rate": 0.6888888888888889,
+        "avg_return": 0.05089770848904525,
+        "vol": 0.10863558444098143,
+        "sharpe": 0.4685178318960166
+      }
+    },
+    {
+      "asset": "international_dm_equities",
+      "regime": "reflation",
+      "n_observations": 67,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.68,
+        "avg_return": 0.09,
+        "vol": 0.17,
+        "sharpe": 0.53
+      },
+      "measured": {
+        "hit_rate": 0.5970149253731343,
+        "real_return": 0.046797852962109095,
+        "vol": 0.15117310649457702,
+        "sharpe": 0.30956467090783674
+      },
+      "calibrated": {
+        "hit_rate": 0.5970149253731343,
+        "avg_return": 0.046797852962109095,
+        "vol": 0.15117310649457702,
+        "sharpe": 0.30956467090783674
+      }
+    },
+    {
+      "asset": "international_dm_equities",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.28,
+        "avg_return": -0.14,
+        "vol": 0.22,
+        "sharpe": -0.64
+      },
+      "measured": {
+        "hit_rate": 0.5384615384615384,
+        "real_return": -0.060142273628746516,
+        "vol": 0.23350665483616773,
+        "sharpe": -0.2575612830861003
+      },
+      "calibrated": {
+        "hit_rate": 0.42538461538461536,
+        "avg_return": -0.09508002891616993,
+        "vol": 0.22759749334534435,
+        "sharpe": -0.4248782217359315
+      }
+    },
+    {
+      "asset": "international_dm_equities",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.28,
+        "avg_return": -0.17,
+        "vol": 0.25,
+        "sharpe": -0.68
+      },
+      "measured": {
+        "hit_rate": 0.8888888888888888,
+        "real_return": 0.2163526813849663,
+        "vol": 0.19676657930054434,
+        "sharpe": 1.099539780353176
+      },
+      "calibrated": {
+        "hit_rate": 0.4702777777777778,
+        "avg_return": -0.04926478706719804,
+        "vol": 0.2333645560314201,
+        "sharpe": -0.12389381863963256
+      }
+    },
+    {
+      "asset": "international_dm_equities",
+      "regime": "goldilocks",
+      "n_observations": 68,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.65,
+        "avg_return": 0.1,
+        "vol": 0.14,
+        "sharpe": 0.71
+      },
+      "measured": {
+        "hit_rate": 0.4117647058823529,
+        "real_return": 9.882451892344896e-05,
+        "vol": 0.11786844088544723,
+        "sharpe": 0.0008384306959612159
+      },
+      "calibrated": {
+        "hit_rate": 0.4117647058823529,
+        "avg_return": 9.882451892344896e-05,
+        "vol": 0.11786844088544723,
+        "sharpe": 0.0008384306959612159
+      }
+    },
+    {
+      "asset": "em_equities",
+      "regime": "reflation",
+      "n_observations": 67,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.72,
+        "avg_return": 0.18,
+        "vol": 0.24,
+        "sharpe": 0.75
+      },
+      "measured": {
+        "hit_rate": 0.47761194029850745,
+        "real_return": 0.011139414487312215,
+        "vol": 0.20971257186377376,
+        "sharpe": 0.053117533146978986
+      },
+      "calibrated": {
+        "hit_rate": 0.47761194029850745,
+        "avg_return": 0.011139414487312215,
+        "vol": 0.20971257186377376,
+        "sharpe": 0.053117533146978986
+      }
+    },
+    {
+      "asset": "em_equities",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.22,
+        "avg_return": -0.25,
+        "vol": 0.32,
+        "sharpe": -0.78
+      },
+      "measured": {
+        "hit_rate": 0.34615384615384615,
+        "real_return": -0.10788964052131175,
+        "vol": 0.24348863626048006,
+        "sharpe": -0.44309928454276293
+      },
+      "calibrated": {
+        "hit_rate": 0.2909615384615385,
+        "avg_return": -0.17006292279323787,
+        "vol": 0.27696235789652,
+        "sharpe": -0.5904933475553041
+      }
+    },
+    {
+      "asset": "em_equities",
+      "regime": "deflation",
+      "n_observations": 17,
+      "weight_measured": 0.281,
+      "prior": {
+        "hit_rate": 0.2,
+        "avg_return": -0.28,
+        "vol": 0.35,
+        "sharpe": -0.8
+      },
+      "measured": {
+        "hit_rate": 1.0,
+        "real_return": 0.42857070963631017,
+        "vol": 0.23778824614603764,
+        "sharpe": 1.8023208320107778
+      },
+      "calibrated": {
+        "hit_rate": 0.42500000000000004,
+        "avg_return": -0.08071448791478777,
+        "vol": 0.31844044422857304,
+        "sharpe": -0.06809726599696886
+      }
+    },
+    {
+      "asset": "em_equities",
+      "regime": "goldilocks",
+      "n_observations": 62,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.65,
+        "avg_return": 0.13,
+        "vol": 0.22,
+        "sharpe": 0.59
+      },
+      "measured": {
+        "hit_rate": 0.46774193548387094,
+        "real_return": 0.01623502337473406,
+        "vol": 0.1743522009078709,
+        "sharpe": 0.09311625141636598
+      },
+      "calibrated": {
+        "hit_rate": 0.46774193548387094,
+        "avg_return": 0.01623502337473406,
+        "vol": 0.1743522009078709,
+        "sharpe": 0.09311625141636598
+      }
+    },
+    {
+      "asset": "us_bonds_short",
+      "regime": "reflation",
+      "n_observations": 100,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.4,
+        "avg_return": -0.01,
+        "vol": 0.02,
+        "sharpe": -0.5
+      },
+      "measured": {
+        "hit_rate": 0.37,
+        "real_return": -0.008361216880891783,
+        "vol": 0.046980470944086486,
+        "sharpe": -0.17797218105460955
+      },
+      "calibrated": {
+        "hit_rate": 0.37,
+        "avg_return": -0.008361216880891783,
+        "vol": 0.046980470944086486,
+        "sharpe": -0.17797218105460955
+      }
+    },
+    {
+      "asset": "us_bonds_short",
+      "regime": "stagflation",
+      "n_observations": 41,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.05,
+        "vol": 0.03,
+        "sharpe": -1.67
+      },
+      "measured": {
+        "hit_rate": 0.7073170731707317,
+        "real_return": 0.026675493411640244,
+        "vol": 0.04647462768177136,
+        "sharpe": 0.573979711990315
+      },
+      "calibrated": {
+        "hit_rate": 0.7073170731707317,
+        "avg_return": 0.026675493411640244,
+        "vol": 0.04647462768177136,
+        "sharpe": 0.573979711990315
+      }
+    },
+    {
+      "asset": "us_bonds_short",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.7,
+        "avg_return": 0.04,
+        "vol": 0.02,
+        "sharpe": 2.0
+      },
+      "measured": {
+        "hit_rate": 0.3888888888888889,
+        "real_return": -0.005877901465567048,
+        "vol": 0.02289688214579204,
+        "sharpe": -0.25671187143037644
+      },
+      "calibrated": {
+        "hit_rate": 0.6027777777777777,
+        "avg_return": 0.025663155792010298,
+        "vol": 0.02090527567056001,
+        "sharpe": 1.2947775401780073
+      }
+    },
+    {
+      "asset": "us_bonds_short",
+      "regime": "goldilocks",
+      "n_observations": 90,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.5,
+        "avg_return": 0.02,
+        "vol": 0.02,
+        "sharpe": 1.0
+      },
+      "measured": {
+        "hit_rate": 0.5222222222222223,
+        "real_return": 0.0038670230733766704,
+        "vol": 0.03022495816924288,
+        "sharpe": 0.12794138710543457
+      },
+      "calibrated": {
+        "hit_rate": 0.5222222222222223,
+        "avg_return": 0.0038670230733766704,
+        "vol": 0.03022495816924288,
+        "sharpe": 0.12794138710543457
+      }
+    },
+    {
+      "asset": "us_bonds_long",
+      "regime": "reflation",
+      "n_observations": 100,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.05,
+        "vol": 0.14,
+        "sharpe": -0.36
+      },
+      "measured": {
+        "hit_rate": 0.59,
+        "real_return": 0.020535899351057648,
+        "vol": 0.20206749394720872,
+        "sharpe": 0.10162891096389194
+      },
+      "calibrated": {
+        "hit_rate": 0.59,
+        "avg_return": 0.020535899351057648,
+        "vol": 0.20206749394720872,
+        "sharpe": 0.10162891096389194
+      }
+    },
+    {
+      "asset": "us_bonds_long",
+      "regime": "stagflation",
+      "n_observations": 41,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.18,
+        "avg_return": -0.2,
+        "vol": 0.18,
+        "sharpe": -1.11
+      },
+      "measured": {
+        "hit_rate": 0.6097560975609756,
+        "real_return": 0.04214534281264915,
+        "vol": 0.1677937641865618,
+        "sharpe": 0.25117347487234254
+      },
+      "calibrated": {
+        "hit_rate": 0.6097560975609756,
+        "avg_return": 0.04214534281264915,
+        "vol": 0.1677937641865618,
+        "sharpe": 0.25117347487234254
+      }
+    },
+    {
+      "asset": "us_bonds_long",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.75,
+        "avg_return": 0.15,
+        "vol": 0.14,
+        "sharpe": 1.07
+      },
+      "measured": {
+        "hit_rate": 0.4444444444444444,
+        "real_return": -0.039578577889282235,
+        "vol": 0.12577907102950556,
+        "sharpe": -0.31466743684247594
+      },
+      "calibrated": {
+        "hit_rate": 0.6545138888888888,
+        "avg_return": 0.0907566944095993,
+        "vol": 0.1355559596967205,
+        "sharpe": 0.6372914259867264
+      }
+    },
+    {
+      "asset": "us_bonds_long",
+      "regime": "goldilocks",
+      "n_observations": 90,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.58,
+        "avg_return": 0.04,
+        "vol": 0.1,
+        "sharpe": 0.4
+      },
+      "measured": {
+        "hit_rate": 0.6888888888888889,
+        "real_return": 0.0631887251424047,
+        "vol": 0.14620705683732033,
+        "sharpe": 0.4321865613690088
+      },
+      "calibrated": {
+        "hit_rate": 0.6888888888888889,
+        "avg_return": 0.0631887251424047,
+        "vol": 0.14620705683732033,
+        "sharpe": 0.4321865613690088
+      }
+    },
+    {
+      "asset": "tips_inflation_bonds",
+      "regime": "reflation",
+      "n_observations": 64,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.55,
+        "avg_return": 0.04,
+        "vol": 0.06,
+        "sharpe": 0.67
+      },
+      "measured": {
+        "hit_rate": 0.40625,
+        "real_return": -0.02660663248858537,
+        "vol": 0.06913001496760325,
+        "sharpe": -0.384878153159003
+      },
+      "calibrated": {
+        "hit_rate": 0.40625,
+        "avg_return": -0.02660663248858537,
+        "vol": 0.06913001496760325,
+        "sharpe": -0.384878153159003
+      }
+    },
+    {
+      "asset": "tips_inflation_bonds",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.55,
+        "avg_return": -0.02,
+        "vol": 0.08,
+        "sharpe": -0.25
+      },
+      "measured": {
+        "hit_rate": 0.23076923076923078,
+        "real_return": -0.033932351820800434,
+        "vol": 0.06450920744065566,
+        "sharpe": -0.5260078858047671
+      },
+      "calibrated": {
+        "hit_rate": 0.3704326923076924,
+        "avg_return": -0.027836947899200246,
+        "vol": 0.07128642918536882,
+        "sharpe": -0.4052544357651815
+      }
+    },
+    {
+      "asset": "tips_inflation_bonds",
+      "regime": "deflation",
+      "n_observations": 17,
+      "weight_measured": 0.281,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.03,
+        "vol": 0.08,
+        "sharpe": -0.38
+      },
+      "measured": {
+        "hit_rate": 1.0,
+        "real_return": 0.07179871479562226,
+        "vol": 0.04422478869858633,
+        "sharpe": 1.6234948070632014
+      },
+      "calibrated": {
+        "hit_rate": 0.49687499999999996,
+        "avg_return": -0.0013691114637312367,
+        "vol": 0.06993822182147741,
+        "sharpe": 0.18348291448652537
+      }
+    },
+    {
+      "asset": "tips_inflation_bonds",
+      "regime": "goldilocks",
+      "n_observations": 58,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.45,
+        "avg_return": 0.02,
+        "vol": 0.06,
+        "sharpe": 0.33
+      },
+      "measured": {
+        "hit_rate": 0.5172413793103449,
+        "real_return": 0.012471257384211131,
+        "vol": 0.0387665216758764,
+        "sharpe": 0.32170173760963794
+      },
+      "calibrated": {
+        "hit_rate": 0.5172413793103449,
+        "avg_return": 0.012471257384211131,
+        "vol": 0.0387665216758764,
+        "sharpe": 0.32170173760963794
+      }
+    },
+    {
+      "asset": "gold",
+      "regime": "reflation",
+      "n_observations": 67,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.4,
+        "avg_return": 0.01,
+        "vol": 0.16,
+        "sharpe": 0.06
+      },
+      "measured": {
+        "hit_rate": 0.3880597014925373,
+        "real_return": -0.01374403788411618,
+        "vol": 0.1365250119108731,
+        "sharpe": -0.10067047562748889
+      },
+      "calibrated": {
+        "hit_rate": 0.3880597014925373,
+        "avg_return": -0.01374403788411618,
+        "vol": 0.1365250119108731,
+        "sharpe": -0.10067047562748889
+      }
+    },
+    {
+      "asset": "gold",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.75,
+        "avg_return": 0.15,
+        "vol": 0.2,
+        "sharpe": 0.75
+      },
+      "measured": {
+        "hit_rate": 0.8461538461538461,
+        "real_return": 0.06563016573106929,
+        "vol": 0.10105952965747104,
+        "sharpe": 0.6494208507947221
+      },
+      "calibrated": {
+        "hit_rate": 0.8040865384615384,
+        "avg_return": 0.10254196822372648,
+        "vol": 0.14434598543232746,
+        "sharpe": 0.6934242285720311
+      }
+    },
+    {
+      "asset": "gold",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.5,
+        "avg_return": 0.03,
+        "vol": 0.18,
+        "sharpe": 0.17
+      },
+      "measured": {
+        "hit_rate": 0.9444444444444444,
+        "real_return": 0.19862715083149404,
+        "vol": 0.136178359567204,
+        "sharpe": 1.458580874837691
+      },
+      "calibrated": {
+        "hit_rate": 0.6388888888888888,
+        "avg_return": 0.08269598463484189,
+        "vol": 0.16630573736475124,
+        "sharpe": 0.5726815233867784
+      }
+    },
+    {
+      "asset": "gold",
+      "regime": "goldilocks",
+      "n_observations": 68,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.35,
+        "avg_return": -0.01,
+        "vol": 0.14,
+        "sharpe": -0.07
+      },
+      "measured": {
+        "hit_rate": 0.5882352941176471,
+        "real_return": 0.0486527606413957,
+        "vol": 0.1347189553156215,
+        "sharpe": 0.36114265084235037
+      },
+      "calibrated": {
+        "hit_rate": 0.5882352941176471,
+        "avg_return": 0.0486527606413957,
+        "vol": 0.1347189553156215,
+        "sharpe": 0.36114265084235037
+      }
+    },
+    {
+      "asset": "silver",
+      "regime": "reflation",
+      "n_observations": 67,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.55,
+        "avg_return": 0.07,
+        "vol": 0.28,
+        "sharpe": 0.25
+      },
+      "measured": {
+        "hit_rate": 0.3582089552238806,
+        "real_return": -0.003733800634303372,
+        "vol": 0.29781298399684736,
+        "sharpe": -0.012537400432289071
+      },
+      "calibrated": {
+        "hit_rate": 0.3582089552238806,
+        "avg_return": -0.003733800634303372,
+        "vol": 0.29781298399684736,
+        "sharpe": -0.012537400432289071
+      }
+    },
+    {
+      "asset": "silver",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.6,
+        "avg_return": 0.1,
+        "vol": 0.32,
+        "sharpe": 0.31
+      },
+      "measured": {
+        "hit_rate": 0.5,
+        "real_return": 0.003475052676185347,
+        "vol": 0.23110574516095828,
+        "sharpe": 0.015036634739500208
+      },
+      "calibrated": {
+        "hit_rate": 0.54375,
+        "avg_return": 0.04570471713035426,
+        "vol": 0.26999698165303904,
+        "sharpe": 0.14408310704096886
+      }
+    },
+    {
+      "asset": "silver",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.15,
+        "vol": 0.35,
+        "sharpe": -0.43
+      },
+      "measured": {
+        "hit_rate": 1.0,
+        "real_return": 0.39571063487228697,
+        "vol": 0.19869908338119444,
+        "sharpe": 1.9915070977611686
+      },
+      "calibrated": {
+        "hit_rate": 0.51875,
+        "avg_return": 0.020534573397589684,
+        "vol": 0.30271846355662324,
+        "sharpe": 0.32672096805036527
+      }
+    },
+    {
+      "asset": "silver",
+      "regime": "goldilocks",
+      "n_observations": 68,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.42,
+        "avg_return": 0.01,
+        "vol": 0.26,
+        "sharpe": 0.04
+      },
+      "measured": {
+        "hit_rate": 0.4264705882352941,
+        "real_return": 0.01567633884168213,
+        "vol": 0.1956637987304295,
+        "sharpe": 0.08011874932102174
+      },
+      "calibrated": {
+        "hit_rate": 0.4264705882352941,
+        "avg_return": 0.01567633884168213,
+        "vol": 0.1956637987304295,
+        "sharpe": 0.08011874932102174
+      }
+    },
+    {
+      "asset": "broad_commodities",
+      "regime": "reflation",
+      "n_observations": 100,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.65,
+        "avg_return": 0.1,
+        "vol": 0.19,
+        "sharpe": 0.53
+      },
+      "measured": {
+        "hit_rate": 0.4,
+        "real_return": 0.0007398489273304554,
+        "vol": 0.20728184524021953,
+        "sharpe": 0.0035692895654853046
+      },
+      "calibrated": {
+        "hit_rate": 0.4,
+        "avg_return": 0.0007398489273304554,
+        "vol": 0.20728184524021953,
+        "sharpe": 0.0035692895654853046
+      }
+    },
+    {
+      "asset": "broad_commodities",
+      "regime": "stagflation",
+      "n_observations": 41,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.75,
+        "avg_return": 0.15,
+        "vol": 0.22,
+        "sharpe": 0.68
+      },
+      "measured": {
+        "hit_rate": 0.07317073170731707,
+        "real_return": -0.157498868301987,
+        "vol": 0.1446124821357344,
+        "sharpe": -1.0891097779108536
+      },
+      "calibrated": {
+        "hit_rate": 0.07317073170731707,
+        "avg_return": -0.157498868301987,
+        "vol": 0.1446124821357344,
+        "sharpe": -1.0891097779108536
+      }
+    },
+    {
+      "asset": "broad_commodities",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.22,
+        "avg_return": -0.22,
+        "vol": 0.25,
+        "sharpe": -0.88
+      },
+      "measured": {
+        "hit_rate": 0.7222222222222222,
+        "real_return": 0.16829359364677954,
+        "vol": 0.20521847786373157,
+        "sharpe": 0.8200703727981514
+      },
+      "calibrated": {
+        "hit_rate": 0.3769444444444444,
+        "avg_return": -0.09865825198538139,
+        "vol": 0.2360057743324161,
+        "sharpe": -0.34872800850057767
+      }
+    },
+    {
+      "asset": "broad_commodities",
+      "regime": "goldilocks",
+      "n_observations": 90,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.45,
+        "avg_return": 0.0,
+        "vol": 0.16,
+        "sharpe": 0.0
+      },
+      "measured": {
+        "hit_rate": 0.4666666666666667,
+        "real_return": 0.006519330464538625,
+        "vol": 0.23791077711099384,
+        "sharpe": 0.02740241759412658
+      },
+      "calibrated": {
+        "hit_rate": 0.4666666666666667,
+        "avg_return": 0.006519330464538625,
+        "vol": 0.23791077711099384,
+        "sharpe": 0.02740241759412658
+      }
+    },
+    {
+      "asset": "energy",
+      "regime": "reflation",
+      "n_observations": 67,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.62,
+        "avg_return": 0.12,
+        "vol": 0.28,
+        "sharpe": 0.43
+      },
+      "measured": {
+        "hit_rate": 0.746268656716418,
+        "real_return": 0.1823314274144333,
+        "vol": 0.25588248797469604,
+        "sharpe": 0.7125592253599781
+      },
+      "calibrated": {
+        "hit_rate": 0.746268656716418,
+        "avg_return": 0.1823314274144333,
+        "vol": 0.25588248797469604,
+        "sharpe": 0.7125592253599781
+      }
+    },
+    {
+      "asset": "energy",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.75,
+        "avg_return": 0.22,
+        "vol": 0.32,
+        "sharpe": 0.69
+      },
+      "measured": {
+        "hit_rate": 0.46153846153846156,
+        "real_return": -0.06364385316541961,
+        "vol": 0.23195492982035648,
+        "sharpe": -0.2743802566072221
+      },
+      "calibrated": {
+        "hit_rate": 0.5877403846153846,
+        "avg_return": 0.06045033259445147,
+        "vol": 0.27047464802395055,
+        "sharpe": 0.14753610565843758
+      }
+    },
+    {
+      "asset": "energy",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.2,
+        "avg_return": -0.32,
+        "vol": 0.4,
+        "sharpe": -0.8
+      },
+      "measured": {
+        "hit_rate": 0.9444444444444444,
+        "real_return": 0.1933045193478805,
+        "vol": 0.21066365242868373,
+        "sharpe": 0.9175978728144389
+      },
+      "calibrated": {
+        "hit_rate": 0.4326388888888889,
+        "avg_return": -0.15959233770378733,
+        "vol": 0.3408323913839637,
+        "sharpe": -0.26325066474548786
+      }
+    },
+    {
+      "asset": "energy",
+      "regime": "goldilocks",
+      "n_observations": 74,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.45,
+        "avg_return": 0.02,
+        "vol": 0.25,
+        "sharpe": 0.08
+      },
+      "measured": {
+        "hit_rate": 0.40540540540540543,
+        "real_return": -0.006727811890489153,
+        "vol": 0.2805064688898776,
+        "sharpe": -0.02398451599749161
+      },
+      "calibrated": {
+        "hit_rate": 0.40540540540540543,
+        "avg_return": -0.006727811890489153,
+        "vol": 0.2805064688898776,
+        "sharpe": -0.02398451599749161
+      }
+    },
+    {
+      "asset": "real_estate_reits",
+      "regime": "reflation",
+      "n_observations": 67,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.65,
+        "avg_return": 0.1,
+        "vol": 0.18,
+        "sharpe": 0.56
+      },
+      "measured": {
+        "hit_rate": 0.6865671641791045,
+        "real_return": 0.07933472242794197,
+        "vol": 0.17695277876239243,
+        "sharpe": 0.4483383814756058
+      },
+      "calibrated": {
+        "hit_rate": 0.6865671641791045,
+        "avg_return": 0.07933472242794197,
+        "vol": 0.17695277876239243,
+        "sharpe": 0.4483383814756058
+      }
+    },
+    {
+      "asset": "real_estate_reits",
+      "regime": "stagflation",
+      "n_observations": 26,
+      "weight_measured": 0.562,
+      "prior": {
+        "hit_rate": 0.25,
+        "avg_return": -0.15,
+        "vol": 0.24,
+        "sharpe": -0.62
+      },
+      "measured": {
+        "hit_rate": 0.15384615384615385,
+        "real_return": -0.20283559070399185,
+        "vol": 0.19322634028155608,
+        "sharpe": -1.0497305409212525
+      },
+      "calibrated": {
+        "hit_rate": 0.19591346153846154,
+        "avg_return": -0.17972001977099542,
+        "vol": 0.2136898164083753,
+        "sharpe": -0.8617234292682046
+      }
+    },
+    {
+      "asset": "real_estate_reits",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.28,
+        "avg_return": -0.22,
+        "vol": 0.28,
+        "sharpe": -0.79
+      },
+      "measured": {
+        "hit_rate": 1.0,
+        "real_return": 0.4281745294471968,
+        "vol": 0.26595886190499013,
+        "sharpe": 1.6099276646782907
+      },
+      "calibrated": {
+        "hit_rate": 0.505,
+        "avg_return": -0.017445459547751008,
+        "vol": 0.27561214434530945,
+        "sharpe": -0.04002260478803421
+      }
+    },
+    {
+      "asset": "real_estate_reits",
+      "regime": "goldilocks",
+      "n_observations": 68,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.7,
+        "avg_return": 0.1,
+        "vol": 0.15,
+        "sharpe": 0.67
+      },
+      "measured": {
+        "hit_rate": 0.6176470588235294,
+        "real_return": 0.05811184781388973,
+        "vol": 0.12547184321585558,
+        "sharpe": 0.4631465221557076
+      },
+      "calibrated": {
+        "hit_rate": 0.6176470588235294,
+        "avg_return": 0.05811184781388973,
+        "vol": 0.12547184321585558,
+        "sharpe": 0.4631465221557076
+      }
+    },
+    {
+      "asset": "cash_money_market",
+      "regime": "reflation",
+      "n_observations": 100,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.35,
+        "avg_return": 0.01,
+        "vol": 0.01,
+        "sharpe": 1.0
+      },
+      "measured": {
+        "hit_rate": 0.42,
+        "real_return": -0.005647659253856785,
+        "vol": 0.029959697875265374,
+        "sharpe": -0.18850855163394264
+      },
+      "calibrated": {
+        "hit_rate": 0.42,
+        "avg_return": -0.005647659253856785,
+        "vol": 0.029959697875265374,
+        "sharpe": -0.18850855163394264
+      }
+    },
+    {
+      "asset": "cash_money_market",
+      "regime": "stagflation",
+      "n_observations": 41,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.03,
+        "vol": 0.01,
+        "sharpe": -3.0
+      },
+      "measured": {
+        "hit_rate": 0.8780487804878049,
+        "real_return": 0.014798484795988803,
+        "vol": 0.018624662041048394,
+        "sharpe": 0.7945639369655798
+      },
+      "calibrated": {
+        "hit_rate": 0.8780487804878049,
+        "avg_return": 0.014798484795988803,
+        "vol": 0.018624662041048394,
+        "sharpe": 0.7945639369655798
+      }
+    },
+    {
+      "asset": "cash_money_market",
+      "regime": "deflation",
+      "n_observations": 18,
+      "weight_measured": 0.312,
+      "prior": {
+        "hit_rate": 0.6,
+        "avg_return": 0.02,
+        "vol": 0.01,
+        "sharpe": 2.0
+      },
+      "measured": {
+        "hit_rate": 0.05555555555555555,
+        "real_return": -0.02052363886052201,
+        "vol": 0.014409598988405043,
+        "sharpe": -1.4243032631953705
+      },
+      "calibrated": {
+        "hit_rate": 0.4298611111111111,
+        "avg_return": 0.0073363628560868714,
+        "vol": 0.011377999683876577,
+        "sharpe": 0.9299052302514468
+      }
+    },
+    {
+      "asset": "cash_money_market",
+      "regime": "goldilocks",
+      "n_observations": 90,
+      "weight_measured": 1.0,
+      "prior": {
+        "hit_rate": 0.4,
+        "avg_return": 0.0,
+        "vol": 0.01,
+        "sharpe": 0.0
+      },
+      "measured": {
+        "hit_rate": 0.37777777777777777,
+        "real_return": -0.0019826061446382845,
+        "vol": 0.022215666794545594,
+        "sharpe": -0.08924360285800899
+      },
+      "calibrated": {
+        "hit_rate": 0.37777777777777777,
+        "avg_return": -0.0019826061446382845,
+        "vol": 0.022215666794545594,
+        "sharpe": -0.08924360285800899
+      }
+    },
+    {
+      "asset": "bitcoin",
+      "regime": "reflation",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.65,
+        "avg_return": 0.45,
+        "vol": 0.75,
+        "sharpe": 0.6
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.65,
+        "avg_return": 0.45,
+        "vol": 0.75,
+        "sharpe": 0.6
+      }
+    },
+    {
+      "asset": "bitcoin",
+      "regime": "stagflation",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.3,
+        "avg_return": -0.4,
+        "vol": 0.85,
+        "sharpe": -0.47
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.3,
+        "avg_return": -0.4,
+        "vol": 0.85,
+        "sharpe": -0.47
+      }
+    },
+    {
+      "asset": "bitcoin",
+      "regime": "deflation",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.25,
+        "avg_return": -0.35,
+        "vol": 0.85,
+        "sharpe": -0.41
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.25,
+        "avg_return": -0.35,
+        "vol": 0.85,
+        "sharpe": -0.41
+      }
+    },
+    {
+      "asset": "bitcoin",
+      "regime": "goldilocks",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.6,
+        "avg_return": 0.3,
+        "vol": 0.7,
+        "sharpe": 0.43
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.6,
+        "avg_return": 0.3,
+        "vol": 0.7,
+        "sharpe": 0.43
+      }
+    },
+    {
+      "asset": "crypto_broad",
+      "regime": "reflation",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.6,
+        "avg_return": 0.4,
+        "vol": 0.85,
+        "sharpe": 0.47
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.6,
+        "avg_return": 0.4,
+        "vol": 0.85,
+        "sharpe": 0.47
+      }
+    },
+    {
+      "asset": "crypto_broad",
+      "regime": "stagflation",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.25,
+        "avg_return": -0.5,
+        "vol": 0.9,
+        "sharpe": -0.56
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.25,
+        "avg_return": -0.5,
+        "vol": 0.9,
+        "sharpe": -0.56
+      }
+    },
+    {
+      "asset": "crypto_broad",
+      "regime": "deflation",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.22,
+        "avg_return": -0.45,
+        "vol": 0.95,
+        "sharpe": -0.47
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.22,
+        "avg_return": -0.45,
+        "vol": 0.95,
+        "sharpe": -0.47
+      }
+    },
+    {
+      "asset": "crypto_broad",
+      "regime": "goldilocks",
+      "n_observations": 0,
+      "weight_measured": 0.0,
+      "prior": {
+        "hit_rate": 0.55,
+        "avg_return": 0.25,
+        "vol": 0.8,
+        "sharpe": 0.31
+      },
+      "measured": null,
+      "calibrated": {
+        "hit_rate": 0.55,
+        "avg_return": 0.25,
+        "vol": 0.8,
+        "sharpe": 0.31
+      }
+    }
+  ]
+}

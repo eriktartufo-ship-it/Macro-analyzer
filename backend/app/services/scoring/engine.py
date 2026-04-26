@@ -180,6 +180,60 @@ ASSET_REGIME_DATA: dict[str, dict[str, dict[str, float]]] = {
 }
 
 
+def _calibrated_or_prior() -> dict[str, dict[str, dict[str, float]]]:
+    """Carica la calibrazione persistita se presente E se USE_CALIBRATED_SCORING e'
+    abilitato; fallback sull'hardcoded.
+
+    La calibrazione e' generata da `services/scoring/calibration.py` via shrinkage
+    Bayesiano contro rendimenti reali misurati. File: seed/calibrated_asset_regime.json.
+
+    NOTA: la calibrazione attualmente eredita il bias del regime classifier (es. i
+    "regimi stagflation" del classifier moderno includono il 2022-24, periodo con
+    caratteristiche miste). Per questo motivo e' OPT-IN — abilitala con
+    env var USE_CALIBRATED_SCORING=1 dopo aver validato i delta in /asset-validation.
+    """
+    import os
+    if os.getenv("USE_CALIBRATED_SCORING", "0") not in ("1", "true", "yes"):
+        return ASSET_REGIME_DATA
+
+    try:
+        from app.services.scoring.calibration import load_calibration
+        payload = load_calibration()
+    except Exception:
+        payload = None
+    if payload and "asset_regime_data" in payload:
+        # Costruisci un dict compatibile con ASSET_REGIME_DATA, ignorando
+        # i campi extra (n_observations, source).
+        out: dict[str, dict[str, dict[str, float]]] = {}
+        for asset, regimes in payload["asset_regime_data"].items():
+            out[asset] = {}
+            for regime, stats in regimes.items():
+                out[asset][regime] = {
+                    "hit_rate": stats["hit_rate"],
+                    "avg_return": stats["avg_return"],
+                    "vol": stats["vol"],
+                    "sharpe": stats["sharpe"],
+                }
+        # Per asset/regimi non in calibration, fallback su hardcoded
+        for asset, regimes in ASSET_REGIME_DATA.items():
+            out.setdefault(asset, {})
+            for regime, stats in regimes.items():
+                out[asset].setdefault(regime, stats)
+        return out
+    return ASSET_REGIME_DATA
+
+
+# Cache modulo: la calibrazione si carica una volta all'import. In caso di
+# rigenerazione runtime, chi rigenera deve invocare `reload_calibration()`.
+_ACTIVE_DATA = _calibrated_or_prior()
+
+
+def reload_calibration() -> None:
+    """Forza il reload della calibrazione (es. dopo `calibration.calibrate()`)."""
+    global _ACTIVE_DATA
+    _ACTIVE_DATA = _calibrated_or_prior()
+
+
 def _asset_regime_score(asset: str, regime: str) -> float:
     """Calcola lo score 0-100 di un asset in un regime specifico.
 
@@ -188,16 +242,13 @@ def _asset_regime_score(asset: str, regime: str) -> float:
               + real_return_norm * 0.50
               + sharpe_norm * 0.25
 
+    Usa i parametri calibrati (se presenti) o quelli hardcoded come fallback.
+
     Dove:
         real_return_norm = clamp((real_return + 0.30) / 0.60, 0, 1)   # range [-30%, +30%]
         sharpe_norm      = clamp((sharpe + 1.0) / 3.0, 0, 1)           # range [-1, +2]
-
-    Il rendimento reale e' la voce dominante (50%): questo perche' lo scopo del
-    sistema e' preservare/aumentare potere d'acquisto, non solo ottimizzare Sharpe.
-    Nell'implementazione precedente, asset ad alto Sharpe ma rendimento reale negativo
-    (es. cash in stagflation) scoravano artificialmente alti.
     """
-    data = ASSET_REGIME_DATA[asset][regime]
+    data = _ACTIVE_DATA[asset][regime]
     hit_rate = data["hit_rate"]
     real_return = data["avg_return"]
     sharpe = data["sharpe"]

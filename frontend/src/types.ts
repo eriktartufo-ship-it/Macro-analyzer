@@ -186,6 +186,98 @@ export interface HMMPrediction {
   feature_stds: Record<string, number>;
 }
 
+export interface PerfStats {
+  total_return: number;
+  annualized_return: number;
+  annualized_volatility: number;
+  sharpe: number;
+  max_drawdown: number;
+  calmar: number;
+  win_rate: number;
+  n_months: number;
+  start_date: string;
+  end_date: string;
+  final_nav: number;
+}
+
+export interface BacktestStrategy {
+  name: string;
+  description: string;
+  nav: { date: string; value: number }[];
+  monthly_returns: { date: string; value: number }[];
+  stats: PerfStats;
+  alpha_vs_60_40: { alpha: number; beta: number; correlation: number };
+}
+
+export interface BacktestResult {
+  common_start: string;
+  common_end: string;
+  n_months: number;
+  strategies: BacktestStrategy[];
+}
+
+export interface RecessionLead {
+  recession_start: string;
+  recession_end: string;
+  duration_months: number;
+  signal_date: string | null;
+  lead_months: number | null;
+  max_prob_during: number;
+  pre_recession_max_prob: number;
+}
+
+export interface LeadTimeReport {
+  threshold: number;
+  lookback_months: number;
+  n_recessions_analyzed: number;
+  hit_rate: number;
+  avg_lead_months: number | null;
+  median_lead_months: number | null;
+  recessions: RecessionLead[];
+}
+
+export interface EnsembleModelView {
+  name: string;
+  probabilities: Record<string, number>;
+  error: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface EnsembleResult {
+  weights: Record<string, number>;
+  views: EnsembleModelView[];
+  ensemble_probabilities: Record<string, number>;
+  confidence: number;
+  disagreement_score: number;
+  high_disagreement: boolean;
+  dominant_regime: string;
+  notes: string[];
+}
+
+export interface CalibrationDiagnostic {
+  asset: string;
+  regime: string;
+  n_observations: number;
+  weight_measured: number;
+  prior: { hit_rate: number; avg_return: number; vol: number; sharpe: number };
+  measured: {
+    hit_rate: number | null;
+    real_return: number | null;
+    vol: number | null;
+    sharpe: number | null;
+  } | null;
+  calibrated: { hit_rate: number; avg_return: number; vol: number; sharpe: number };
+}
+
+export interface CalibrationPayload {
+  version: number;
+  calibrated_on: string;
+  n_classifications: number;
+  params: Record<string, number>;
+  diagnostics: CalibrationDiagnostic[];
+  use_calibrated_scoring: boolean;
+}
+
 export interface RegimeExplain {
   date: string;
   regime: Regime;

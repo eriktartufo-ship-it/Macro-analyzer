@@ -134,6 +134,98 @@ class SmoothedHistoryResponse(BaseModel):
     total_observations: int
 
 
+class AssetRegimeMeasured(BaseModel):
+    asset: str
+    regime: str
+    n_observations: int
+    hit_rate: float | None
+    real_return: float | None
+    volatility: float | None
+    sharpe: float | None
+
+
+class AssetValidationResponse(BaseModel):
+    """Confronto tra ASSET_REGIME_DATA hardcoded e metriche misurate dai prezzi reali."""
+    horizon_months: int
+    regime_threshold: float
+    measured: list[AssetRegimeMeasured]
+    hardcoded: list[AssetRegimeMeasured]
+    notes: list[str]
+
+
+class CalibrationDiagnostic(BaseModel):
+    asset: str
+    regime: str
+    n_observations: int
+    weight_measured: float
+    prior: dict[str, float]
+    measured: dict[str, float | None] | None
+    calibrated: dict[str, float]
+
+
+class BacktestStrategyResponse(BaseModel):
+    name: str
+    description: str
+    nav: list[dict]               # [{date, value}]
+    monthly_returns: list[dict]   # [{date, value}]
+    stats: dict                   # serializzato da PerformanceStats
+    alpha_vs_60_40: dict[str, float]
+
+
+class BacktestResponse(BaseModel):
+    common_start: str
+    common_end: str
+    n_months: int
+    strategies: list[BacktestStrategyResponse]
+
+
+class RecessionLeadResponse(BaseModel):
+    recession_start: str
+    recession_end: str
+    duration_months: int
+    signal_date: str | None
+    lead_months: float | None
+    max_prob_during: float
+    pre_recession_max_prob: float
+
+
+class LeadTimeResponse(BaseModel):
+    threshold: float
+    lookback_months: int
+    n_recessions_analyzed: int
+    hit_rate: float
+    avg_lead_months: float | None
+    median_lead_months: float | None
+    recessions: list[RecessionLeadResponse]
+
+
+class ModelViewResponse(BaseModel):
+    name: str
+    probabilities: dict[str, float]
+    error: str | None = None
+    metadata: dict | None = None
+
+
+class EnsembleResponse(BaseModel):
+    weights: dict[str, float]
+    views: list[ModelViewResponse]
+    ensemble_probabilities: dict[str, float]
+    confidence: float
+    disagreement_score: float
+    high_disagreement: bool
+    dominant_regime: str
+    notes: list[str]
+
+
+class CalibrationResponse(BaseModel):
+    version: int
+    calibrated_on: str
+    n_classifications: int
+    params: dict[str, float | int]
+    diagnostics: list[CalibrationDiagnostic]
+    use_calibrated_scoring: bool
+
+
 class NewsItemResponse(BaseModel):
     date: date
     source: str
@@ -450,6 +542,121 @@ def get_regime_hmm(
     )
 
 
+@router.get("/backtest/run", response_model=BacktestResponse)
+def run_backtest_endpoint(
+    start_year: int = Query(default=2003, ge=1990, le=2025),
+    end_year: int = Query(default=2026, ge=2000, le=2030),
+    top_n: int = Query(default=5, ge=1, le=15),
+    score_threshold: float = Query(default=30.0, ge=0.0, le=100.0),
+    cost_bps: float = Query(default=10.0, ge=0.0, le=100.0),
+    db: Session = Depends(get_db),
+):
+    """Backtest portfolio score-weighted vs benchmark (60/40, SPY, equal-weight)."""
+    from datetime import date as _date
+    from dataclasses import asdict
+    from app.services.backtest.runner import run_full_backtest
+
+    try:
+        result = run_full_backtest(
+            db,
+            start=_date(start_year, 1, 1),
+            end=_date(end_year, 12, 31),
+            top_n=top_n,
+            score_threshold=score_threshold,
+            cost_bps=cost_bps,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    strategies_out = []
+    for s in result.strategies:
+        nav_list = [{"date": str(idx.date()), "value": float(v)} for idx, v in s.nav.items()]
+        ret_list = [{"date": str(idx.date()), "value": float(v)} for idx, v in s.monthly_returns.items()]
+        strategies_out.append(BacktestStrategyResponse(
+            name=s.name,
+            description=s.description,
+            nav=nav_list,
+            monthly_returns=ret_list,
+            stats=asdict(s.stats),
+            alpha_vs_60_40=s.alpha_vs_60_40,
+        ))
+
+    return BacktestResponse(
+        common_start=result.common_start,
+        common_end=result.common_end,
+        n_months=result.n_months,
+        strategies=strategies_out,
+    )
+
+
+@router.get("/backtest/lead-time", response_model=LeadTimeResponse)
+def lead_time_endpoint(
+    threshold: float = Query(default=0.35, ge=0.10, le=0.80),
+    lookback_months: int = Query(default=12, ge=3, le=36),
+    min_recession_year: int = Query(default=1970, ge=1854, le=2020),
+    db: Session = Depends(get_db),
+):
+    """Lead time NBER recessions: di quanti mesi il sistema anticipa ogni recessione storica."""
+    from app.services.backtest.lead_time import compute_lead_time_report
+
+    r = compute_lead_time_report(
+        db,
+        threshold=threshold,
+        lookback_months=lookback_months,
+        min_recession_year=min_recession_year,
+    )
+    return LeadTimeResponse(
+        threshold=r.threshold,
+        lookback_months=r.lookback_months,
+        n_recessions_analyzed=r.n_recessions_analyzed,
+        hit_rate=r.hit_rate,
+        avg_lead_months=r.avg_lead_months,
+        median_lead_months=r.median_lead_months,
+        recessions=[
+            RecessionLeadResponse(
+                recession_start=rec.recession_start,
+                recession_end=rec.recession_end,
+                duration_months=rec.duration_months,
+                signal_date=rec.signal_date,
+                lead_months=rec.lead_months,
+                max_prob_during=rec.max_prob_during,
+                pre_recession_max_prob=rec.pre_recession_max_prob,
+            )
+            for rec in r.recessions
+        ],
+    )
+
+
+@router.get("/regime/ensemble", response_model=EnsembleResponse)
+def get_regime_ensemble(db: Session = Depends(get_db)):
+    """Ensemble di 3 modelli regime: rule-based + HMM-Market + MS-VAR.
+
+    Ritorna posterior pesata + flag `high_disagreement` quando i modelli divergono
+    (Jensen-Shannon divergence media pairwise). Useful per evidenziare incertezza:
+    quando high_disagreement=True non c'e' consensus, l'allocation dovrebbe essere
+    piu' conservativa.
+    """
+    from app.services.regime.ensemble import compute_ensemble
+
+    r = compute_ensemble(db)
+    return EnsembleResponse(
+        weights=r.weights,
+        views=[
+            ModelViewResponse(
+                name=v.name, probabilities=v.probabilities,
+                error=v.error, metadata=v.metadata,
+            )
+            for v in r.views
+        ],
+        ensemble_probabilities=r.ensemble_probabilities,
+        confidence=r.confidence,
+        disagreement_score=r.disagreement_score,
+        high_disagreement=r.high_disagreement,
+        dominant_regime=r.dominant_regime,
+        notes=r.notes,
+    )
+
+
 @router.get("/regime/smoothed-history", response_model=SmoothedHistoryResponse)
 def get_regime_smoothed_history(
     days: int = Query(default=365 * 5, ge=30, le=365 * 60),
@@ -473,6 +680,149 @@ def get_regime_smoothed_history(
         transition_horizon_days=result.transition_horizon_days,
         total_observations=result.total_observations,
     )
+
+
+@router.get("/asset-validation", response_model=AssetValidationResponse)
+def get_asset_validation(
+    horizon_months: int = Query(default=12, ge=3, le=36),
+    regime_threshold: float = Query(default=0.40, ge=0.25, le=0.70),
+    db: Session = Depends(get_db),
+):
+    """Phase 2 (MVP): confronto ASSET_REGIME_DATA hardcoded vs metriche misurate
+    da rendimenti reali (Yahoo Finance + CPI deflazionato)."""
+    from app.services.prices.asset_universe import ASSET_TICKERS
+    from app.services.prices.returns import metrics_by_regime, regime_probs_dataframe
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    notes: list[str] = []
+    rows = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.asc())
+        .all()
+    )
+    probs_df = regime_probs_dataframe(rows)
+    if probs_df.empty:
+        raise HTTPException(status_code=400, detail="Nessuna classification in DB. Esegui /regime/backfill/historical.")
+
+    measured: list[AssetRegimeMeasured] = []
+    hardcoded: list[AssetRegimeMeasured] = []
+    for asset in ASSET_TICKERS.keys():
+        try:
+            metrics = metrics_by_regime(
+                asset, probs_df, horizon_months=horizon_months, threshold=regime_threshold,
+            )
+            for m in metrics:
+                # NaN-safe per Pydantic
+                def _nz(x):
+                    import math
+                    return None if (x is None or (isinstance(x, float) and math.isnan(x))) else float(x)
+                measured.append(AssetRegimeMeasured(
+                    asset=m.asset, regime=m.regime, n_observations=m.n_observations,
+                    hit_rate=_nz(m.hit_rate), real_return=_nz(m.real_return),
+                    volatility=_nz(m.volatility), sharpe=_nz(m.sharpe),
+                ))
+        except Exception as e:
+            notes.append(f"{asset}: skip ({e})")
+
+        # Hardcoded reference dallo scoring engine
+        if asset in ASSET_REGIME_DATA:
+            for regime, stats in ASSET_REGIME_DATA[asset].items():
+                hardcoded.append(AssetRegimeMeasured(
+                    asset=asset, regime=regime, n_observations=0,
+                    hit_rate=stats.get("hit_rate"), real_return=stats.get("avg_return"),
+                    volatility=stats.get("vol"), sharpe=stats.get("sharpe"),
+                ))
+
+    if not notes:
+        notes.append("OK: validazione completata. NB: cash/bonds long pre-2007 senza backfill TR (yield≠prezzo).")
+
+    return AssetValidationResponse(
+        horizon_months=horizon_months,
+        regime_threshold=regime_threshold,
+        measured=measured,
+        hardcoded=hardcoded,
+        notes=notes,
+    )
+
+
+@router.get("/asset-calibration", response_model=CalibrationResponse)
+def get_asset_calibration():
+    """Restituisce la calibrazione persistita (seed/calibrated_asset_regime.json).
+
+    Mostra il confronto prior/measured/calibrated con il peso shrinkage applicato.
+    Per attivare la calibrazione nello scoring corrente, settare env var
+    USE_CALIBRATED_SCORING=1 e riavviare il backend.
+    """
+    import os
+    from app.services.scoring.calibration import load_calibration
+
+    payload = load_calibration()
+    if payload is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Calibrazione assente. Esegui POST /asset-calibration/run per generarla.",
+        )
+
+    use_calibrated = os.getenv("USE_CALIBRATED_SCORING", "0") in ("1", "true", "yes")
+    return CalibrationResponse(
+        version=payload["version"],
+        calibrated_on=payload["calibrated_on"],
+        n_classifications=payload["n_classifications"],
+        params=payload["params"],
+        diagnostics=[
+            CalibrationDiagnostic(
+                asset=d["asset"],
+                regime=d["regime"],
+                n_observations=d["n_observations"],
+                weight_measured=d["weight_measured"],
+                prior=d["prior"],
+                measured=d["measured"],
+                calibrated=d["calibrated"],
+            )
+            for d in payload["diagnostics"]
+        ],
+        use_calibrated_scoring=use_calibrated,
+    )
+
+
+@router.post("/asset-calibration/run")
+def run_asset_calibration(
+    horizon_months: int = Query(default=12, ge=3, le=36),
+    regime_threshold: float = Query(default=0.35, ge=0.25, le=0.70),
+    n_min: int = Query(default=8, ge=3, le=30),
+    n_full: int = Query(default=40, ge=10, le=200),
+    db: Session = Depends(get_db),
+):
+    """Rigenera la calibrazione e la persiste su disco.
+
+    Triggerare manualmente dopo:
+      - backfill storico modificato
+      - aggiunta nuovi indicatori al classifier
+      - cambio asset universe
+    """
+    from app.services.scoring.calibration import (
+        CalibrationParams, calibrate, save_calibration,
+    )
+    from app.services.scoring.engine import reload_calibration
+
+    params = CalibrationParams(
+        horizon_months=horizon_months,
+        regime_threshold=regime_threshold,
+        n_min=n_min,
+        n_full=n_full,
+    )
+    try:
+        payload = calibrate(db, params)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    save_calibration(payload)
+    reload_calibration()
+    return {
+        "status": "ok",
+        "n_classifications": payload["n_classifications"],
+        "n_diagnostics": len(payload["diagnostics"]),
+        "calibrated_on": payload["calibrated_on"],
+    }
 
 
 @router.get("/regime/history", response_model=list[RegimeResponse])

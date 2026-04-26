@@ -80,11 +80,15 @@ FRED_SERIES = {
         "transform": "roc",
     },
     # --- Leading Indicators ---
+    # CFNAIMA3 (Chicago Fed National Activity Index, 3-month MA) sintetizza 85
+    # indicatori macro in un singolo z-score (media 0 = trend growth, +1 = sopra,
+    # -1 = sotto). Sostituisce USSLIND (state-level, scale incompatibile con
+    # le condizioni del classifier — produceva ROC fino a 30%).
     "lei": {
-        "fred_id": "USSLIND",
-        "description": "Leading Economic Index (Conference Board)",
+        "fred_id": "CFNAIMA3",
+        "description": "Chicago Fed National Activity Index, 3-month MA (proxy LEI)",
         "frequency": "monthly",
-        "transform": "roc",
+        "transform": "level",
     },
     # --- Interest Rates & Yield Curve ---
     "fed_funds": {
@@ -128,6 +132,32 @@ FRED_SERIES = {
         "fred_id": "STLFSI2",
         "description": "St. Louis Fed Financial Stress Index",
         "frequency": "weekly",
+        "transform": "level",
+    },
+    "hy_credit_spread": {
+        "fred_id": "BAMLH0A0HYM2",
+        "description": "ICE BofA High Yield OAS (% over Treasuries) — leader stress 3-6m",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    "ig_credit_spread": {
+        "fred_id": "BAMLC0A0CM",
+        "description": "ICE BofA Investment Grade OAS (% over Treasuries)",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    # --- Nowcasting ---
+    "gdp_nowcast": {
+        "fred_id": "GDPNOW",
+        "description": "Atlanta Fed GDPNow (real-time GDP forecast %)",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    # --- Ground truth recessione (per backtesting) ---
+    "nber_recession": {
+        "fred_id": "USREC",
+        "description": "NBER recession indicator (1=recession, 0=expansion)",
+        "frequency": "monthly",
         "transform": "level",
     },
     # --- Market Expectations (forward-looking) ---
