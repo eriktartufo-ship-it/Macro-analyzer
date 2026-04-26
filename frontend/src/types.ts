@@ -186,6 +186,74 @@ export interface HMMPrediction {
   feature_stds: Record<string, number>;
 }
 
+export interface ScoreComparisonItem {
+  asset: string;
+  pure_score: number;
+  adjusted_score: number;
+  dedollar_delta: number;
+  sensitivity: number;
+}
+
+export interface DedollarComparison {
+  date: string;
+  regime: string;
+  probabilities: Record<string, number>;
+  dedollar_combined_score: number;
+  use_dedollar_bonus_active: boolean;
+  items: ScoreComparisonItem[];
+}
+
+export interface BandSeries {
+  median: number[];
+  p10: number[];
+  p25: number[];
+  p75: number[];
+  p90: number[];
+  mean: number[];
+}
+
+export interface RegimeBand extends BandSeries {
+  regime: string;
+}
+
+export interface AssetBand extends BandSeries {
+  asset: string;
+}
+
+export interface MonteCarloForecast {
+  n_paths: number;
+  n_steps: number;
+  horizon_days: number;
+  initial_distribution: Record<string, number>;
+  step_dates_offsets: number[];
+  transition_matrix_observations: number;
+  regime_bands: RegimeBand[];
+  asset_bands: AssetBand[];
+  notes: string[];
+}
+
+export interface ScenarioPreset {
+  key: string;
+  label: string;
+  description: string;
+  deltas: Record<string, { op: string; value: number }>;
+}
+
+export interface ScenarioResult {
+  scenario_key: string;
+  label: string;
+  description: string;
+  baseline_indicators: Record<string, number>;
+  shocked_indicators: Record<string, number>;
+  baseline_regime: string;
+  baseline_probabilities: Record<string, number>;
+  shocked_regime: string;
+  shocked_probabilities: Record<string, number>;
+  baseline_scores: Record<string, number>;
+  shocked_scores: Record<string, number>;
+  asset_score_deltas: Record<string, number>;
+}
+
 export interface PerfStats {
   total_return: number;
   annualized_return: number;

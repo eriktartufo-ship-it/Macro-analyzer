@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { AssetCalibrationPanel } from "./AssetCalibrationPanel";
 import { BacktestPanel } from "./BacktestPanel";
+import { DedollarComparisonPanel } from "./DedollarComparisonPanel";
+import { MonteCarloPanel } from "./MonteCarloPanel";
 import { RegimeDynamicsPanel } from "./RegimeDynamicsPanel";
 import { RegimeEnsemblePanel } from "./RegimeEnsemblePanel";
 import { ScrollShadow } from "./ScrollShadow";
@@ -364,9 +366,13 @@ export function DataPage() {
 
       <RegimeEnsemblePanel />
 
+      <MonteCarloPanel />
+
       <RegimeDynamicsPanel />
 
       <AssetCalibrationPanel />
+
+      <DedollarComparisonPanel />
 
       <BacktestPanel />
 

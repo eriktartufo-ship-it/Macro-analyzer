@@ -273,6 +273,7 @@ def calculate_trajectory(
     news_sentiment: float = 0.0,
     dedollar_score: float = 0.0,
     current_fit_scores: dict[str, float] | None = None,
+    force_include_dedollar: bool | None = None,
 ) -> dict[str, Any]:
     """Calcola la traiettoria del regime.
 
@@ -280,7 +281,10 @@ def calculate_trajectory(
         current_probabilities: Probabilità regime attuali
         indicators: Indicatori macro correnti
         news_sentiment: Sentiment medio notizie (-1 to +1)
-        dedollar_score: Score dedollarizzazione (0-1)
+        dedollar_score: Score dedollarizzazione (0-1) — applicato SOLO se env
+            USE_DEDOLLAR_BONUS=1 o force_include_dedollar=True. Default OFF =
+            traiettoria pure data-driven sui macro indicators.
+        force_include_dedollar: override del flag env.
 
     Returns:
         {
@@ -293,6 +297,12 @@ def calculate_trajectory(
             "summary": str,
         }
     """
+    from app.services.config_flags import use_dedollar_bonus
+
+    if force_include_dedollar is None:
+        include_dedollar = use_dedollar_bonus()
+    else:
+        include_dedollar = bool(force_include_dedollar)
     # Accumula pressioni su ogni regime
     pressure: dict[str, float] = {r: 0.0 for r in REGIMES}
     forces: list[dict] = []
@@ -334,21 +344,23 @@ def calculate_trajectory(
                 "strength": round(mapping[top_regime], 2),
             })
 
-    # 3. DEDOLLARIZZAZIONE
-    dedollar_cat = _get_dedollar_category(dedollar_score)
-    mapping = DEDOLLAR_REGIME_PRESSURE.get(dedollar_cat, {})
-    for regime, weight in mapping.items():
-        pressure[regime] += weight
+    # 3. DEDOLLARIZZAZIONE — solo se include_dedollar attivo (env USE_DEDOLLAR_BONUS=1
+    # o force_include_dedollar=True). Default: trajectory pure data-driven sui macro.
+    if include_dedollar:
+        dedollar_cat = _get_dedollar_category(dedollar_score)
+        mapping = DEDOLLAR_REGIME_PRESSURE.get(dedollar_cat, {})
+        for regime, weight in mapping.items():
+            pressure[regime] += weight
 
-    if mapping:
-        top_regime = max(mapping, key=mapping.get)
-        forces.append({
-            "name": f"dedollar_{dedollar_cat}",
-            "type": "dedollarization",
-            "description": f"Dedollarization: {dedollar_cat}",
-            "pushes_toward": top_regime,
-            "strength": round(mapping[top_regime], 2),
-        })
+        if mapping:
+            top_regime = max(mapping, key=mapping.get)
+            forces.append({
+                "name": f"dedollar_{dedollar_cat}",
+                "type": "dedollarization",
+                "description": f"Dedollarization: {dedollar_cat}",
+                "pushes_toward": top_regime,
+                "strength": round(mapping[top_regime], 2),
+            })
 
     # Ordina forze per strength
     forces.sort(key=lambda f: abs(f["strength"]), reverse=True)

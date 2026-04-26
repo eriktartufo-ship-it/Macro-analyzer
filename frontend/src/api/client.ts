@@ -3,11 +3,15 @@ import type {
   CalibrationPayload,
   CurrentRegime,
   DataSnapshot,
+  DedollarComparison,
   DedollarHistoryItem,
   Dedollarization,
   EnsembleResult,
   HMMPrediction,
   LeadTimeReport,
+  MonteCarloForecast,
+  ScenarioPreset,
+  ScenarioResult,
   MacroIndicatorsHistoryItem,
   NewsItem,
   PlayerHistoryItem,
@@ -95,6 +99,17 @@ export const api = {
   },
   backtestLeadTime: (threshold = 0.35, lookbackMonths = 12) =>
     request<LeadTimeReport>(`/backtest/lead-time?threshold=${threshold}&lookback_months=${lookbackMonths}`, undefined, { retries: 0 }),
+  monteCarloForecast: (params: { nPaths?: number; nSteps?: number; horizonDays?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.nPaths) q.set("n_paths", String(params.nPaths));
+    if (params.nSteps) q.set("n_steps", String(params.nSteps));
+    if (params.horizonDays) q.set("horizon_days", String(params.horizonDays));
+    return request<MonteCarloForecast>(`/regime/forecast/monte-carlo${q.toString() ? "?" + q.toString() : ""}`, undefined, { retries: 0 });
+  },
+  scenariosList: () => request<ScenarioPreset[]>("/scenarios/list"),
+  scenarioRun: (key: string) =>
+    request<ScenarioResult>(`/scenarios/run?scenario_key=${encodeURIComponent(key)}`, undefined, { retries: 0 }),
+  dedollarComparison: () => request<DedollarComparison>("/scoreboard/dedollar-comparison"),
   assetCalibration: () => request<CalibrationPayload>("/asset-calibration", undefined, { retries: 0 }),
   runAssetCalibration: () =>
     request<{ status: string; n_classifications: number }>(

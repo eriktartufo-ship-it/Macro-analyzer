@@ -163,6 +163,70 @@ class CalibrationDiagnostic(BaseModel):
     calibrated: dict[str, float]
 
 
+class ScoreComparisonItem(BaseModel):
+    asset: str
+    pure_score: float           # senza dedollar bonus (puro data-driven)
+    adjusted_score: float       # con dedollar bonus
+    dedollar_delta: float       # adjusted - pure (puo' essere negativo)
+    sensitivity: float          # ASSET_DEDOLLAR_SENSITIVITY[asset]
+
+
+class ScoreboardDedollarComparison(BaseModel):
+    date: date
+    regime: str
+    probabilities: dict[str, float]
+    dedollar_combined_score: float
+    use_dedollar_bonus_active: bool      # stato corrente env var
+    items: list[ScoreComparisonItem]     # ordinati per |dedollar_delta| desc
+
+
+class RegimeBandResponse(BaseModel):
+    regime: str
+    median: list[float]
+    p10: list[float]
+    p25: list[float]
+    p75: list[float]
+    p90: list[float]
+    mean: list[float]
+
+
+class AssetBandResponse(BaseModel):
+    asset: str
+    median: list[float]
+    p10: list[float]
+    p25: list[float]
+    p75: list[float]
+    p90: list[float]
+    mean: list[float]
+
+
+class MonteCarloResponse(BaseModel):
+    n_paths: int
+    n_steps: int
+    horizon_days: int
+    initial_distribution: dict[str, float]
+    step_dates_offsets: list[int]
+    transition_matrix_observations: int
+    regime_bands: list[RegimeBandResponse]
+    asset_bands: list[AssetBandResponse]
+    notes: list[str]
+
+
+class ScenarioResponse(BaseModel):
+    scenario_key: str
+    label: str
+    description: str
+    baseline_indicators: dict[str, float]
+    shocked_indicators: dict[str, float]
+    baseline_regime: str
+    baseline_probabilities: dict[str, float]
+    shocked_regime: str
+    shocked_probabilities: dict[str, float]
+    baseline_scores: dict[str, float]
+    shocked_scores: dict[str, float]
+    asset_score_deltas: dict[str, float]
+
+
 class BacktestStrategyResponse(BaseModel):
     name: str
     description: str
@@ -542,6 +606,84 @@ def get_regime_hmm(
     )
 
 
+@router.get("/regime/forecast/monte-carlo", response_model=MonteCarloResponse)
+def get_regime_monte_carlo(
+    n_paths: int = Query(default=500, ge=100, le=5000),
+    n_steps: int = Query(default=12, ge=1, le=36),
+    horizon_days: int = Query(default=30, ge=7, le=90),
+    db: Session = Depends(get_db),
+):
+    """Monte Carlo regime trajectories: simula N path dalla transition matrix
+    empirica e ritorna percentili (p10/p25/p50/p75/p90) per regime + asset score.
+    """
+    from app.services.regime.monte_carlo import run_monte_carlo
+
+    try:
+        r = run_monte_carlo(db, n_paths=n_paths, n_steps=n_steps, horizon_days=horizon_days)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return MonteCarloResponse(
+        n_paths=r.n_paths,
+        n_steps=r.n_steps,
+        horizon_days=r.horizon_days,
+        initial_distribution=r.initial_distribution,
+        step_dates_offsets=r.step_dates_offsets,
+        transition_matrix_observations=r.transition_matrix_observations,
+        regime_bands=[
+            RegimeBandResponse(
+                regime=b.regime,
+                median=b.median, p10=b.p10, p25=b.p25, p75=b.p75, p90=b.p90, mean=b.mean,
+            )
+            for b in r.regime_bands
+        ],
+        asset_bands=[
+            AssetBandResponse(
+                asset=b.asset,
+                median=b.median, p10=b.p10, p25=b.p25, p75=b.p75, p90=b.p90, mean=b.mean,
+            )
+            for b in r.asset_bands
+        ],
+        notes=r.notes,
+    )
+
+
+@router.get("/scenarios/list")
+def list_scenarios():
+    """Lista scenari preset disponibili."""
+    from app.services.regime.shock_scenarios import list_preset_scenarios
+    return list_preset_scenarios()
+
+
+@router.get("/scenarios/run", response_model=ScenarioResponse)
+def run_scenario_endpoint(
+    scenario_key: str = Query(..., description="key dal /scenarios/list"),
+    db: Session = Depends(get_db),
+):
+    """Esegue uno scenario preset: confronto baseline vs shocked (regime + asset scores)."""
+    from app.services.regime.shock_scenarios import run_scenario
+
+    try:
+        r = run_scenario(db, scenario_key)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return ScenarioResponse(
+        scenario_key=r.scenario_key,
+        label=r.label,
+        description=r.description,
+        baseline_indicators=r.baseline_indicators,
+        shocked_indicators=r.shocked_indicators,
+        baseline_regime=r.baseline_regime,
+        baseline_probabilities=r.baseline_probabilities,
+        shocked_regime=r.shocked_regime,
+        shocked_probabilities=r.shocked_probabilities,
+        baseline_scores=r.baseline_scores,
+        shocked_scores=r.shocked_scores,
+        asset_score_deltas=r.asset_score_deltas,
+    )
+
+
 @router.get("/backtest/run", response_model=BacktestResponse)
 def run_backtest_endpoint(
     start_year: int = Query(default=2003, ge=1990, le=2025),
@@ -906,6 +1048,79 @@ def get_scoreboard(db: Session = Depends(get_db)):
         regime=regime.regime,
         confidence=regime.confidence,
         scores=scores,
+    )
+
+
+@router.get("/scoreboard/dedollar-comparison", response_model=ScoreboardDedollarComparison)
+def get_scoreboard_dedollar_comparison(db: Session = Depends(get_db)):
+    """Confronto side-by-side asset scores PURE (data-driven) vs ADJUSTED (con dedollar bonus).
+
+    Ricalcola entrambe le viste on-the-fly dalle prob regime correnti + dedollar score.
+    Indipendente dall'env var USE_DEDOLLAR_BONUS — l'utente vede sempre il delta cosi' da
+    poter giudicare quanto la dedollarizzazione sposta il ranking.
+    """
+    from app.services.config_flags import use_dedollar_bonus
+    from app.services.dedollarization.scorer import (
+        ASSET_DEDOLLAR_SENSITIVITY,
+        calculate_secular_bonus,
+    )
+
+    regime = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .first()
+    )
+    if not regime:
+        raise HTTPException(status_code=404, detail="Nessuna classificazione in DB")
+
+    probabilities = {
+        "reflation": regime.probability_reflation,
+        "stagflation": regime.probability_stagflation,
+        "deflation": regime.probability_deflation,
+        "goldilocks": regime.probability_goldilocks,
+    }
+
+    # Dedollar combined score corrente
+    latest_sec = (
+        db.query(SecularTrend)
+        .filter(SecularTrend.trend_name == "dedollarization")
+        .order_by(SecularTrend.date.desc())
+        .first()
+    )
+    if latest_sec is None:
+        dedollar_score = 0.0
+    else:
+        try:
+            payload = json.loads(latest_sec.metadata_json) if latest_sec.metadata_json else {}
+            dedollar_score = payload.get("combined_score", latest_sec.score)
+        except Exception:
+            dedollar_score = float(latest_sec.score)
+
+    secular_bonus = calculate_secular_bonus(dedollar_score)
+    pure_scores = calculate_final_scores(probabilities, secular_bonus, force_include_dedollar=False)
+    adjusted_scores = calculate_final_scores(probabilities, secular_bonus, force_include_dedollar=True)
+
+    items: list[ScoreComparisonItem] = []
+    for asset in ASSET_CLASSES:
+        pure = pure_scores.get(asset, 0.0)
+        adj = adjusted_scores.get(asset, 0.0)
+        items.append(ScoreComparisonItem(
+            asset=asset,
+            pure_score=pure,
+            adjusted_score=adj,
+            dedollar_delta=round(adj - pure, 2),
+            sensitivity=ASSET_DEDOLLAR_SENSITIVITY.get(asset, 0.0),
+        ))
+
+    items.sort(key=lambda it: abs(it.dedollar_delta), reverse=True)
+
+    return ScoreboardDedollarComparison(
+        date=regime.date,
+        regime=regime.regime,
+        probabilities=probabilities,
+        dedollar_combined_score=float(dedollar_score),
+        use_dedollar_bonus_active=use_dedollar_bonus(),
+        items=items,
     )
 
 

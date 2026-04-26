@@ -266,6 +266,7 @@ def calculate_final_scores(
     secular_bonus: dict[str, float] | None = None,
     news_signals: dict[str, float] | None = None,
     momentum_penalty: dict[str, float] | None = None,
+    force_include_dedollar: bool | None = None,
 ) -> dict[str, float]:
     """Calcola lo score finale per ogni asset class.
 
@@ -277,13 +278,23 @@ def calculate_final_scores(
 
     Args:
         probabilities: Dict {regime: probabilita} (deve sommare a ~1.0)
-        secular_bonus: Dict {asset: bonus 0-10} (Fase 2)
-        news_signals: Dict {asset: signal -5 to +5} (Fase 2)
+        secular_bonus: Dict {asset: bonus} - applicato SOLO se env USE_DEDOLLAR_BONUS=1
+            o force_include_dedollar=True. Quando OFF, gli score sono pure data-driven.
+        news_signals: Dict {asset: signal -5 to +5}
         momentum_penalty: Dict {asset: penalty 0-10}
+        force_include_dedollar: override del flag env (utile per esporre vista
+            "with dedollar" nell'API senza riavviare). Se None, usa env var.
 
     Returns:
         Dict {asset_class: score 0-100}
     """
+    from app.services.config_flags import use_dedollar_bonus
+
+    if force_include_dedollar is None:
+        include_dedollar = use_dedollar_bonus()
+    else:
+        include_dedollar = bool(force_include_dedollar)
+
     total_prob = sum(probabilities.values())
     if total_prob > 0 and abs(total_prob - 1.0) > 0.001:
         probabilities = {r: p / total_prob for r, p in probabilities.items()}
@@ -296,7 +307,7 @@ def calculate_final_scores(
             for regime in probabilities
         )
 
-        bonus = (secular_bonus or {}).get(asset, 0.0)
+        bonus = (secular_bonus or {}).get(asset, 0.0) if include_dedollar else 0.0
         news = (news_signals or {}).get(asset, 0.0)
         penalty = (momentum_penalty or {}).get(asset, 0.0)
 
