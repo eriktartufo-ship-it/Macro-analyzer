@@ -204,13 +204,16 @@ def backfill_regime_history_long(
     fetcher = FredFetcher()
     series: dict[str, pd.Series] = {}
 
+    # Buffer di 2 anni indietro: roc 12m e initial_claims 13-period need
+    # dati pre-start_date per calcolare il primo punto.
+    fetch_start = start_date - timedelta(days=365 * 2)
     logger.info(
         f"Backfill storico: fetch {len(_CLASSIFIER_SERIES)} serie FRED "
-        f"({start_date} → {end_date}, step={step_days}d)"
+        f"(fetch_buffer {fetch_start} → {end_date}, classify {start_date} → {end_date}, step={step_days}d)"
     )
     for name in _CLASSIFIER_SERIES:
         try:
-            series[name] = fetcher.fetch_series(name, start_date=start_date, end_date=end_date)
+            series[name] = fetcher.fetch_series(name, start_date=fetch_start, end_date=end_date)
         except Exception as e:
             logger.warning(f"Backfill: impossibile fetchare {name}: {e}")
 

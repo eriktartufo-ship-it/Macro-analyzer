@@ -321,10 +321,19 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     cpi = indicators.get("cpi_yoy", 2.0)
     gdp = indicators.get("gdp_roc", 0.0)
     unrate = indicators.get("unrate", 4.5)
+    breakeven = indicators.get("breakeven_10y", 2.0)
 
-    # Deflation richiede inflation NON alta — penalizza se CPI > 3.5%
-    if cpi > 3.5:
-        raw_scores["deflation"] *= max(0.3, 1.0 - (cpi - 3.5) * 0.15)
+    # Deflation richiede inflation NON alta. Soglia allineata al Fed target (2%):
+    # sopra 2.5% (= target + buffer) la deflation classica e' incompatibile per definizione.
+    # Penalty progressiva: -25% per ogni 1% sopra 2.5, floor 0.20 (mai zero).
+    # Es. CPI 3.5% -> penalty 0.75; CPI 4.5% -> penalty 0.50; CPI 5.5% -> floor 0.25.
+    if cpi > 2.5:
+        raw_scores["deflation"] *= max(0.20, 1.0 - (cpi - 2.5) * 0.25)
+    # Deflation richiede anche aspettative di inflation basse: se breakeven > 2.3% (mercato
+    # pricing inflation forward sopra Fed target), riduci ulteriormente. Questo cattura
+    # il caso "CPI scende ma mercato non crede" -> NON e' deflation classica.
+    if breakeven > 2.3:
+        raw_scores["deflation"] *= max(0.40, 1.0 - (breakeven - 2.3) * 0.40)
     # Deflation richiede economia debole — penalizza se unemployment basso E GDP positivo
     # (il 90s in goldilocks non dovrebbe catturare fit_deflation alto)
     if unrate < 5.0 and gdp > 1.0:
@@ -339,9 +348,10 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     # Reflation richiede GDP positivo — penalizza se GDP < 0
     if gdp < 0:
         raw_scores["reflation"] *= max(0.3, 1.0 + gdp * 0.15)
-    # Goldilocks richiede inflation bassa — penalizza se CPI > 3.5%
-    if cpi > 3.5:
-        raw_scores["goldilocks"] *= max(0.3, 1.0 - (cpi - 3.5) * 0.2)
+    # Goldilocks richiede inflation bassa — soglia 2.5% (Fed target+buffer), prima era 3.5
+    # (troppo permissivo: 3.5% non e' goldilocks per nessuna definizione moderna).
+    if cpi > 2.5:
+        raw_scores["goldilocks"] *= max(0.25, 1.0 - (cpi - 2.5) * 0.30)
 
     # Fit score indipendenti [0, 1] per regime: somma pesata condizioni post-penalty
     # ma PRE-normalizzazione. Esprime "quanto lo stato corrente somiglia a questo regime"

@@ -185,14 +185,15 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         except Exception:
             pass
 
-    # LEI ROC
+    # LEI level (CFNAIMA3): la serie e' gia' un z-score (range circa +/-3) che
+    # rappresenta deviation dal trend di crescita. NON applicare ROC: lo z-score
+    # oscillante attorno a 0 produce ROC sballati (es. da -0.2 a 0.1 -> +150%).
+    # Il classifier usa la chiave `lei_roc` ma vuole il LIVELLO CFNAI come tale
+    # (vedi backfill._build_indicators_as_of con last_before("lei")).
     if "lei" in latest:
         try:
-            lei_data = fetcher.fetch_and_transform("lei")
-            roc = lei_data.get("roc_6m")
-            if roc is not None and not roc.empty:
-                indicators["lei_roc"] = float(roc.dropna().iloc[-1])
-        except Exception:
+            indicators["lei_roc"] = float(latest["lei"])
+        except (TypeError, ValueError):
             pass
 
     # Fed Funds

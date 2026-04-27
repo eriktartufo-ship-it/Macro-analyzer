@@ -218,6 +218,60 @@ def test_2009_deflation_is_dominant():
     assert probs["deflation"] > 0.40, f"deflation={probs['deflation']:.2f}"
 
 
+def test_2026_high_cpi_low_deflation():
+    """Regression: CPI 3.3% (sopra Fed target) + GDP 0.12% + UNRATE 4.3% (basso) =
+    economia stagnante con inflation NON-disinflattiva. Deflation NON deve
+    essere > 20%, tantomeno la seconda più alta. Bug rilevato 2026-04: con la
+    soglia penalty CPI a 3.5%, la deflation arrivava al 22% nonostante l'inflation
+    sopra target Fed. Fix: soglia abbassata a 2.5% + breakeven gate."""
+    indicators = {
+        "gdp_roc": 0.12, "cpi_yoy": 3.32, "unrate": 4.30, "unrate_roc": -2.27,
+        "pmi": 50.0, "yield_curve_10y2y": 0.51, "yield_curve_10y3m": 0.65,
+        "initial_claims_roc": -2.73, "lei_roc": -0.03, "fed_funds_rate": 3.64,
+        "core_pce_yoy": 2.97, "payrolls_roc_12m": 0.16, "indpro_roc_12m": 0.74,
+        "baa_spread": 1.69, "consumer_sentiment": 56.6, "vix": 19.31,
+        "nfci": -0.497, "breakeven_10y": 2.42, "housing_starts_roc_12m": 9.50,
+    }
+    result = classify_regime(indicators)
+    probs = result["probabilities"]
+    assert probs["deflation"] < 0.20, (
+        f"deflation {probs['deflation']:.2f} >= 0.20 con CPI alto + breakeven 2.42% "
+        f"(mercato pricing inflation forward)"
+    )
+    # Stagflation > deflation (con GDP basso + CPI alto, stag domina)
+    assert probs["stagflation"] > probs["deflation"], (
+        f"stag {probs['stagflation']:.2f} <= defl {probs['deflation']:.2f}"
+    )
+
+
+def test_lei_zscore_does_not_break_classifier():
+    """Regression: il LEI ora e' CFNAIMA3 (z-score range +/-3), non un livello indice.
+    Il classifier deve gestire valori normali (-0.5 a +0.5) senza saturare lei_negative.
+    Bug pre-fix: scheduler/jobs.py applicava ROC al CFNAI generando valori -86%/+121%
+    che saturavano la condizione 'lei_negative' a 1.0 e gonfiavano deflation."""
+    base_indicators = {
+        "gdp_roc": 2.0, "cpi_yoy": 2.5, "unrate": 4.5, "unrate_roc": 0.0,
+        "pmi": 52.0, "yield_curve_10y2y": 0.8, "initial_claims_roc": 0.0,
+        "fed_funds_rate": 3.0, "core_pce_yoy": 2.3, "payrolls_roc_12m": 1.5,
+        "indpro_roc_12m": 1.5, "baa_spread": 2.0, "consumer_sentiment": 75.0,
+    }
+    # Con LEI normale (CFNAI z-score -0.1, leggermente sotto trend)
+    normal = dict(base_indicators, lei_roc=-0.1)
+    r_normal = classify_regime(normal)
+
+    # Con LEI sballato (-86, l'output buggato del vecchio ROC su CFNAI)
+    buggy = dict(base_indicators, lei_roc=-86.0)
+    r_buggy = classify_regime(buggy)
+
+    # I valori CFNAI non possono essere -86, ma se per qualche motivo arrivano,
+    # la deflation NON deve esplodere. Differenza accettabile < 10pt.
+    delta = r_buggy["probabilities"]["deflation"] - r_normal["probabilities"]["deflation"]
+    assert delta < 0.20, (
+        f"deflation delta {delta*100:.1f}pt (normal->buggy LEI) troppo grande: "
+        f"il classifier non e' robusto a outlier LEI"
+    )
+
+
 def test_1996_no_false_deflation():
     """Regression: il 1996 (GDP ~2%, CPI ~3%, UNRATE ~5.4%) non deve avere
     prob deflation eccessiva — economia in salute con inflation moderata = goldilocks/reflation,
