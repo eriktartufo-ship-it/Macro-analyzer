@@ -4,6 +4,7 @@ import { AssetCalibrationPanel } from "./AssetCalibrationPanel";
 import { BacktestPanel } from "./BacktestPanel";
 import { DedollarComparisonPanel } from "./DedollarComparisonPanel";
 import { FactorRegimePanel } from "./FactorRegimePanel";
+import { FOMCSentimentPanel } from "./FOMCSentimentPanel";
 import { MonteCarloPanel } from "./MonteCarloPanel";
 import { RegimeDynamicsPanel } from "./RegimeDynamicsPanel";
 import { RegimeEnsemblePanel } from "./RegimeEnsemblePanel";
@@ -368,6 +369,8 @@ export function DataPage() {
       </div>
 
       <RegimeEnsemblePanel />
+
+      <FOMCSentimentPanel />
 
       <MonteCarloPanel />
 

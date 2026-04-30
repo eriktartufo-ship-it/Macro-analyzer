@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     newsapi_key: str = ""
     gemini_api_key: str = ""
+    anthropic_api_key: str = ""  # Claude API per FOMC text analysis (Phase 6a)
     scheduler_hour: int = 6
     scheduler_minute: int = 0
 

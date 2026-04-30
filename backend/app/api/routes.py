@@ -163,6 +163,29 @@ class CalibrationDiagnostic(BaseModel):
     calibrated: dict[str, float]
 
 
+class FOMCAnalysisResponse(BaseModel):
+    url: str
+    doc_type: str
+    published_date: str
+    title: str
+    hawkish_dovish_score: float
+    confidence: float
+    key_topics: list[str]
+    forward_guidance: str
+    regime_implication: dict[str, float]
+    summary: str
+    provider: str
+    analyzed_at: str
+
+
+class FOMCReportResponse(BaseModel):
+    analyses: list[FOMCAnalysisResponse]
+    latest_score: float | None
+    avg_score_3last: float | None
+    trend: str
+    n_documents: int
+
+
 class TermPremiumPointResponse(BaseModel):
     date: date
     fitted_yield: float
@@ -1152,6 +1175,28 @@ def get_scoreboard(
         regime=regime.regime,
         confidence=regime.confidence,
         scores=scores,
+    )
+
+
+@router.get("/fomc/report", response_model=FOMCReportResponse)
+def get_fomc_report(
+    limit: int = Query(default=6, ge=1, le=12),
+    force_refresh: bool = Query(default=False),
+):
+    """FOMC statements/minutes con sentiment hawkish/dovish via LLM (Claude → Groq fallback).
+
+    Cache aggressiva su disco per URL. force_refresh=true forza ri-analisi.
+    Trend = differenza tra primo e ultimo score (hawkening/dovening/stable).
+    """
+    from app.services.fomc.service import build_fomc_report, serialize_analysis
+
+    report = build_fomc_report(limit=limit, force_refresh=force_refresh)
+    return FOMCReportResponse(
+        analyses=[FOMCAnalysisResponse(**serialize_analysis(a)) for a in report.analyses],
+        latest_score=report.latest_score,
+        avg_score_3last=report.avg_score_3last,
+        trend=report.trend,
+        n_documents=report.n_documents,
     )
 
 

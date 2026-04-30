@@ -9,6 +9,7 @@ import type {
   Dedollarization,
   EnsembleResult,
   FactorRegimeReport,
+  FOMCReport,
   HMMPrediction,
   LeadTimeReport,
   MonteCarloForecast,
@@ -135,6 +136,8 @@ export const api = {
     request<FactorRegimeReport>(`/factors/regime-mapping?threshold=${threshold}`),
   termPremiumReport: (threshold = 0.40, days = 365 * 30) =>
     request<TermPremiumReport>(`/indicators/term-premium?threshold=${threshold}&days=${days}`),
+  fomcReport: (limit = 6, forceRefresh = false) =>
+    request<FOMCReport>(`/fomc/report?limit=${limit}&force_refresh=${forceRefresh}`, undefined, { retries: 0 }),
   smoothedIndicatorsList: () => request<SmoothableIndicator[]>("/indicators/smoothed/list"),
   smoothedIndicator: (seriesName: string, lambda = 10.0, days = 365 * 5) =>
     request<SmoothedIndicator>(

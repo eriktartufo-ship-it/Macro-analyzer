@@ -186,6 +186,29 @@ export interface HMMPrediction {
   feature_stds: Record<string, number>;
 }
 
+export interface FOMCAnalysis {
+  url: string;
+  doc_type: string;
+  published_date: string;
+  title: string;
+  hawkish_dovish_score: number;
+  confidence: number;
+  key_topics: string[];
+  forward_guidance: string;
+  regime_implication: Record<string, number>;
+  summary: string;
+  provider: string;
+  analyzed_at: string;
+}
+
+export interface FOMCReport {
+  analyses: FOMCAnalysis[];
+  latest_score: number | null;
+  avg_score_3last: number | null;
+  trend: string;
+  n_documents: number;
+}
+
 export interface TermPremiumPoint {
   date: string;
   fitted_yield: number;
