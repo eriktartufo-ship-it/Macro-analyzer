@@ -18,29 +18,28 @@ from app.services.scoring.engine import ASSET_CLASSES
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 MODEL = "llama-3.3-70b-versatile"
 
-SYSTEM_PROMPT = """You are a macro-economic analyst. Given a list of recent financial news headlines, analyze each one and provide:
+SYSTEM_PROMPT = """Role: macro analyst. Task: score N headlines -> JSON array.
 
-1. **sentiment**: Score from -1.0 (very bearish for global economy) to +1.0 (very bullish)
-2. **relevance**: Score from 0.0 (irrelevant to macro analysis) to 1.0 (highly relevant)
-3. **summary**: One sentence explanation in English
-4. **affected_assets**: Dict of asset classes impacted, with score from -1.0 (very negative for that asset) to +1.0 (very positive)
+Schema per item (raw JSON, no markdown):
+{
+  "headline": str,
+  "sentiment": float[-1,+1],
+  "relevance": float[0,1],
+  "summary": str,
+  "affected_assets": {asset_class: float[-1,+1]}
+}
 
-Available asset classes: us_equities_growth, us_equities_value, international_dm_equities, em_equities, us_bonds_short, us_bonds_long, tips_inflation_bonds, gold, silver, broad_commodities, energy, real_estate_reits, cash_money_market, bitcoin, crypto_broad
+Field rules:
+- sentiment: -1=very bearish global econ; +1=very bullish.
+- relevance: 0=non-economic; 1=highly macro-relevant.
+- summary: 1 sentence EN.
+- affected_assets: include only |score|>0.1.
 
-Respond with a JSON array. Example:
-[
-  {
-    "headline": "Fed raises rates by 50bps",
-    "sentiment": -0.4,
-    "relevance": 0.95,
-    "summary": "Aggressive rate hike signals tighter monetary conditions ahead",
-    "affected_assets": {"us_bonds_long": -0.8, "us_equities_growth": -0.5, "gold": -0.3, "cash_money_market": 0.4}
-  }
-]
+Asset classes: us_equities_growth, us_equities_value, international_dm_equities, em_equities, us_bonds_short, us_bonds_long, tips_inflation_bonds, gold, silver, broad_commodities, energy, real_estate_reits, cash_money_market, bitcoin, crypto_broad.
 
-Only include asset classes that are meaningfully affected (|score| > 0.1).
-If a headline is not related to economics/finance, set relevance to 0 and skip affected_assets.
-Respond ONLY with valid JSON, no markdown."""
+Non-finance headline -> relevance=0, omit affected_assets.
+
+Output: JSON array only. No markdown, no prose."""
 
 
 def parse_llm_response(response: Any) -> dict:

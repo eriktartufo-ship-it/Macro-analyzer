@@ -307,16 +307,21 @@ export interface AssetBand extends BandSeries {
   asset: string;
 }
 
+export type MonteCarloInitialSource = "rule_based" | "ensemble" | "explicit";
+
 export interface MonteCarloForecast {
   n_paths: number;
   n_steps: number;
   horizon_days: number;
   initial_distribution: Record<string, number>;
+  initial_source: MonteCarloInitialSource;
   step_dates_offsets: number[];
   transition_matrix_observations: number;
   regime_bands: RegimeBand[];
   asset_bands: AssetBand[];
   notes: string[];
+  ensemble_disagreement: number | null;
+  ensemble_confidence: number | null;
 }
 
 export interface ScenarioPreset {

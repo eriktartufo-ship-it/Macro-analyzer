@@ -156,9 +156,13 @@ l'utente fornisce una correzione, **proporre proattivamente** di aggiornare il f
 
 Memoria del progetto:
 
-- **Locale all'agente**: `C:\Users\erikp\.claude\projects\d--Antigravity\memory\`
-- **Persistente cross-PC** (Synology Drive backup): `d:/Antigravity/Antigravity/memoria/`
-  con `MEMORY.md` come index e `project_macro_analyzer.md` come logbook progetto.
+- **Locale all'agente** (solo puntatore redirect): `C:\Users\erikp\.claude\projects\d--Antigravity\memory\MEMORY.md`
+- **Persistente cross-PC** (Synology Drive backup, fonte unica di verità):
+  `d:/Antigravity/obsidian/Erik/02_Progetti/`
+  - `Macro_Analyzer.md` — stato corrente, decisioni chiave, TODO
+  - `Macro_Analyzer_Logbook.md` — logbook storico round-per-round
+  - `Macro_Analyzer_Workflow.md` — trappole dev + setup venv
+- **Logs di sessione**: `d:/Antigravity/obsidian/Erik/99_Antigravity_Logs/Session_YYYY-MM-DD.md`
 
 Al termine di un task complesso, l'IA aggiorna il file di memoria del progetto con:
 

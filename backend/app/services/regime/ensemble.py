@@ -134,6 +134,9 @@ def _safe_msvar(db: Session) -> ModelView:
                 "state_means": {str(k): v for k, v in r.state_means.items()},
                 "state_vols": {str(k): v for k, v in r.state_vols.items()},
                 "state_to_regime": {str(k): v for k, v in r.state_to_regime.items()},
+                "state_to_regime_distribution": {
+                    str(k): v for k, v in r.state_to_regime_distribution.items()
+                },
             },
         )
     except Exception as e:

@@ -38,34 +38,33 @@ _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 _GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
-_SYSTEM_PROMPT = """You are a senior macro economist at a major investment bank.
-Analyze the following FOMC document (statement or minutes) and produce a structured assessment.
+_SYSTEM_PROMPT = """Role: macro analyst. Task: parse FOMC doc -> JSON.
 
-Provide JSON with EXACTLY these fields (no markdown, no commentary):
+Schema (raw JSON, no markdown, no prose):
 {
-  "hawkish_dovish_score": <float -1.0 to +1.0>,
-  "confidence": <float 0.0 to 1.0>,
-  "key_topics": [<3-6 short topic strings>],
-  "forward_guidance": "<one-sentence summary of forward path>",
+  "hawkish_dovish_score": float[-1,+1],
+  "confidence": float[0,1],
+  "key_topics": [str x3-6],
+  "forward_guidance": str,
   "regime_implication": {
-    "reflation": <float -0.2 to +0.2>,
-    "stagflation": <float -0.2 to +0.2>,
-    "deflation": <float -0.2 to +0.2>,
-    "goldilocks": <float -0.2 to +0.2>
+    "reflation": float[-0.2,+0.2],
+    "stagflation": float[-0.2,+0.2],
+    "deflation": float[-0.2,+0.2],
+    "goldilocks": float[-0.2,+0.2]
   },
-  "summary": "<2-3 sentences in Italian summarizing the key macro takeaway>"
+  "summary": str
 }
 
-Definitions:
-- hawkish_dovish_score: -1.0 = very dovish (easing bias, dovish forward guidance, focus on labor market weakness),
-  0.0 = neutral, +1.0 = very hawkish (tightening bias, focus on persistent inflation, hawkish forward guidance).
-- confidence: 1.0 if the document explicitly signals a direction, 0.5 if mixed/ambiguous, 0.0 if no signal.
-- key_topics: short snake_case strings like "inflation_persistent", "labor_softening", "balance_sheet", "tariffs", "growth_moderating".
-- regime_implication: how this FOMC stance shifts probability for each macro regime. Hawkish + sticky inflation = +stagflation/-goldilocks.
-  Dovish + slowing growth = +deflation/+goldilocks. Sum across regimes ~ 0 (it's a relative shift).
-- summary: in italian, 2-3 sentences max, focus on what this means for asset allocation.
+Field rules:
+- hawkish_dovish_score: -1=dovish/ease/labor-weak focus; +1=hawkish/tighten/sticky-infl focus; 0=neutral.
+- confidence: 1=clear directional signal; 0.5=mixed; 0=no signal.
+- key_topics: snake_case, e.g. "inflation_persistent", "labor_softening", "balance_sheet", "tariffs".
+- regime_implication: relative regime probability shift, sum ~ 0.
+  hawkish + sticky-infl = +stagflation, -goldilocks.
+  dovish + slow-growth  = +deflation, +goldilocks.
+- summary: ITALIAN language, 2-3 sentences, asset-allocation focus.
 
-Strip boilerplate (website headers, navigation menus). Focus on substance: rate decisions, economic projections, forward guidance language."""
+Skip boilerplate (headers, nav). Focus: rate decisions, projections, forward-guidance language."""
 
 
 @dataclass

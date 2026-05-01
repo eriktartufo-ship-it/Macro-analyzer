@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
-import type { MonteCarloForecast, RegimeBand, ScenarioPreset, ScenarioResult } from "../types";
+import type {
+  MonteCarloForecast,
+  MonteCarloInitialSource,
+  RegimeBand,
+  ScenarioPreset,
+  ScenarioResult,
+} from "../types";
+
+type InitialSourceChoice = "rule_based" | "ensemble";
 
 const REGIME_LABEL: Record<string, string> = {
   reflation: "Reflation",
@@ -95,6 +103,91 @@ function ConeChart({ bands, horizonDays }: { bands: RegimeBand[]; horizonDays: n
   );
 }
 
+function sourceLabel(s: MonteCarloInitialSource): string {
+  if (s === "ensemble") return "Ensemble (3 modelli)";
+  if (s === "explicit") return "Distribuzione esplicita";
+  return "Rule-based";
+}
+
+/**
+ * Banner colorato che riassume disagreement / confidence dell'ensemble.
+ * Soglie allineate a `DISAGREEMENT_THRESHOLD = 0.20` lato backend (ensemble.py):
+ * confidence > 0.5 = verde (modelli concordano), 0.2-0.5 = giallo (parziale),
+ * < 0.2 = rosso (alto disaccordo). Mostrato solo quando la sorgente e' "ensemble".
+ */
+function EnsembleBanner({ forecast }: { forecast: MonteCarloForecast }) {
+  if (forecast.initial_source !== "ensemble") return null;
+  const disagreement = forecast.ensemble_disagreement;
+  const confidence = forecast.ensemble_confidence;
+  if (disagreement === null || confidence === null) return null;
+
+  let level: "ok" | "warn" | "bad" = "ok";
+  if (confidence < 0.2) level = "bad";
+  else if (confidence < 0.5) level = "warn";
+
+  const palette = {
+    ok: { bg: "rgba(16,185,129,0.10)", border: "#10b981", text: "#065f46", label: "I modelli concordano" },
+    warn: { bg: "rgba(217,119,6,0.10)", border: "#d97706", text: "#92400e", label: "Disaccordo parziale" },
+    bad: { bg: "rgba(239,68,68,0.10)", border: "#ef4444", text: "#991b1b", label: "Alto disaccordo tra modelli" },
+  }[level];
+
+  return (
+    <div
+      style={{
+        marginBottom: 10,
+        padding: "8px 12px",
+        background: palette.bg,
+        border: `1px solid ${palette.border}`,
+        borderRadius: 6,
+        fontSize: 12,
+        color: "var(--text)",
+      }}
+    >
+      <div style={{ fontWeight: 600, color: palette.text, marginBottom: 2 }}>
+        {palette.label}
+      </div>
+      <div style={{ color: "var(--muted)" }}>
+        Disagreement (JS): <strong>{disagreement.toFixed(3)}</strong> ·{" "}
+        Confidence: <strong>{(confidence * 100).toFixed(1)}%</strong>
+        <span style={{ marginLeft: 8, fontSize: 11 }}>
+          (cone parte dalla weighted-average dei 3 modelli rule-based + HMM-Market + MS-VAR)
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Mini bar chart orizzontale della distribuzione iniziale usata dal MC. */
+function InitialDistributionBar({ dist }: { dist: Record<string, number> }) {
+  const order = ["reflation", "stagflation", "deflation", "goldilocks"];
+  return (
+    <div style={{ display: "flex", height: 16, borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
+      {order.map((r) => {
+        const v = dist[r] ?? 0;
+        if (v <= 0) return null;
+        return (
+          <div
+            key={r}
+            title={`${REGIME_LABEL[r]}: ${(v * 100).toFixed(1)}%`}
+            style={{
+              width: `${v * 100}%`,
+              background: REGIME_COLOR[r],
+              opacity: 0.85,
+              fontSize: 10,
+              color: "white",
+              textAlign: "center",
+              lineHeight: "16px",
+              fontWeight: 600,
+            }}
+          >
+            {v >= 0.10 ? `${(v * 100).toFixed(0)}%` : ""}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function MonteCarloPanel() {
   const [forecast, setForecast] = useState<MonteCarloForecast | null>(null);
   const [presets, setPresets] = useState<ScenarioPreset[] | null>(null);
@@ -105,12 +198,13 @@ export function MonteCarloPanel() {
   const [nSteps, setNSteps] = useState(12);
   const [horizonDays, setHorizonDays] = useState(30);
   const [nPaths, setNPaths] = useState(500);
+  const [initialSource, setInitialSource] = useState<InitialSourceChoice>("rule_based");
 
   const runForecast = async () => {
     setLoading(true);
     setError(null);
     try {
-      const f = await api.monteCarloForecast({ nPaths, nSteps, horizonDays });
+      const f = await api.monteCarloForecast({ nPaths, nSteps, horizonDays, initialSource });
       setForecast(f);
       if (!presets) {
         const p = await api.scenariosList();
@@ -143,7 +237,7 @@ export function MonteCarloPanel() {
         dalla transition matrix empirica. Bande p10/p25/p75/p90 + median.
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
         <label style={{ fontSize: 12 }}>
           Steps:{" "}
           <input type="number" min={1} max={36} value={nSteps}
@@ -159,6 +253,43 @@ export function MonteCarloPanel() {
           <input type="number" min={100} max={5000} step={100} value={nPaths}
             onChange={(e) => setNPaths(Number(e.target.value))} style={{ width: 70 }} />
         </label>
+
+        {/* Toggle initial source: Rule-based (default validato) vs Ensemble (stress) */}
+        <div
+          role="group"
+          aria-label="Sorgente distribuzione iniziale"
+          style={{
+            display: "inline-flex",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            overflow: "hidden",
+            fontSize: 12,
+          }}
+        >
+          {(["rule_based", "ensemble"] as InitialSourceChoice[]).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setInitialSource(s)}
+              title={
+                s === "rule_based"
+                  ? "Cone parte dalla classificazione rule-based (default validato su backtest + lead-time NBER)"
+                  : "Cone parte dalla weighted-average dei 3 modelli (rule-based + HMM-Market + MS-VAR). Espone disagreement e confidence."
+              }
+              style={{
+                padding: "6px 10px",
+                border: "none",
+                cursor: "pointer",
+                background: initialSource === s ? "var(--accent)" : "transparent",
+                color: initialSource === s ? "white" : "var(--text)",
+                fontWeight: initialSource === s ? 600 : 400,
+              }}
+            >
+              {s === "rule_based" ? "Rule-based" : "Ensemble"}
+            </button>
+          ))}
+        </div>
+
         <button onClick={runForecast} disabled={loading}
           style={{ padding: "6px 14px", background: "var(--accent)", color: "white",
             border: "none", borderRadius: 6, cursor: loading ? "wait" : "pointer" }}>
@@ -173,10 +304,20 @@ export function MonteCarloPanel() {
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
             {forecast.n_paths} paths × {forecast.n_steps} steps · transition matrix da{" "}
             {forecast.transition_matrix_observations} obs · horizon totale{" "}
-            {forecast.n_steps * forecast.horizon_days} giorni
+            {forecast.n_steps * forecast.horizon_days} giorni · sorgente iniziale:{" "}
+            <strong>{sourceLabel(forecast.initial_source)}</strong>
             {forecast.notes.length > 0 && (
               <div style={{ color: "var(--deflation)" }}>{forecast.notes.join(" · ")}</div>
             )}
+          </div>
+
+          <EnsembleBanner forecast={forecast} />
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+              Distribuzione iniziale (now)
+            </div>
+            <InitialDistributionBar dist={forecast.initial_distribution} />
           </div>
 
           <div style={{ overflowX: "auto", marginBottom: 16 }}>

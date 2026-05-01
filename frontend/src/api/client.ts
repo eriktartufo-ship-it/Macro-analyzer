@@ -117,11 +117,19 @@ export const api = {
   },
   backtestLeadTime: (threshold = 0.35, lookbackMonths = 12) =>
     request<LeadTimeReport>(`/backtest/lead-time?threshold=${threshold}&lookback_months=${lookbackMonths}`, undefined, { retries: 0 }),
-  monteCarloForecast: (params: { nPaths?: number; nSteps?: number; horizonDays?: number } = {}) => {
+  monteCarloForecast: (
+    params: {
+      nPaths?: number;
+      nSteps?: number;
+      horizonDays?: number;
+      initialSource?: "rule_based" | "ensemble";
+    } = {},
+  ) => {
     const q = new URLSearchParams();
     if (params.nPaths) q.set("n_paths", String(params.nPaths));
     if (params.nSteps) q.set("n_steps", String(params.nSteps));
     if (params.horizonDays) q.set("horizon_days", String(params.horizonDays));
+    if (params.initialSource) q.set("initial_source", params.initialSource);
     q.set("include_dedollar", String(getDedollarBonusFlag()));
     return request<MonteCarloForecast>(`/regime/forecast/monte-carlo?${q.toString()}`, undefined, { retries: 0 });
   },

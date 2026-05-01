@@ -21,19 +21,25 @@ varianza (path con regime diverso → asset score diverso → spread misurabile)
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.services.regime.classifier import REGIMES
+from app.services.regime.ensemble import compute_ensemble
 from app.services.regime.transition_matrix import compute_transition_matrix
 from app.services.scoring.engine import ASSET_CLASSES, calculate_final_scores
 
 DEFAULT_N_PATHS = 500
 DEFAULT_STEPS = 12        # 12 step a horizon 30d default = ~1 anno
 DEFAULT_HORIZON = 30
+
+INITIAL_SOURCE_RULE_BASED = "rule_based"
+INITIAL_SOURCE_ENSEMBLE = "ensemble"
+INITIAL_SOURCE_EXPLICIT = "explicit"
+VALID_INITIAL_SOURCES = (INITIAL_SOURCE_RULE_BASED, INITIAL_SOURCE_ENSEMBLE)
 
 
 @dataclass
@@ -59,16 +65,28 @@ class AssetBand:
 
 
 @dataclass
+class ResolvedInitialDistribution:
+    distribution: dict[str, float]
+    source: str                            # rule_based | ensemble | explicit
+    ensemble_disagreement: float | None = None
+    ensemble_confidence: float | None = None
+    notes: list[str] = field(default_factory=list)
+
+
+@dataclass
 class MonteCarloResult:
     n_paths: int
     n_steps: int
     horizon_days: int
     initial_distribution: dict[str, float]
-    step_dates_offsets: list[int]     # giorni dal punto corrente per ogni step
+    initial_source: str                       # rule_based | ensemble | explicit
+    step_dates_offsets: list[int]             # giorni dal punto corrente per ogni step
     regime_bands: list[RegimeBand]
     asset_bands: list[AssetBand]
     transition_matrix_observations: int
     notes: list[str]
+    ensemble_disagreement: float | None = None
+    ensemble_confidence: float | None = None
 
 
 def _sample_initial_states(
@@ -182,12 +200,69 @@ def _compute_asset_bands(
     return bands
 
 
+def _resolve_initial_distribution(
+    db: Session | None,
+    initial_distribution: dict[str, float] | None,
+    initial_source: str,
+) -> ResolvedInitialDistribution:
+    """Risolve la distribuzione iniziale in base a initial_source.
+
+    Precedenza: explicit > source switch.
+    - Se `initial_distribution` esplicito: usato as-is, source='explicit'.
+    - Se source='ensemble': chiama compute_ensemble() e propaga
+      disagreement/confidence/notes.
+    - Se source='rule_based': pesca l'ultima classification dal DB
+      (back-compat con il comportamento storico).
+    """
+    if initial_distribution is not None:
+        return ResolvedInitialDistribution(
+            distribution=initial_distribution,
+            source=INITIAL_SOURCE_EXPLICIT,
+        )
+
+    if initial_source == INITIAL_SOURCE_ENSEMBLE:
+        ens = compute_ensemble(db)
+        return ResolvedInitialDistribution(
+            distribution=dict(ens.ensemble_probabilities),
+            source=INITIAL_SOURCE_ENSEMBLE,
+            ensemble_disagreement=ens.disagreement_score,
+            ensemble_confidence=ens.confidence,
+            notes=list(ens.notes),
+        )
+
+    if initial_source == INITIAL_SOURCE_RULE_BASED:
+        from app.models import RegimeClassification
+        last = (
+            db.query(RegimeClassification)
+            .order_by(RegimeClassification.date.desc()).first()
+        )
+        if last is None:
+            distribution = {r: 0.25 for r in REGIMES}
+        else:
+            distribution = {
+                "reflation": last.probability_reflation,
+                "stagflation": last.probability_stagflation,
+                "deflation": last.probability_deflation,
+                "goldilocks": last.probability_goldilocks,
+            }
+        return ResolvedInitialDistribution(
+            distribution=distribution,
+            source=INITIAL_SOURCE_RULE_BASED,
+        )
+
+    raise ValueError(
+        f"initial_source '{initial_source}' non supportato. "
+        f"Valori validi: {VALID_INITIAL_SOURCES}"
+    )
+
+
 def run_monte_carlo(
     db: Session,
     n_paths: int = DEFAULT_N_PATHS,
     n_steps: int = DEFAULT_STEPS,
     horizon_days: int = DEFAULT_HORIZON,
     initial_distribution: dict[str, float] | None = None,
+    initial_source: str = INITIAL_SOURCE_RULE_BASED,
     assets: list[str] | None = None,
     seed: int = 42,
     force_include_dedollar: bool | None = None,
@@ -199,7 +274,11 @@ def run_monte_carlo(
         n_paths: numero traiettorie simulate (default 500)
         n_steps: orizzonti futuri (default 12)
         horizon_days: giorni per step (default 30 = ~mese)
-        initial_distribution: se None, usa l'ultima classification del DB
+        initial_distribution: override esplicito; bypassa initial_source
+        initial_source: 'rule_based' (default) o 'ensemble'. In modalita'
+            'ensemble' la distribuzione iniziale e' la weighted-average dei
+            3 modelli (rule-based + HMM-Market + MS-VAR) — riflette
+            l'incertezza vera quando i modelli sono in disaccordo.
         assets: lista asset class da includere (default tutti)
 
     Returns: MonteCarloResult con bande regime + asset.
@@ -220,34 +299,21 @@ def run_monte_carlo(
     A = A + 1e-3
     A = A / A.sum(axis=1, keepdims=True)
 
-    # Distribuzione iniziale
-    if initial_distribution is None:
-        from app.models import RegimeClassification
-        last = (
-            db.query(RegimeClassification)
-            .order_by(RegimeClassification.date.desc()).first()
-        )
-        if last is None:
-            initial = {r: 0.25 for r in REGIMES}
-        else:
-            initial = {
-                "reflation": last.probability_reflation,
-                "stagflation": last.probability_stagflation,
-                "deflation": last.probability_deflation,
-                "goldilocks": last.probability_goldilocks,
-            }
-    else:
-        initial = initial_distribution
+    resolved = _resolve_initial_distribution(
+        db=db,
+        initial_distribution=initial_distribution,
+        initial_source=initial_source,
+    )
 
     rng = np.random.default_rng(seed)
-    initial_states = _sample_initial_states(initial, n_paths, rng)
+    initial_states = _sample_initial_states(resolved.distribution, n_paths, rng)
     paths = _simulate_paths(initial_states, A, n_steps, rng)
 
     regime_bands = _compute_regime_bands(paths)
     assets_list = assets or list(ASSET_CLASSES)
     asset_bands = _compute_asset_bands(paths, assets_list, force_include_dedollar=force_include_dedollar)
 
-    notes: list[str] = []
+    notes: list[str] = list(resolved.notes)
     if tm.total_observations < 100:
         notes.append(
             f"Transition matrix basata su solo {tm.total_observations} obs — proiezioni rumorose."
@@ -255,17 +321,21 @@ def run_monte_carlo(
 
     logger.info(
         f"Monte Carlo: {n_paths} paths × {n_steps} steps "
-        f"(horizon {horizon_days}d, {tm.total_observations} obs in matrix)"
+        f"(horizon {horizon_days}d, {tm.total_observations} obs in matrix, "
+        f"initial_source={resolved.source})"
     )
 
     return MonteCarloResult(
         n_paths=n_paths,
         n_steps=n_steps,
         horizon_days=horizon_days,
-        initial_distribution=initial,
+        initial_distribution=resolved.distribution,
+        initial_source=resolved.source,
         step_dates_offsets=[i * horizon_days for i in range(n_steps + 1)],
         regime_bands=regime_bands,
         asset_bands=asset_bands,
         transition_matrix_observations=tm.total_observations,
         notes=notes,
+        ensemble_disagreement=resolved.ensemble_disagreement,
+        ensemble_confidence=resolved.ensemble_confidence,
     )

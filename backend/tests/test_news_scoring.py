@@ -84,14 +84,19 @@ class TestRSSFetcher:
     """Test fetch notizie da RSS feeds."""
 
     def test_parse_rss_items(self):
-        """Deve estrarre titolo, link, data da un feed RSS."""
-        from app.services.news.rss_fetcher import parse_feed_entries
+        """Deve estrarre titolo, link, data da un feed RSS.
 
-        # Simula un feed entry
+        Timestamp dinamico ('oggi') per evitare flake col passare del tempo:
+        il filtro per eta' (max_age_days, default 3) e' coperto da
+        test_filter_old_entries.
+        """
+        from app.services.news.rss_fetcher import parse_feed_entries
+        from datetime import datetime
+
         mock_entry = MagicMock()
         mock_entry.title = "Fed raises rates by 25bps"
         mock_entry.link = "https://example.com/article"
-        mock_entry.published_parsed = (2026, 4, 12, 10, 0, 0, 0, 0, 0)
+        mock_entry.published_parsed = datetime.now().timetuple()
 
         entries = parse_feed_entries([mock_entry])
         assert len(entries) == 1

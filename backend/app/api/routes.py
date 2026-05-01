@@ -287,11 +287,14 @@ class MonteCarloResponse(BaseModel):
     n_steps: int
     horizon_days: int
     initial_distribution: dict[str, float]
+    initial_source: str                          # rule_based | ensemble | explicit
     step_dates_offsets: list[int]
     transition_matrix_observations: int
     regime_bands: list[RegimeBandResponse]
     asset_bands: list[AssetBandResponse]
     notes: list[str]
+    ensemble_disagreement: float | None = None
+    ensemble_confidence: float | None = None
 
 
 class ScenarioResponse(BaseModel):
@@ -693,6 +696,14 @@ def get_regime_monte_carlo(
     n_paths: int = Query(default=500, ge=100, le=5000),
     n_steps: int = Query(default=12, ge=1, le=36),
     horizon_days: int = Query(default=30, ge=7, le=90),
+    initial_source: str = Query(
+        default="rule_based",
+        regex="^(rule_based|ensemble)$",
+        description="Sorgente della distribuzione iniziale: 'rule_based' "
+        "(default, ultima classification del DB) o 'ensemble' "
+        "(weighted average dei 3 modelli — riflette il vero stato di "
+        "incertezza quando i modelli sono in disaccordo).",
+    ),
     include_dedollar: bool | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
@@ -704,6 +715,7 @@ def get_regime_monte_carlo(
     try:
         r = run_monte_carlo(
             db, n_paths=n_paths, n_steps=n_steps, horizon_days=horizon_days,
+            initial_source=initial_source,
             force_include_dedollar=include_dedollar,
         )
     except ValueError as e:
@@ -714,6 +726,7 @@ def get_regime_monte_carlo(
         n_steps=r.n_steps,
         horizon_days=r.horizon_days,
         initial_distribution=r.initial_distribution,
+        initial_source=r.initial_source,
         step_dates_offsets=r.step_dates_offsets,
         transition_matrix_observations=r.transition_matrix_observations,
         regime_bands=[
@@ -731,6 +744,8 @@ def get_regime_monte_carlo(
             for b in r.asset_bands
         ],
         notes=r.notes,
+        ensemble_disagreement=r.ensemble_disagreement,
+        ensemble_confidence=r.ensemble_confidence,
     )
 
 
