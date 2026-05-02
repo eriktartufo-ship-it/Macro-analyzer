@@ -38,7 +38,7 @@ services:
       SCHEDULER_MINUTE: ${SCHEDULER_MINUTE:-0}
       TZ: ${TZ:-UTC}
     volumes:
-      - fred-cache:/app/backend/.cache/fred
+      - fred-cache:/app/.cache/fred
     expose:
       - "8000"
 

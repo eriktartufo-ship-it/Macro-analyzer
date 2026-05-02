@@ -1,0 +1,74 @@
+# --- VCS ---
+.git
+.gitignore
+.gitattributes
+
+# --- Secrets / env (never bake into image) ---
+.env
+.env.local
+.env.*.local
+
+# --- Python ---
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+backend/dist/
+backend/build/
+
+# --- Node / Vite ---
+**/node_modules/
+frontend/dist/
+frontend/.vite/
+.npm/
+
+# --- Local DB + caches (mounted as volumes in production) ---
+*.sqlite
+*.sqlite3
+*.db
+**/.cache/
+backend/alembic.ini.bak
+
+# --- Test artifacts: NOT needed in production image ---
+backend/tests/
+backend/scripts/
+backend/pytest.ini
+
+# --- Docs / IDE / OS ---
+README.md
+CLAUDE.md
+docs/
+*.md
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Docker compose / dev ---
+docker-compose*.yml
+Makefile
+start.bat
+.env.example
+
+# --- Postgres data (volume only) ---
+pgdata/
+
+# --- Misc ---
+*.tar
+*.tar.gz
+*.zip
