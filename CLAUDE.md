@@ -160,11 +160,16 @@ Memoria del progetto:
 
 - **Locale all'agente** (solo puntatore redirect): `C:\Users\erikp\.claude\projects\d--Antigravity\memory\MEMORY.md`
 - **Persistente cross-PC** (Synology Drive backup, fonte unica di verità):
-  `d:/Antigravity/obsidian/Erik/02_Progetti/`
-  - `Macro_Analyzer.md` — stato corrente, decisioni chiave, TODO
+  `d:/Antigravity/obsidian/Erik/02_Progetti/Macro_Analyzer/`
+  - `Macro_Analyzer.caveman.md` — stato corrente formato caveman (legge l'agente)
+  - `Macro_Analyzer.md` — stato corrente human version
   - `Macro_Analyzer_Logbook.md` — logbook storico round-per-round
   - `Macro_Analyzer_Workflow.md` — trappole dev + setup venv
+  - `Macro_Analyzer_Roadmap_Bridgewater.caveman.md` — roadmap Tier 2-4 (caveman)
+  - `Macro_Analyzer_Roadmap_Bridgewater.md` — roadmap human
 - **Logs di sessione**: `d:/Antigravity/obsidian/Erik/99_Antigravity_Logs/Session_YYYY-MM-DD.md`
+- **Regola dual-format**: l'agente legge SOLO `.caveman.md`, l'utente legge `.md`.
+  Update sempre entrambe le versioni (vedi `ai_workflow_sync.md` globale).
 
 Al termine di un task complesso, l'IA aggiorna il file di memoria del progetto con:
 
