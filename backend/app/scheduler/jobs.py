@@ -284,6 +284,12 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     except Exception:
         pass
 
+    # ACM Term Premium 10Y (Tier 1.3 roadmap Bridgewater): pillar regime.
+    # TP > 0.5% = mercato pricing duration risk → +stagflation/+deflation.
+    # TP < 0 = risk-on accettato → +reflation.
+    if "term_premium_10y" in latest:
+        indicators["term_premium_10y"] = float(latest["term_premium_10y"])
+
     return indicators
 
 

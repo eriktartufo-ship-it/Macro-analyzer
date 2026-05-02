@@ -16,7 +16,8 @@ regimi tradizionali via correlazione con le posteriori rule-based:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -26,6 +27,9 @@ from sqlalchemy.orm import Session
 from app.models import RegimeClassification
 from app.services.prices.yahoo_fetcher import YahooFetcher
 from app.services.regime.classifier import REGIMES
+from app.services.regime.state_mapping import (
+    compute_state_to_regime_distribution_corr,
+)
 
 
 @dataclass
@@ -41,6 +45,14 @@ class MSVARResult:
     current_state: int
     n_training: int
     log_likelihood: float
+    # Regime probability history su ogni mese training (per meta-classifier Brier).
+    regime_history: list[dict] = field(default_factory=list)
+
+
+# Cache TTL: il fit MarkovRegression su ~720 mesi e' deterministic;
+# 1h e' sufficiente per uso interattivo (ensemble + standalone non rifittano).
+_CACHE_TTL_SECONDS = 3600
+_FIT_CACHE: dict[tuple[int, str], tuple[float, "MSVARResult"]] = {}
 
 
 def _fit_markov(returns: pd.Series, n_states: int = 2):
@@ -57,67 +69,24 @@ def _fit_markov(returns: pd.Series, n_states: int = 2):
     return model.fit(disp=False, maxiter=200)
 
 
-def _compute_state_to_regime_distribution(
-    state_probs: pd.DataFrame,  # (T, n_states)
-    rule_df: pd.DataFrame,      # (T, 4 regimes)
-    alpha: float = 0.05,
-) -> dict[int, dict[str, float]]:
-    """Per ogni stato MS-VAR ritorna P(regime | stato) come distribuzione completa
-    sui 4 regimi, informata dalla correlazione storica con i posterior rule-based.
-
-    Logica:
-    - Per ogni (stato s, regime r) calcola corr(P(stato_s|t), P(regime_r|t)).
-    - Clip a 0 le correlazioni negative (un regime anti-correlato non riceve massa
-      dalla quota informata, solo lo smoothing prior).
-    - Normalizza i pesi positivi e mescola con prior uniforme alpha/n_regimes.
-
-    `alpha` (default 0.05) e' lo smoothing prior: garantisce che ogni regime
-    riceva almeno alpha/n_regimes ≈ 1.25% di massa, evitando zero categorici e
-    risolvendo il bug pre-fix (con n_states=2 due regimi su 4 erano ciechi).
-
-    Fallback:
-    - <12 osservazioni comuni: distribuzione uniforme (no fit affidabile).
-    - Stato con tutte le correlazioni a 0 o NaN: distribuzione uniforme.
-    """
-    n_states = state_probs.shape[1]
-    common = state_probs.index.intersection(rule_df.index)
-    uniform = {r: 1.0 / len(REGIMES) for r in REGIMES}
-
-    if len(common) < 12:
-        return {s: dict(uniform) for s in range(n_states)}
-
-    sp = state_probs.loc[common]
-    rl = rule_df.loc[common]
-    uniform_w = alpha / len(REGIMES)
-
-    out: dict[int, dict[str, float]] = {}
-    for s in range(n_states):
-        weights: dict[str, float] = {}
-        for r in REGIMES:
-            x, y = sp.iloc[:, s].values, rl[r].values
-            if x.std() == 0 or y.std() == 0:
-                weights[r] = 0.0
-            else:
-                c = float(np.corrcoef(x, y)[0, 1])
-                weights[r] = max(c, 0.0)  # clip negative correlations
-
-        total = sum(weights.values())
-        if total <= 0:
-            out[s] = dict(uniform)
-        else:
-            out[s] = {
-                r: (1.0 - alpha) * (w / total) + uniform_w
-                for r, w in weights.items()
-            }
-    return out
-
-
 def fit_and_predict_msvar(
     db: Session,
     n_states: int = 2,
     ticker: str = "SPY",
 ) -> MSVARResult:
-    """Addestra MS Regression su S&P returns mensili, mappa stati via correlazione."""
+    """Addestra MS Regression su S&P returns mensili, mappa stati via correlazione.
+
+    Cache: TTL 1h sull'output keyed by (n_states, ticker). Riduce latency
+    delle chiamate ripetute (ensemble + standalone) da ~3s a sub-ms.
+    Per forzare refresh: `_FIT_CACHE.clear()`.
+    """
+    now = time.time()
+    cache_key = (n_states, ticker)
+    cached = _FIT_CACHE.get(cache_key)
+    if cached and (now - cached[0]) < _CACHE_TTL_SECONDS:
+        logger.info(f"MS-VAR cache hit ({cache_key}, age={now - cached[0]:.1f}s)")
+        return cached[1]
+
     yahoo = YahooFetcher()
     px = yahoo.fetch(ticker)
     px_m = px.copy()
@@ -160,7 +129,7 @@ def fit_and_predict_msvar(
             }
             for r in rows
         ]).set_index("date").sort_index().resample("ME").mean().dropna()
-        state_to_regime_dist = _compute_state_to_regime_distribution(smoothed, rule_df)
+        state_to_regime_dist = compute_state_to_regime_distribution_corr(smoothed, rule_df)
     else:
         # Nessun rule-based in DB: distribuzione uniforme per ogni stato
         state_to_regime_dist = {
@@ -193,7 +162,21 @@ def fit_and_predict_msvar(
         f"dominant_map={state_to_regime}"
     )
 
-    return MSVARResult(
+    # Regime probability history per ogni mese training (meta-classifier Brier).
+    smoothed_arr = smoothed.values  # (T, n_states)
+    history: list[dict] = []
+    for t in range(smoothed_arr.shape[0]):
+        regime_probs_t = {r: 0.0 for r in REGIMES}
+        for s in range(n_states):
+            p_s = float(smoothed_arr[t, s])
+            for r in REGIMES:
+                regime_probs_t[r] += p_s * state_to_regime_dist[s][r]
+        history.append({
+            "date": smoothed.index[t].date().isoformat(),
+            "regime_probs": regime_probs_t,
+        })
+
+    result = MSVARResult(
         n_states=n_states,
         state_means=state_means,
         state_vols=state_vols,
@@ -203,4 +186,7 @@ def fit_and_predict_msvar(
         current_state=int(last.values.argmax()),
         n_training=len(returns),
         log_likelihood=float(fit.llf),
+        regime_history=history,
     )
+    _FIT_CACHE[cache_key] = (now, result)
+    return result

@@ -1198,7 +1198,7 @@ def get_fomc_report(
     limit: int = Query(default=6, ge=1, le=12),
     force_refresh: bool = Query(default=False),
 ):
-    """FOMC statements/minutes con sentiment hawkish/dovish via LLM (Claude → Groq fallback).
+    """FOMC statements/minutes con sentiment hawkish/dovish via LLM (Gemini → Groq fallback).
 
     Cache aggressiva su disco per URL. force_refresh=true forza ri-analisi.
     Trend = differenza tra primo e ultimo score (hawkening/dovening/stable).
@@ -1548,6 +1548,83 @@ def trigger_full_backfill(days: int = Query(default=365, ge=30, le=3650)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore backfill completo: {str(e)}")
+
+
+@router.get("/regime/meta")
+def get_regime_meta(
+    lookback_months: int = Query(default=60, ge=12, le=240),
+    min_weight: float = Query(default=0.10, ge=0.0, le=0.5),
+    prob_floor: float = Query(default=0.02, ge=0.0, le=0.25),
+    db: Session = Depends(get_db),
+):
+    """Meta-regime classifier: Brier-weighted blend di rule-based + HMM-Market + MS-VAR.
+
+    Tier 1.1 della roadmap Bridgewater. Sostituisce il regime "single rule-based"
+    con un ensemble pesato per Brier score storico. Output = blend dei 3 modelli
+    con pesi calibrati sulla loro accuratezza.
+
+    Caveat: rule-based è ground truth → suo Brier ~0 → peso dominante.
+    `min_weight` (default 0.10) garantisce gli altri modelli almeno 10% per
+    preservare diversification of belief.
+    """
+    from app.services.regime.meta_classifier import compute_meta_regime
+
+    try:
+        r = compute_meta_regime(
+            db,
+            lookback_months=lookback_months,
+            min_weight=min_weight,
+            prob_floor=prob_floor,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Meta-regime failed: {str(e)}")
+
+    return {
+        "date": r.date,
+        "regime": r.regime,
+        "final_probabilities": r.final_probabilities,
+        "ground_truth_window_months": r.ground_truth_window_months,
+        "contributions": [
+            {
+                "name": c.name,
+                "current_probabilities": c.current_probabilities,
+                "brier_score": c.brier_score,
+                "weight": c.weight,
+                "n_history_points": c.n_history_points,
+                "error": c.error,
+            }
+            for c in r.contributions
+        ],
+        "notes": r.notes,
+    }
+
+
+@router.post("/admin/repair-lei")
+def trigger_repair_lei(
+    dry_run: bool = Query(default=False, description="Anteprima senza commit"),
+    db: Session = Depends(get_db),
+):
+    """Riallinea i record con `lei_roc` corrotto (`abs > 5`) sostituendo col
+    valore CFNAIMA3 reale + ricalcolando regime/probabilita'/confidence.
+
+    Idempotente. Bug originale: scheduler pre-2026-04-27 applicava `roc_6m`
+    su CFNAI z-score, generando valori 30%/-86% invece dei livelli ±3.
+    """
+    from app.services.admin.data_repair import repair_lei_history
+
+    try:
+        report = repair_lei_history(db, dry_run=dry_run, sample_size=10)
+        return {
+            "status": "ok",
+            "total_records": report.total_records,
+            "corrupted": report.corrupted,
+            "repaired": report.repaired,
+            "skipped": report.skipped,
+            "dry_run": report.dry_run,
+            "sample_changes": report.sample_changes,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Repair failed: {str(e)}")
 
 
 @router.get("/assets", response_model=list[str])

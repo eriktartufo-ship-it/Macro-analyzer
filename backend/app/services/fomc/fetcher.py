@@ -67,6 +67,32 @@ def _fetch_url(url: str, timeout: int = 30) -> str:
     return r.text
 
 
+def _extract_minutes_full_url(html: str) -> str | None:
+    """Estrae dal HTML della press-release il link al documento minutes pieno.
+
+    La press-release dei minutes Fed e' solo un avviso di pubblicazione di
+    poche centinaia di parole, NON contiene le deliberations vere. Il
+    documento pieno e' linkato come `/monetarypolicy/fomcminutesYYYYMMDD.htm`
+    (o variante PDF). Pattern verificato su FOMC 2026-04-08 -> link a
+    `/monetarypolicy/fomcminutes20260318.htm` (49k char vs 3k del press release).
+    """
+    # Match path relativo /monetarypolicy/fomcminutesYYYYMMDD[suffix].htm[#anchor]
+    rel = re.search(
+        r'href="(/monetarypolicy/fomcminutes\d{8}[^"]*\.htm[^"]*)"',
+        html, flags=re.IGNORECASE,
+    )
+    if rel:
+        return f"https://www.federalreserve.gov{rel.group(1)}"
+    # Fallback: URL assoluto (raro)
+    abs_match = re.search(
+        r'href="(https?://[^"]*fomcminutes\d{8}[^"]*\.htm[^"]*)"',
+        html, flags=re.IGNORECASE,
+    )
+    if abs_match:
+        return abs_match.group(1)
+    return None
+
+
 def _is_fresh(path: Path) -> bool:
     if not path.exists():
         return False
@@ -116,7 +142,31 @@ def fetch_recent_fomc_documents(limit: int = 6) -> list[FOMCDocument]:
         else:
             try:
                 html = _fetch_url(url)
-                text = _strip_html(html)[:30000]
+                # Per i minutes, la press-release e' solo un avviso di pubblicazione:
+                # segui il link al documento minutes pieno se presente.
+                if doc_type == "minutes":
+                    full_url = _extract_minutes_full_url(html)
+                    if full_url:
+                        try:
+                            full_html = _fetch_url(full_url)
+                            text = _strip_html(full_html)[:30000]
+                            logger.info(
+                                f"FOMC: minutes full doc from {full_url} ({len(text)} chars)"
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                f"FOMC: full minutes fetch failed for {full_url}, "
+                                f"falling back to press-release: {e}"
+                            )
+                            text = _strip_html(html)[:30000]
+                    else:
+                        logger.warning(
+                            f"FOMC: no full minutes link in press-release {url}, "
+                            f"using press-release text"
+                        )
+                        text = _strip_html(html)[:30000]
+                else:
+                    text = _strip_html(html)[:30000]
                 cache_path.write_text(text, encoding="utf-8")
                 logger.info(f"FOMC: fetched {doc_type} {pub_date} ({len(text)} chars)")
             except Exception as e:

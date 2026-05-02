@@ -111,6 +111,9 @@ def _safe_hmm_market(db: Session) -> ModelView:
                 "n_training": r.n_training,
                 "log_likelihood": r.log_likelihood,
                 "state_to_regime": {str(k): v for k, v in r.state_to_regime.items()},
+                "state_to_regime_distribution": {
+                    str(k): v for k, v in r.state_to_regime_distribution.items()
+                },
             },
         )
     except Exception as e:

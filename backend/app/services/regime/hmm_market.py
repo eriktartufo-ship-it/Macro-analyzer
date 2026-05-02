@@ -7,11 +7,16 @@ Questo riduce ulteriormente la tautologia: il modello non vede i label,
 solo le distribuzioni che il rule-based produce.
 
 Output: posterior P(regime | last market features), confrontabile col rule-based.
+
+Caching: il fit Baum-Welch e' deterministic + costoso (~3-5s). Cache in memoria
+TTL 1h: stesso `n_states` riusa il fit per chiamate successive nella stessa
+ora (ensemble + standalone HMM-Market non rifittano due volte).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -27,9 +32,17 @@ from app.services.regime.hmm_classifier import (
     _POSTERIOR_TEMPERATURE,
 )
 from app.services.regime.market_features import compute_market_features
+from app.services.regime.state_mapping import (
+    compute_state_to_regime_distribution_corr,
+)
 
 _EPS = 1e-12
 MIN_TRAINING_OBSERVATIONS = 100
+
+# Cache TTL: il fit Baum-Welch su ~240 mesi market features e' deterministic;
+# 1h e' sufficiente per uso interattivo (ensemble + standalone non rifittano).
+_CACHE_TTL_SECONDS = 3600
+_FIT_CACHE: dict[int, tuple[float, "HMMMarketResult"]] = {}
 
 
 @dataclass
@@ -37,10 +50,19 @@ class HMMMarketResult:
     feature_names: list[str]
     probabilities: dict[str, float]
     current_state: int
-    state_to_regime: dict[int, str]
+    state_to_regime: dict[int, str]    # regime DOMINANTE per stato (argmax distribuzione)
+    state_to_regime_distribution: dict[int, dict[str, float]]
+    # ↑ distribuzione soft: per ogni stato, P(regime|stato) basata su correlazione
+    # con i posterior rule-based (clipped a 0) + smoothing prior alpha=0.05.
+    # Risolve il bug pre-fix dove `_map_states_via_soft_correlation` (bigezione
+    # hard greedy) etichettava arbitrariamente stati con correlazioni deboli.
     state_centroid_correlation: dict[int, dict[str, float]]
     n_training: int
     log_likelihood: float
+    # Regime probability history su ogni mese training (= Σ_s gamma[t,s] · P(regime|s)).
+    # Esposto per il meta-classifier Brier-weighted (Tier 1.1 roadmap).
+    # Lista di {"date": "YYYY-MM-DD", "regime_probs": {regime: prob}}.
+    regime_history: list[dict] = field(default_factory=list)
 
 
 def _standardize(X: np.ndarray) -> np.ndarray:
@@ -50,16 +72,14 @@ def _standardize(X: np.ndarray) -> np.ndarray:
     return (X - mu) / sd
 
 
-def _map_states_via_soft_correlation(
+def _compute_state_correlation_matrix(
     gamma: np.ndarray,           # (T, n_states) HMM posteriors
     rule_probs: pd.DataFrame,    # (T, 4 regimes) rule-based posteriors aligned
-) -> tuple[dict[int, str], dict[int, dict[str, float]]]:
-    """Mappa ciascuno stato HMM al regime rule-based con cui correla di piu'.
-
-    Per ogni stato s e regime r, calcola corr(gamma[:,s], rule_probs[r]).
-    Stato → regime con corr massima, garantendo bigezione (greedy assignment
-    sull'ordine di concentrazione massima).
-    """
+) -> dict[int, dict[str, float]]:
+    """Diagnostica: matrice di correlazione raw stato vs regime (no clipping,
+    no normalizzazione). Esposta nel result come `state_centroid_correlation`
+    per debug/UI. Il mapping vero e' fatto da
+    `compute_state_to_regime_distribution_corr` (vedi state_mapping.py)."""
     n_states = gamma.shape[1]
     corr_matrix: dict[int, dict[str, float]] = {}
     for s in range(n_states):
@@ -71,25 +91,22 @@ def _map_states_via_soft_correlation(
                 corr_matrix[s][r] = 0.0
             else:
                 corr_matrix[s][r] = float(np.corrcoef(x, y)[0, 1])
-
-    # Greedy assignment: stati con max-corr piu' alta scelgono per primi
-    state_max = sorted(
-        range(n_states),
-        key=lambda s: max(corr_matrix[s].values()),
-        reverse=True,
-    )
-    mapping: dict[int, str] = {}
-    used: set[str] = set()
-    for s in state_max:
-        sorted_regs = sorted(corr_matrix[s].items(), key=lambda kv: kv[1], reverse=True)
-        picked = next((r for r, _ in sorted_regs if r not in used), sorted_regs[0][0])
-        mapping[s] = picked
-        used.add(picked)
-    return mapping, corr_matrix
+    return corr_matrix
 
 
 def fit_and_predict_hmm_market(db: Session, n_states: int = 4) -> HMMMarketResult:
-    """Addestra HMM-Market su features di mercato + mappa via soft correlation."""
+    """Addestra HMM-Market su features di mercato + mappa via soft correlation.
+
+    Cache: TTL 1h sull'output keyed by n_states. Permette a ensemble +
+    standalone di condividere il fit (ridotta latency da ~5s a sub-ms).
+    Per forzare refresh: `_FIT_CACHE.clear()`.
+    """
+    now = time.time()
+    cached = _FIT_CACHE.get(n_states)
+    if cached and (now - cached[0]) < _CACHE_TTL_SECONDS:
+        logger.info(f"HMM-Market cache hit (n_states={n_states}, age={now - cached[0]:.1f}s)")
+        return cached[1]
+
     df = compute_market_features()
     df = df.dropna()
     if df.shape[0] < MIN_TRAINING_OBSERVATIONS:
@@ -135,17 +152,31 @@ def fit_and_predict_hmm_market(db: Session, n_states: int = 4) -> HMMMarketResul
     gamma_aligned = pd.DataFrame(gamma, index=df.index).reindex(common)
     rule_aligned = rule_df.reindex(common)
 
-    state_to_regime, state_corr = _map_states_via_soft_correlation(
-        gamma_aligned.values, rule_aligned,
+    # Soft mapping corr-based: P(regime|stato) ∝ max(corr, 0) + smoothing alpha.
+    # Sostituisce la bigezione hard greedy che etichettava arbitrariamente
+    # stati con correlazione debole.
+    state_to_regime_dist = compute_state_to_regime_distribution_corr(
+        gamma_aligned, rule_aligned, alpha=0.05,
     )
+    # Matrice raw di correlazione per debug/UI
+    state_corr = _compute_state_correlation_matrix(gamma_aligned.values, rule_aligned)
+    # Regime "dominante" per stato (argmax) per back-compat label/log
+    state_to_regime = {
+        s: max(state_to_regime_dist[s], key=state_to_regime_dist[s].get)
+        for s in range(n_states)
+    }
 
-    # Posterior corrente (ultima riga di gamma)
+    # Posterior corrente: marginalizza P(regime) = Σ_s P(stato_s|obs) · P(regime|stato_s)
     last_post = gamma[-1]
     regime_probs = {r: 0.0 for r in REGIMES}
-    for s, p in enumerate(last_post):
-        regime_probs[state_to_regime.get(int(s), REGIMES[0])] += float(p)
+    for s in range(n_states):
+        p_s = float(last_post[s])
+        for r in REGIMES:
+            regime_probs[r] += p_s * state_to_regime_dist[s][r]
 
-    # Anti-saturazione: temperature + floor (riusa parametri di hmm_classifier)
+    # Anti-saturazione: temperature + floor (mantenuto come post-correzione,
+    # con soft mapping il suo effetto e' ridotto perche' la distribuzione
+    # arriva gia' meno 1-hot)
     log_p = np.log(np.array([max(regime_probs[r], _EPS) for r in REGIMES]))
     log_p /= _POSTERIOR_TEMPERATURE
     smoothed = np.exp(log_p - logsumexp(log_p))
@@ -159,12 +190,30 @@ def fit_and_predict_hmm_market(db: Session, n_states: int = 4) -> HMMMarketResul
         f"state_map={state_to_regime}"
     )
 
-    return HMMMarketResult(
+    # Regime probability history: per ogni mese training,
+    # P(regime_t) = Σ_s gamma[t,s] · P(regime|stato_s).
+    history: list[dict] = []
+    for t in range(gamma.shape[0]):
+        regime_probs_t = {r: 0.0 for r in REGIMES}
+        for s in range(n_states):
+            p_s = float(gamma[t, s])
+            for r in REGIMES:
+                regime_probs_t[r] += p_s * state_to_regime_dist[s][r]
+        history.append({
+            "date": df.index[t].date().isoformat(),
+            "regime_probs": regime_probs_t,
+        })
+
+    result = HMMMarketResult(
         feature_names=feature_names,
         probabilities=regime_probs,
         current_state=int(np.argmax(last_post)),
         state_to_regime=state_to_regime,
+        state_to_regime_distribution=state_to_regime_dist,
         state_centroid_correlation=state_corr,
         n_training=int(X_std.shape[0]),
         log_likelihood=float(ll),
+        regime_history=history,
     )
+    _FIT_CACHE[n_states] = (now, result)
+    return result

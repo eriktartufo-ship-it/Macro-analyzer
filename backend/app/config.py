@@ -16,8 +16,7 @@ class Settings(BaseSettings):
     fred_api_key: str = ""
     groq_api_key: str = ""
     newsapi_key: str = ""
-    gemini_api_key: str = ""
-    anthropic_api_key: str = ""  # Claude API per FOMC text analysis (Phase 6a)
+    gemini_api_key: str = ""  # Gemini 2.5 Flash, provider preferito per FOMC + dedollar explainer
     scheduler_hour: int = 6
     scheduler_minute: int = 0
 

@@ -41,6 +41,51 @@ class TestStripHtml:
         assert "Federal Reserve&Co" in out or "Federal Reserve" in out
 
 
+class TestExtractMinutesFullUrl:
+    """Verifica estrazione del link al documento minutes pieno dalla press-release.
+
+    Bug pre-fix: il fetcher prendeva il testo della press-release di annuncio
+    (~3k char) invece del documento minutes vero (~49k char). Gemini lo aveva
+    diagnosticato: 'il documento e' una semplice notifica di pubblicazione'.
+    """
+
+    def test_extracts_relative_minutes_link(self):
+        from app.services.fomc.fetcher import _extract_minutes_full_url
+
+        html = '''<html><body>
+        <p>Minutes: <a href="/monetarypolicy/fomcminutes20260318.htm">HTML</a>
+        | <a href="/monetarypolicy/files/fomcminutes20260318.pdf">PDF</a></p>
+        </body></html>'''
+
+        out = _extract_minutes_full_url(html)
+        assert out == "https://www.federalreserve.gov/monetarypolicy/fomcminutes20260318.htm"
+
+    def test_extracts_link_with_anchor(self):
+        from app.services.fomc.fetcher import _extract_minutes_full_url
+
+        html = '<a href="/monetarypolicy/fomcminutes20260318a.htm#section1">link</a>'
+
+        out = _extract_minutes_full_url(html)
+        assert out is not None
+        assert "fomcminutes20260318a" in out
+        assert out.startswith("https://www.federalreserve.gov")
+
+    def test_returns_none_if_no_link(self):
+        from app.services.fomc.fetcher import _extract_minutes_full_url
+
+        html = "<html><body>No minutes link here</body></html>"
+
+        assert _extract_minutes_full_url(html) is None
+
+    def test_ignores_non_minutes_links(self):
+        from app.services.fomc.fetcher import _extract_minutes_full_url
+
+        html = '''<a href="/monetarypolicy/fomcprojtabl20260318.htm">projections</a>
+                  <a href="/newsevents/somethingelse.htm">other</a>'''
+
+        assert _extract_minutes_full_url(html) is None
+
+
 class TestJSONParser:
     def test_strips_markdown_fences(self):
         raw = '```json\n{"hawkish_dovish_score": 0.5}\n```'

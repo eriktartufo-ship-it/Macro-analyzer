@@ -123,8 +123,10 @@ banale richiede un breve documento di specifica concordato prima di scrivere cod
 Il progetto fa LLM calls per FOMC analysis (Phase 6a) e news scoring (Phase 2).
 Regole obbligatorie:
 
-- **Provider cascading**: Claude (preferito, qualità superiore) → Groq llama-3.3-70b
+- **Provider cascading**: Gemini 2.5 Flash (preferito) → Groq llama-3.3-70b
   fallback automatico (`services/fomc/analyzer.py` segue questo pattern).
+  Gemini scelto perché la chiave era già in `.env` (`GEMINI_API_KEY`) e
+  produce score/topics/summary di qualità superiore a Groq nei test 2026-05-01.
 - **Structured outputs**: ogni risposta LLM passa per parsing JSON tollerante a
   markdown fences + validazione campi con clamping (vedi `_validate_analysis`).
 - **Cache aggressiva su disco** per ogni documento: stessa coppia (URL, version) mai

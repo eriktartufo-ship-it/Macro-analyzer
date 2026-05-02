@@ -30,8 +30,9 @@ REGIME_CONDITIONS = {
         "indpro_growth": {"weight": 0.07, "description": "Industrial production YoY > 2%"},
         "credit_spread_tight": {"weight": 0.06, "description": "BAA-10Y spread < 2%"},
         "housing_expansion": {"weight": 0.05, "description": "Housing starts YoY > 3%"},
-        "financial_conditions_loose": {"weight": 0.05, "description": "NFCI < -0.1 (credit easy)"},
-        "vix_low": {"weight": 0.04, "description": "VIX < 18 (risk-on)"},
+        "financial_conditions_loose": {"weight": 0.03, "description": "NFCI < -0.1 (credit easy)"},
+        "vix_low": {"weight": 0.02, "description": "VIX < 18 (risk-on)"},
+        "term_premium_low": {"weight": 0.04, "description": "ACM Term Premium 10Y < 0 (risk-on accepted)"},
     },
     "stagflation": {
         "inflation_high": {"weight": 0.17, "description": "CPI YoY > 4%"},
@@ -45,9 +46,10 @@ REGIME_CONDITIONS = {
         "core_pce_high": {"weight": 0.08, "description": "Core PCE YoY > 3.5% (Fed-preferred)"},
         "credit_spread_wide": {"weight": 0.06, "description": "BAA-10Y spread > 2.3%"},
         "sentiment_low": {"weight": 0.03, "description": "Consumer sentiment < 70"},
-        "breakeven_high": {"weight": 0.08, "description": "Breakeven 10Y > 2.5% (inflation expect)"},
+        "breakeven_high": {"weight": 0.04, "description": "Breakeven 10Y > 2.5% (inflation expect)"},
         "vix_elevated": {"weight": 0.05, "description": "VIX > 25 (risk-off)"},
         "housing_slowdown": {"weight": 0.04, "description": "Housing starts YoY < 0"},
+        "term_premium_high": {"weight": 0.04, "description": "ACM Term Premium 10Y > 0.4% (duration risk priced)"},
     },
     "deflation": {
         "gdp_negative_or_decelerating": {"weight": 0.14, "description": "GDP ROC < 1%"},
@@ -110,6 +112,9 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     breakeven = indicators.get("breakeven_10y", 2.0)  # inflation expectations
     yield_3m = indicators.get("yield_curve_10y3m", 1.0)  # 10y-3m spread
     housing_roc = indicators.get("housing_starts_roc_12m", 0.0)  # housing YoY
+    # ACM Term Premium 10Y (Tier 1.3 roadmap): neutral default 0.3% (storica media).
+    # > 0.4% = mercato pricing duration risk → +stagflation; < 0 = risk-on → +reflation.
+    term_premium = indicators.get("term_premium_10y", 0.3)
 
     # --- REFLATION conditions ---
     if condition_name == "gdp_strong":
@@ -250,6 +255,14 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     elif condition_name == "housing_slowdown":
         # Housing YoY < 0 = stagflation/recession signal
         return _sigmoid(-housing_roc, center=0.0, scale=3.0)
+    elif condition_name == "term_premium_high" and regime == "stagflation":
+        # ACM TP 10Y > 0.4% = mercato pricing duration risk → +stagflation.
+        # Tier 1.3 roadmap. Storicamente in stagflation TP medio ~0.46% / 96% positive.
+        return _sigmoid(term_premium, center=0.4, scale=0.3)
+    elif condition_name == "term_premium_low" and regime == "reflation":
+        # ACM TP 10Y < 0 = mercato accetta duration risk = risk-on → +reflation.
+        # Storicamente in reflation TP medio ~0.14% (solo 60% positive).
+        return _sigmoid(-term_premium, center=0.0, scale=0.3)
 
     # Fallback
     return 0.5

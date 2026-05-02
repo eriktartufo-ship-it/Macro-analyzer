@@ -188,7 +188,7 @@ export function FOMCSentimentPanel() {
     <div className="card">
       <h2>FOMC sentiment (LLM-driven hawkish/dovish)</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-        Statements e minutes Federal Reserve analizzati da LLM (Claude prio, Groq fallback)
+        Statements e minutes Federal Reserve analizzati da LLM (Gemini prio, Groq fallback)
         per estrarre tono <strong>hawkish</strong> (alza tassi → +) vs <strong>dovish</strong>
         (taglia tassi → −), key topics e regime implication. Cache aggressiva: stessi
         documenti non riprocessati.

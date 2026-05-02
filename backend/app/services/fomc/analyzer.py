@@ -1,6 +1,6 @@
 """LLM analyzer per FOMC statements/minutes.
 
-Provider stack: Claude (preferito) → Groq Llama 3.3 70B (fallback).
+Provider stack: Gemini 2.5 Flash (preferito) → Groq Llama 3.3 70B (fallback).
 Estrae:
   - hawkish_dovish_score: -1.0 (very dovish, easing) → +1.0 (very hawkish, tightening)
   - confidence: 0..1 quanto il testo e' chiaro nella direzione
@@ -20,8 +20,6 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any
-
 import requests
 from loguru import logger
 
@@ -31,8 +29,10 @@ from app.services.fomc.fetcher import FOMCDocument
 
 _ANALYSIS_CACHE_ROOT = Path(__file__).resolve().parents[3] / ".cache" / "fomc_analysis"
 
-_CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
-_CLAUDE_MODEL = "claude-haiku-4-5-20251001"  # fast + cheap, sufficiente per FOMC analysis
+_GEMINI_API_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    "models/gemini-2.5-flash:generateContent"
+)
 
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 _GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -144,34 +144,44 @@ def _truncate_text(text: str, max_chars: int = 18000) -> str:
     return text[:max_chars] if len(text) > max_chars else text
 
 
-def _call_claude(prompt: str, system: str = _SYSTEM_PROMPT) -> str | None:
-    if not settings.anthropic_api_key:
+def _call_gemini(prompt: str, system: str = _SYSTEM_PROMPT) -> str | None:
+    """Chiamata Gemini 2.5 Flash via Google Generative Language API.
+
+    Gemini non ha un campo `system` distinto: pattern usato qui = prepend
+    `system\n\n---\n\nuser` come singola user message. responseMimeType
+    `application/json` forza output JSON-only (niente markdown fences).
+    `thinkingConfig.thinkingBudget=0` disabilita reasoning extra (latency
+    + cost saving, va bene per task strutturati semplici come FOMC parse).
+    """
+    if not settings.gemini_api_key:
         return None
     try:
         resp = requests.post(
-            _CLAUDE_API_URL,
-            headers={
-                "x-api-key": settings.anthropic_api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
+            _GEMINI_API_URL,
+            params={"key": settings.gemini_api_key},
             json={
-                "model": _CLAUDE_MODEL,
-                "max_tokens": 1500,
-                "system": system,
-                "messages": [{"role": "user", "content": prompt}],
+                "contents": [
+                    {"parts": [{"text": f"{system}\n\n---\n\n{prompt}"}]},
+                ],
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "maxOutputTokens": 1500,
+                    "responseMimeType": "application/json",
+                    "thinkingConfig": {"thinkingBudget": 0},
+                },
             },
             timeout=60,
         )
         resp.raise_for_status()
         data = resp.json()
-        # Estrai testo dalla risposta Claude (lista content blocks)
-        content = data.get("content", [])
-        if not content:
+        candidates = data.get("candidates") or []
+        if not candidates:
             return None
-        return content[0].get("text", "") if isinstance(content[0], dict) else None
+        parts = candidates[0].get("content", {}).get("parts") or []
+        text = "".join(p.get("text", "") for p in parts).strip()
+        return text or None
     except Exception as e:
-        logger.warning(f"Claude API call failed: {e}")
+        logger.warning(f"Gemini API call failed: {e}")
         return None
 
 
@@ -261,12 +271,12 @@ def analyze_fomc_document(doc: FOMCDocument, force_refresh: bool = False) -> FOM
         f"--- Document text ---\n{_truncate_text(doc.text)}"
     )
 
-    # Prova Claude per primo, poi Groq
+    # Provider cascading: Gemini (preferito) → Groq (fallback)
     raw = None
     provider = "unknown"
-    if settings.anthropic_api_key:
-        raw = _call_claude(prompt)
-        provider = "claude"
+    if settings.gemini_api_key:
+        raw = _call_gemini(prompt)
+        provider = "gemini"
     if not raw and settings.groq_api_key:
         raw = _call_groq(prompt)
         provider = "groq"

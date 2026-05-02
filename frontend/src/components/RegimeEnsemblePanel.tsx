@@ -59,6 +59,113 @@ function probBar(p: number, color: string) {
   );
 }
 
+/** Estrae la distribuzione state→regime dai metadata di una view (msvar, hmm_market).
+ *  Risolve il bug pre-fix dove il mapping hard 1-a-1 etichettava arbitrariamente
+ *  stati con correlazioni deboli. Ora ogni stato ha una distribuzione completa
+ *  sui 4 regimi (clip + smoothing prior alpha=0.05). */
+function parseStateRegimeDist(
+  metadata: Record<string, unknown> | null,
+): Record<string, Record<string, number>> | null {
+  if (!metadata) return null;
+  const raw = metadata["state_to_regime_distribution"];
+  if (!raw || typeof raw !== "object") return null;
+  const out: Record<string, Record<string, number>> = {};
+  for (const [stateId, regimeMapRaw] of Object.entries(raw as Record<string, unknown>)) {
+    if (!regimeMapRaw || typeof regimeMapRaw !== "object") continue;
+    const inner: Record<string, number> = {};
+    for (const [regime, prob] of Object.entries(regimeMapRaw as Record<string, unknown>)) {
+      if (typeof prob === "number") inner[regime] = prob;
+    }
+    out[stateId] = inner;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** Heatmap stato × regime: opacità proporzionale a P(regime|stato).
+ *  Mostra la "vera" composizione di ogni stato latente, sostituendo l'etichetta
+ *  hard arbitraria con la distribuzione informativa. */
+function StateRegimeHeatmap({
+  dist,
+  dominantMap,
+}: {
+  dist: Record<string, Record<string, number>>;
+  dominantMap?: Record<string, string>;
+}) {
+  const stateIds = Object.keys(dist).sort();
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
+        Distribuzione P(regime | stato latente) — opacità ∝ massa
+      </div>
+      <table
+        style={{
+          fontSize: 11,
+          borderCollapse: "collapse",
+          width: "100%",
+        }}
+      >
+        <thead>
+          <tr>
+            <th style={{ textAlign: "left", padding: "2px 6px", color: "var(--muted)", fontWeight: 500 }}>
+              Stato
+            </th>
+            {REGIMES.map((r) => (
+              <th
+                key={r}
+                style={{
+                  textAlign: "center",
+                  padding: "2px 6px",
+                  color: regimeColor(r),
+                  fontWeight: 600,
+                }}
+              >
+                {REGIME_LABEL[r]}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {stateIds.map((sid) => {
+            const row = dist[sid] ?? {};
+            const dominant = dominantMap?.[sid];
+            return (
+              <tr key={sid}>
+                <td style={{ padding: "3px 6px", color: "var(--muted)" }}>
+                  state {sid}
+                  {dominant && (
+                    <span style={{ marginLeft: 4, fontSize: 10, color: regimeColor(dominant) }}>
+                      → {REGIME_LABEL[dominant]?.[0] ?? "?"}
+                    </span>
+                  )}
+                </td>
+                {REGIMES.map((r) => {
+                  const p = row[r] ?? 0;
+                  return (
+                    <td
+                      key={r}
+                      style={{
+                        padding: "3px 6px",
+                        textAlign: "center",
+                        background: regimeColor(r),
+                        color: p > 0.4 ? "white" : "var(--text)",
+                        opacity: 0.15 + p * 0.85,
+                        fontWeight: p > 0.3 ? 600 : 400,
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {(p * 100).toFixed(0)}%
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function RegimeEnsemblePanel() {
   const [data, setData] = useState<EnsembleResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -192,6 +299,20 @@ export function RegimeEnsemblePanel() {
                     </div>
                   ))}
                 </div>
+                {(() => {
+                  const dist = parseStateRegimeDist(v.metadata);
+                  if (!dist) return null;
+                  const dominantMapRaw = v.metadata?.["state_to_regime"];
+                  const dominantMap =
+                    dominantMapRaw && typeof dominantMapRaw === "object"
+                      ? Object.fromEntries(
+                          Object.entries(dominantMapRaw as Record<string, unknown>).map(
+                            ([k, val]) => [k, typeof val === "string" ? val : ""],
+                          ),
+                        )
+                      : undefined;
+                  return <StateRegimeHeatmap dist={dist} dominantMap={dominantMap} />;
+                })()}
               </div>
             ))}
           </div>
