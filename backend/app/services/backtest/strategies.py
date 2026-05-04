@@ -100,3 +100,85 @@ def sixty_forty_strategy(dates: pd.DatetimeIndex) -> pd.DataFrame:
 def spy_only_strategy(dates: pd.DatetimeIndex) -> pd.DataFrame:
     """Buy-and-hold SPY (us_equities_growth proxy)."""
     return pd.DataFrame({"us_equities_growth": 1.0}, index=dates)
+
+
+# ============================================================================
+# Tier 2.4 roadmap Bridgewater: All-Weather risk parity allocation
+# ============================================================================
+
+# 4 quadrant macro (= REGIMES dal classifier). Ogni quadrant prende 25% del rischio.
+_QUADRANT_REGIMES = ("reflation", "stagflation", "deflation", "goldilocks")
+_QUADRANT_WEIGHT = 0.25  # 1/4 per quadrant (Bridgewater All-Weather)
+
+
+def all_weather_risk_parity_strategy(
+    asset_classes: list[str],
+    dates: pd.DatetimeIndex,
+    top_n_per_quadrant: int = 3,
+) -> pd.DataFrame:
+    """Bridgewater All-Weather: 25% rischio per ogni quadrant macro, asset
+    within quadrant pesati per **vol parity** (1/vol).
+
+    Filosofia: invece di "inseguire" il regime corrente, diversifica per QUALSIASI
+    regime arrivi. Pesi statici nel tempo (selection da ASSET_REGIME_DATA hardcoded
+    + vol parity → peso costante per asset, indipendente dal regime live).
+
+    Algoritmo:
+    1. Per ogni regime r:
+       a. Trova top-N asset con `sharpe[r]` storico migliore (esclude vol=0).
+       b. Vol parity within: `w_a = (1/vol_a) / Σ_b∈top(1/vol_b)`.
+       c. Contributo asset a al peso finale: `0.25 × w_a`.
+    2. Asset presente in piu' top-N (cross-regime overlap): pesi sommati.
+    3. Output DataFrame `dates × asset_classes` con righe identiche (time-invariant).
+
+    Args:
+        asset_classes: universe asset disponibili (filtrato su Yahoo prices).
+        dates: indice mensile per il backtest (le righe sono identiche).
+        top_n_per_quadrant: quanti asset selezionare per ogni regime (default 3).
+
+    Returns:
+        DataFrame `index=dates, cols=asset_classes` con pesi sommati a 1
+        (full investment). Vuoto se asset_classes vuoto.
+    """
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    if not asset_classes:
+        return pd.DataFrame(index=dates)
+
+    weights: dict[str, float] = {a: 0.0 for a in asset_classes}
+
+    for regime in _QUADRANT_REGIMES:
+        # Candidati asset con stat regime + vol > 0
+        candidates: list[tuple[str, float, float]] = []
+        for a in asset_classes:
+            stats_by_regime = ASSET_REGIME_DATA.get(a, {})
+            stats = stats_by_regime.get(regime)
+            if not stats:
+                continue
+            vol = float(stats.get("vol", 0.0))
+            sharpe = float(stats.get("sharpe", 0.0))
+            if vol > 0:
+                candidates.append((a, sharpe, vol))
+
+        if not candidates:
+            continue
+
+        # Top-N per Sharpe regime-specific (asset che fanno bene in quel regime)
+        candidates.sort(key=lambda x: -x[1])
+        top = candidates[:top_n_per_quadrant]
+
+        # Vol parity within quadrant
+        inv_vol_sum = sum(1.0 / vol for _, _, vol in top)
+        if inv_vol_sum <= 0:
+            continue
+        for asset, _, vol in top:
+            within_weight = (1.0 / vol) / inv_vol_sum
+            weights[asset] += _QUADRANT_WEIGHT * within_weight
+
+    # Renormalize (alcuni quadrant potrebbero non aver candidati → peso totale < 1)
+    total = sum(weights.values())
+    if total > 0 and abs(total - 1.0) > 1e-9:
+        weights = {a: w / total for a, w in weights.items()}
+
+    # DataFrame time-invariant: stessa riga per ogni data
+    return pd.DataFrame([weights] * len(dates), index=dates)

@@ -290,6 +290,20 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     if "term_premium_10y" in latest:
         indicators["term_premium_10y"] = float(latest["term_premium_10y"])
 
+    # GDP YoY DFM nowcast (Tier 2.5 roadmap Bridgewater): risolve lag trimestrale
+    # del classico gdp_roc QoQ. DFM su 5 indicatori coincidenti (industrial
+    # production, payrolls, retail, sentiment, housing) → factor latente +
+    # OLS mapping a GDP YoY. Aggiornato mensilmente, complementare a gdp_roc.
+    # Best-effort: se fetch/fit fallisce, classifier usa default neutro 2.0%.
+    try:
+        from app.services.indicators.dfm_nowcast import compute_gdp_nowcast
+
+        dfm_result = compute_gdp_nowcast(fetcher=fetcher, n_factors=1)
+        if dfm_result is not None and dfm_result.latest_gdp_yoy_implied is not None:
+            indicators["gdp_yoy_dfm"] = float(dfm_result.latest_gdp_yoy_implied)
+    except Exception as e:
+        logger.warning(f"DFM nowcast skipped in scheduler: {e}")
+
     return indicators
 
 

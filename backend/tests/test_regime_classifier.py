@@ -265,6 +265,53 @@ class TestRegimeClassifier:
         assert len(REGIMES) == 4
         assert set(REGIMES) == {"reflation", "stagflation", "deflation", "goldilocks"}
 
+    def test_dfm_growth_strong_tilts_reflation(self):
+        """DFM nowcast YoY alto (5%) deve aumentare probabilita reflation
+        rispetto al neutro 2%. Tier 2.5 roadmap quick win."""
+        from app.services.regime.classifier import classify_regime
+
+        base = {
+            "gdp_roc": 0.5, "pmi": 50.0, "cpi_yoy": 2.5, "unrate": 4.5,
+            "unrate_roc": 0.0, "yield_curve_10y2y": 0.5, "initial_claims_roc": 0.0,
+            "lei_roc": 0.0, "fed_funds_rate": 3.0,
+        }
+        # Default DFM = 2.0 (trend) → segnale neutro
+        r_neutral = classify_regime(base)
+        # DFM YoY = 5.0 → forte segnale crescita
+        r_strong = classify_regime({**base, "gdp_yoy_dfm": 5.0})
+
+        assert r_strong["probabilities"]["reflation"] > r_neutral["probabilities"]["reflation"]
+
+    def test_dfm_growth_weak_tilts_stagflation(self):
+        """DFM nowcast YoY basso (-1%) deve aumentare probabilita stagflation
+        rispetto al neutro 2%."""
+        from app.services.regime.classifier import classify_regime
+
+        base = {
+            "gdp_roc": 0.5, "pmi": 50.0, "cpi_yoy": 4.0, "unrate": 5.0,
+            "unrate_roc": 0.5, "yield_curve_10y2y": 0.0, "initial_claims_roc": 5.0,
+            "lei_roc": -0.5, "fed_funds_rate": 5.0,
+        }
+        r_neutral = classify_regime(base)
+        r_weak = classify_regime({**base, "gdp_yoy_dfm": -1.0})
+
+        assert r_weak["probabilities"]["stagflation"] > r_neutral["probabilities"]["stagflation"]
+
+    def test_dfm_default_neutral_when_missing(self):
+        """gdp_yoy_dfm assente → default 2.0% (= trend long-run, segnale neutro).
+        Classify funziona normalmente senza la chiave."""
+        from app.services.regime.classifier import classify_regime
+
+        ind = {
+            "gdp_roc": 2.5, "pmi": 55.0, "cpi_yoy": 2.0, "unrate": 4.0,
+            "unrate_roc": -0.1, "yield_curve_10y2y": 1.0, "initial_claims_roc": -5.0,
+            "lei_roc": 0.5, "fed_funds_rate": 2.0,
+        }
+        # Senza gdp_yoy_dfm
+        r = classify_regime(ind)
+        assert sum(r["probabilities"].values()) == pytest.approx(1.0, abs=1e-6)
+        assert r["regime"] in {"reflation", "stagflation", "deflation", "goldilocks"}
+
     def test_new_indicators_tilt_stagflation(self):
         """Core PCE alto + spread BAA largo + sentiment basso devono spingere stagflation.
 

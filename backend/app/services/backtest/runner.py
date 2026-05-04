@@ -21,6 +21,7 @@ from app.services.backtest.metrics import (
 )
 from app.services.backtest.portfolio import fetch_asset_returns, run_backtest
 from app.services.backtest.strategies import (
+    all_weather_risk_parity_strategy,
     buy_and_hold_strategy,
     regime_probs_monthly,
     score_weighted_strategy,
@@ -111,10 +112,20 @@ def run_full_backtest(
     bh_run = run_backtest(bh_weights, asset_returns_final, cost_bps=cost_bps)
     bh_stats = compute_stats(bh_run.monthly_returns)
 
+    # Strategy: All-Weather risk parity (Bridgewater style, 25%/quadrant + vol parity)
+    rp_weights = all_weather_risk_parity_strategy(
+        asset_classes=list(asset_returns_final.columns),
+        dates=final_index,
+        top_n_per_quadrant=3,
+    )
+    rp_run = run_backtest(rp_weights, asset_returns_final, cost_bps=cost_bps)
+    rp_stats = compute_stats(rp_run.monthly_returns)
+
     # Alpha vs 60/40 per le strategy non-benchmark
     macro_alpha = alpha_vs_benchmark(macro_run.monthly_returns, sf_run.monthly_returns)
     spy_alpha = alpha_vs_benchmark(spy_run.monthly_returns, sf_run.monthly_returns)
     bh_alpha = alpha_vs_benchmark(bh_run.monthly_returns, sf_run.monthly_returns)
+    rp_alpha = alpha_vs_benchmark(rp_run.monthly_returns, sf_run.monthly_returns)
 
     strategies = [
         StrategyResult(
@@ -149,12 +160,21 @@ def run_full_backtest(
             stats=bh_stats,
             alpha_vs_60_40=bh_alpha,
         ),
+        StrategyResult(
+            name="all_weather_risk_parity",
+            description="Bridgewater All-Weather: 25%/quadrant + vol parity within (top-3 per regime)",
+            monthly_returns=rp_run.monthly_returns,
+            nav=compute_nav(rp_run.monthly_returns),
+            stats=rp_stats,
+            alpha_vs_60_40=rp_alpha,
+        ),
     ]
 
     logger.info(
         f"Backtest completato: {len(final_index)} mesi, "
         f"macro CAGR={macro_stats.annualized_return*100:.1f}% "
-        f"vs 60/40 CAGR={sf_stats.annualized_return*100:.1f}%"
+        f"vs 60/40 CAGR={sf_stats.annualized_return*100:.1f}% "
+        f"vs risk_parity CAGR={rp_stats.annualized_return*100:.1f}%"
     )
 
     return FullBacktestResult(

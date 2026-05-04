@@ -18,7 +18,7 @@ REGIMES = ["reflation", "stagflation", "deflation", "goldilocks"]
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
 REGIME_CONDITIONS = {
     "reflation": {
-        "gdp_strong": {"weight": 0.13, "description": "GDP ROC > 2%"},
+        "gdp_strong": {"weight": 0.11, "description": "GDP ROC > 2%"},
         "pmi_expansion": {"weight": 0.11, "description": "PMI > 50"},
         "inflation_rising": {"weight": 0.09, "description": "CPI YoY > 2.5%"},
         "unemployment_low_or_falling": {"weight": 0.08, "description": "Unemployment < 5% o ROC < 0"},
@@ -33,10 +33,11 @@ REGIME_CONDITIONS = {
         "financial_conditions_loose": {"weight": 0.03, "description": "NFCI < -0.1 (credit easy)"},
         "vix_low": {"weight": 0.02, "description": "VIX < 18 (risk-on)"},
         "term_premium_low": {"weight": 0.04, "description": "ACM Term Premium 10Y < 0 (risk-on accepted)"},
+        "dfm_growth_strong": {"weight": 0.02, "description": "DFM nowcast GDP YoY > 2.5% (real-time growth signal)"},
     },
     "stagflation": {
         "inflation_high": {"weight": 0.17, "description": "CPI YoY > 4%"},
-        "gdp_weak": {"weight": 0.13, "description": "GDP ROC < 1.5%"},
+        "gdp_weak": {"weight": 0.11, "description": "GDP ROC < 1.5%"},
         "pmi_weak": {"weight": 0.10, "description": "PMI < 50"},
         "unemployment_rising": {"weight": 0.08, "description": "Unemployment ROC > 0.2"},
         "policy_restrictive": {"weight": 0.05, "description": "Fed funds > 4%"},
@@ -50,6 +51,7 @@ REGIME_CONDITIONS = {
         "vix_elevated": {"weight": 0.05, "description": "VIX > 25 (risk-off)"},
         "housing_slowdown": {"weight": 0.04, "description": "Housing starts YoY < 0"},
         "term_premium_high": {"weight": 0.04, "description": "ACM Term Premium 10Y > 0.4% (duration risk priced)"},
+        "dfm_growth_weak": {"weight": 0.02, "description": "DFM nowcast GDP YoY < 1.5% (real-time slowdown signal)"},
     },
     "deflation": {
         "gdp_negative_or_decelerating": {"weight": 0.14, "description": "GDP ROC < 1%"},
@@ -115,6 +117,9 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     # ACM Term Premium 10Y (Tier 1.3 roadmap): neutral default 0.3% (storica media).
     # > 0.4% = mercato pricing duration risk → +stagflation; < 0 = risk-on → +reflation.
     term_premium = indicators.get("term_premium_10y", 0.3)
+    # DFM nowcast GDP YoY (Tier 2.5 roadmap): default 2.0% (= trend long-run USA GDP YoY).
+    # > 2.5% = growth above trend → +reflation; < 1.5% = slowdown → +stagflation.
+    gdp_yoy_dfm = indicators.get("gdp_yoy_dfm", 2.0)
 
     # --- REFLATION conditions ---
     if condition_name == "gdp_strong":
@@ -263,6 +268,13 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
         # ACM TP 10Y < 0 = mercato accetta duration risk = risk-on → +reflation.
         # Storicamente in reflation TP medio ~0.14% (solo 60% positive).
         return _sigmoid(-term_premium, center=0.0, scale=0.3)
+    elif condition_name == "dfm_growth_strong" and regime == "reflation":
+        # DFM nowcast GDP YoY > 2.5% = growth above trend → +reflation.
+        # Tier 2.5 roadmap. Real-time signal vs gdp_roc QoQ lagged trimestrale.
+        return _sigmoid(gdp_yoy_dfm, center=2.5, scale=1.0)
+    elif condition_name == "dfm_growth_weak" and regime == "stagflation":
+        # DFM nowcast GDP YoY < 1.5% = slowdown real-time → +stagflation.
+        return _sigmoid(-gdp_yoy_dfm, center=-1.5, scale=1.0)
 
     # Fallback
     return 0.5

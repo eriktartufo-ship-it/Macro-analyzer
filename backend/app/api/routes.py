@@ -1550,6 +1550,38 @@ def trigger_full_backfill(days: int = Query(default=365, ge=30, le=3650)):
         raise HTTPException(status_code=500, detail=f"Errore backfill completo: {str(e)}")
 
 
+@router.get("/indicators/gdp-nowcast")
+def get_gdp_nowcast(n_factors: int = Query(default=1, ge=1, le=3)):
+    """DFM nowcast GDP YoY (Tier 2.5 roadmap Bridgewater).
+
+    Estrae fattore latente da 5 coincident indicators FRED (industrial production,
+    nonfarm payrolls, retail sales, consumer sentiment, housing starts), mappa a
+    GDP YoY via OLS. Output mensile vs trimestrale lagged del classico `gdp_roc`.
+    """
+    from app.services.indicators.dfm_nowcast import compute_gdp_nowcast
+
+    try:
+        r = compute_gdp_nowcast(n_factors=n_factors)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"GDP nowcast failed: {str(e)}")
+
+    if r is None:
+        raise HTTPException(status_code=503, detail="DFM fit failed (insufficient data)")
+
+    return {
+        "latest_nowcast_date": r.latest_nowcast_date,
+        "latest_factor_value": r.latest_factor_value,
+        "latest_gdp_yoy_implied": r.latest_gdp_yoy_implied,
+        "ols_alpha": r.ols_alpha,
+        "ols_beta": r.ols_beta,
+        "ols_r_squared": r.ols_r_squared,
+        "series_used": r.series_used,
+        "n_history_points": len(r.nowcast_history),
+        "history_tail": r.nowcast_history[-24:],   # ultimi 2 anni in payload
+        "notes": r.notes,
+    }
+
+
 @router.get("/regime/meta")
 def get_regime_meta(
     lookback_months: int = Query(default=60, ge=12, le=240),
