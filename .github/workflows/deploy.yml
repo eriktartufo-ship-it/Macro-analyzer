@@ -1,0 +1,111 @@
+# Build & Deploy Macro Analyzer: push su `main` →
+#   1. builda 2 immagini in parallelo (backend + frontend) → ghcr.io
+#   2. SSH alla VPS → docker compose pull + up -d (entrambi i container)
+#   3. smoke test https://macro.pieranlab.cloud/
+#
+# PREREQUISITI (una tantum, NON gestiti da questo workflow):
+#   - Sulla VPS, in /opt/macro/, esistono docker-compose.yml + .env con APP_IMAGE_BACKEND e APP_IMAGE_FRONTEND valorizzati.
+#   - Sulla VPS, l'utente `deploy` autenticato a ghcr.io (docker login con PAT read:packages — già fatto per Sport).
+#   - GitHub Secrets nel repo: VPS_SSH_HOST, VPS_SSH_USER, VPS_SSH_KEY, VPS_SSH_PORT (opzionale).
+#   - Settings → Actions → Workflow permissions: "Read and write permissions".
+
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: true
+      matrix:
+        component:
+          - name: backend
+            dockerfile: backend/Dockerfile
+          - name: frontend
+            dockerfile: frontend/Dockerfile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GHCR vuole il path immagine in lowercase (es. ghcr.io/eriktartufo-ship-it/macro-analyzer/backend).
+      - name: Compute lowercase image name
+        id: img
+        run: |
+          REPO_LC="${GITHUB_REPOSITORY,,}"
+          echo "image=${{ env.REGISTRY }}/${REPO_LC}/${{ matrix.component.name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract Docker metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.image }}
+          # Applica `latest` su entrambi i branch supportati (main o master).
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
+            type=sha,format=short
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ matrix.component.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.component.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component.name }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH to VPS — pull & restart
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_SSH_HOST }}
+          username: ${{ secrets.VPS_SSH_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /opt/macro
+            docker compose pull
+            docker compose up -d
+            docker image prune -f
+
+      - name: Smoke test (HTTPS endpoint)
+        run: |
+          set -euo pipefail
+          # Aspetta che Traefik aggiorni il routing al nuovo container.
+          # Nginx frontend è quasi-istantaneo; backend uvicorn può prendersi 15-25s al primo avvio.
+          for i in 1 2 3 4 5 6 7 8; do
+            if curl -fsS --max-time 10 -o /dev/null https://macro.pieranlab.cloud/; then
+              echo "✓ macro.pieranlab.cloud risponde 2xx"
+              exit 0
+            fi
+            echo "Tentativo $i fallito, retry tra 5s..."
+            sleep 5
+          done
+          echo "✗ Smoke test fallito dopo 8 tentativi"
+          exit 1

@@ -18,6 +18,9 @@ services:
       retries: 5
 
   backend:
+    # In produzione l'immagine arriva da GHCR (vedi APP_IMAGE_BACKEND in .env).
+    # In dev locale, se la var non è settata, viene buildata e taggata `macro-backend:local`.
+    image: ${APP_IMAGE_BACKEND:-macro-backend:local}
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -43,6 +46,7 @@ services:
       - "8000"
 
   frontend:
+    image: ${APP_IMAGE_FRONTEND:-macro-frontend:local}
     build:
       context: .
       dockerfile: frontend/Dockerfile
