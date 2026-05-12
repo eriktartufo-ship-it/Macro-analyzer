@@ -838,11 +838,15 @@ def run_backtest_endpoint(
 @router.get("/backtest/lead-time", response_model=LeadTimeResponse)
 def lead_time_endpoint(
     threshold: float = Query(default=0.35, ge=0.10, le=0.80),
-    lookback_months: int = Query(default=12, ge=3, le=36),
+    lookback_months: int = Query(default=60, ge=3, le=240),
     min_recession_year: int = Query(default=1970, ge=1854, le=2020),
     db: Session = Depends(get_db),
 ):
-    """Lead time NBER recessions: di quanti mesi il sistema anticipa ogni recessione storica."""
+    """Lead time NBER recessions: di quanti mesi il sistema anticipa ogni recessione storica.
+
+    Default lookback 60 mesi (5 anni) per catturare segnali long-cycle.
+    Cap 240 mesi (20 anni) per Kuznets/Kondratieff analysis.
+    """
     from app.services.backtest.lead_time import compute_lead_time_report
 
     r = compute_lead_time_report(
@@ -1073,7 +1077,7 @@ def run_asset_calibration(
 
 @router.get("/regime/history", response_model=list[RegimeResponse])
 def get_regime_history(
-    days: int = Query(default=30, ge=1, le=365),
+    days: int = Query(default=365 * 5, ge=1, le=365 * 60),
     db: Session = Depends(get_db),
 ):
     """Storico classificazioni regime."""
@@ -1548,6 +1552,113 @@ def trigger_full_backfill(days: int = Query(default=365, ge=30, le=3650)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Errore backfill completo: {str(e)}")
+
+
+@router.get("/regime/crisis-risk")
+def get_crisis_risk(db: Session = Depends(get_db)):
+    """Crisis Risk Indicator (Tier 3 dashboard): livello rischio + tipo crisi
+    + asset positioning.
+
+    Identifica 3 tipi di crisi (NON solo crash deflattivi):
+    - deflation_crash (2008/2020): GDP↓ + CPI↓ + credit spread↑ + VIX spike
+    - stagflation_debasement (1973/2022): CPI↑ + dedollar↑ + bonds crollano
+    - bubble_goldilocks (2000/2021): VIX compresso + complacency mean-reversion
+
+    Per ogni tipo restituisce positioning suggerito (overweight/neutral/underweight).
+    """
+    import json
+    from app.models import RegimeClassification
+    from app.services.regime.crisis_indicator import assess_crisis_risk
+
+    last = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc()).first()
+    )
+    if last is None:
+        raise HTTPException(status_code=404, detail="Nessuna classificazione in DB")
+    meta = json.loads(last.conditions_met) if last.conditions_met else {}
+    indicators = meta.get("indicators", {}) or {}
+
+    # Pesca dedollar combined dall'ultimo SecularTrend record (= stesso storage
+    # usato da /dedollarization endpoint).
+    dedollar_combined = None
+    try:
+        latest_dedollar = (
+            db.query(SecularTrend)
+            .filter(SecularTrend.trend_name == "dedollarization")
+            .order_by(SecularTrend.date.desc())
+            .first()
+        )
+        if latest_dedollar is not None:
+            payload = json.loads(latest_dedollar.components) if latest_dedollar.components else {}
+            dedollar_combined = float(
+                payload.get("combined_score") or latest_dedollar.score or 0.0
+            )
+    except Exception:
+        # Graceful: se dedollar non disponibile, continua senza (crisis_indicator
+        # accetta None come default).
+        pass
+
+    result = assess_crisis_risk(
+        indicators,
+        dedollar_combined=dedollar_combined,
+        date=str(last.date),
+    )
+
+    return {
+        "date": result.date,
+        "risk_level": result.risk_level,
+        "risk_score": result.risk_score,
+        "crisis_type": result.crisis_type,
+        "crisis_type_confidence": result.crisis_type_confidence,
+        "summary": result.summary,
+        "historical_analog": result.historical_analog,
+        "positioning": result.positioning,
+        "triggers_fired": [t for t in result.triggers if t["fired"]],
+        "triggers_all": result.triggers,
+        "dedollar_combined": dedollar_combined,
+        "indicators_snapshot": result.indicators_snapshot,
+        "notes": result.notes,
+    }
+
+
+@router.get("/backtest/lead-time-sensitivity")
+def get_lead_time_sensitivity(db: Session = Depends(get_db)):
+    """Sensitivity grid del lead-time NBER: hit_rate × avg_lead variando
+    threshold (0.30-0.50) e lookback (6-24m). Test contro data mining:
+    se cambiando i parametri il risultato resta stabile, segnale robusto.
+    """
+    from app.services.backtest.robustness import lead_time_sensitivity_grid
+
+    try:
+        return lead_time_sensitivity_grid(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sensitivity grid failed: {str(e)}")
+
+
+@router.get("/backtest/walk-forward")
+def get_walk_forward(
+    test_window_months: int = Query(default=36, ge=24, le=120),
+    step_months: int = Query(default=12, ge=6, le=24),
+    db: Session = Depends(get_db),
+):
+    """Walk-forward OOS evaluation della macro_score_weighted strategy.
+    Rolling windows + statistiche stability (sharpe_std, verdict).
+    Test contro overfitting: se Sharpe oscilla poco, robusto; molto, fragile.
+    """
+    from datetime import date as _date
+    from app.services.backtest.robustness import walk_forward_backtest
+
+    try:
+        return walk_forward_backtest(
+            db,
+            window_start=_date(2005, 1, 1),
+            window_end=_date.today(),
+            test_window_months=test_window_months,
+            step_months=step_months,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Walk-forward failed: {str(e)}")
 
 
 @router.get("/indicators/gdp-nowcast")

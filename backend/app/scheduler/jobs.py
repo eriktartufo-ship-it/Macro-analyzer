@@ -304,6 +304,24 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     except Exception as e:
         logger.warning(f"DFM nowcast skipped in scheduler: {e}")
 
+    # Tier 3.6 roadmap — Alt data ingest. Esposti come informativi nel
+    # data-snapshot (non ancora pillar classifier, fase A solo dati).
+    # JOLTS, personal income, durable goods, ECB/BoE/BoJ policy rates.
+    for name in (
+        "job_openings",          # BLS labor demand
+        "personal_income",       # Big Four DFM coincident
+        "durable_goods_orders",  # leading capex
+        "ecb_main_refi_rate",    # eurozone policy
+        "boe_bank_rate",         # UK policy (proxy 3M interbank)
+        "boj_policy_rate",       # Japan policy
+    ):
+        try:
+            raw = fetcher.fetch_series(name)
+            if raw is not None and not raw.empty:
+                indicators[name] = float(raw.iloc[-1])
+        except Exception as e:
+            logger.warning(f"Tier 3.6 alt data {name} fetch failed: {e}")
+
     return indicators
 
 

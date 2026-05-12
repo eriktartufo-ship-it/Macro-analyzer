@@ -453,4 +453,45 @@ FRED_SERIES = {
         "frequency": "monthly",
         "transform": "level",
     },
+    # ========================================================================
+    # Tier 3.6 roadmap Bridgewater — Alt data ingest (BLS, ECB, BoE, BoJ).
+    # Estende coverage cross-country + indicatori coincidenti del Big Four
+    # Conference Board (personal income aggiunto a industrial/payrolls/retail).
+    # ========================================================================
+    "job_openings": {
+        "fred_id": "JTSJOL",
+        "description": "JOLTS Job Openings (thousands, monthly, BLS) — labor demand",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "personal_income": {
+        "fred_id": "PI",
+        "description": "Personal Income ($ billions, monthly) — Big Four Conf Board coincident",
+        "frequency": "monthly",
+        "transform": "roc",
+    },
+    "durable_goods_orders": {
+        "fred_id": "DGORDER",
+        "description": "Manufacturers New Orders Durable Goods ($ mil, monthly) — leading capex",
+        "frequency": "monthly",
+        "transform": "roc",
+    },
+    "ecb_main_refi_rate": {
+        "fred_id": "ECBMRRFR",
+        "description": "ECB Main Refinancing Operations Rate (%, daily) — eurozone policy",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    "boe_bank_rate": {
+        "fred_id": "IR3TIB01GBM156N",
+        "description": "UK 3M Interbank Rate (%, monthly, OECD) — proxy BoE policy",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "boj_policy_rate": {
+        "fred_id": "IRSTCI01JPM156N",
+        "description": "BoJ Immediate Rate / Call Rate (%, monthly) — Japan policy",
+        "frequency": "monthly",
+        "transform": "level",
+    },
 }

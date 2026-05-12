@@ -85,6 +85,139 @@ PRESET_SCENARIOS = {
             "fed_funds_rate": ("delta", -0.5),
         },
     },
+    # ========================================================================
+    # Tier 4.9 — Stress historical replay: 6 episodi storici parametrici.
+    # Delta calibrati su dati reali (peak-to-trough vs baseline pre-shock).
+    # ========================================================================
+    "historical_1973_oil_shock": {
+        "label": "1973-74 Oil shock (stagflation)",
+        "description": (
+            "OPEC embargo Ottobre 1973: oil quadruplica, CPI da 3% a 12%, GDP crolla, "
+            "unemployment da 4.8% a 9%, Fed funds da 8% a 13%. Birth of 'stagflation'."
+        ),
+        "deltas": {
+            "cpi_yoy": ("delta", 6.0),         # CPI 3% → 9%+
+            "core_pce_yoy": ("delta", 4.5),
+            "gdp_roc": ("delta", -3.5),        # GDP collapse
+            "unrate": ("delta", 3.5),          # 4.8 → ~8
+            "unrate_roc": ("delta", 60.0),     # % change YoY positivo grosso
+            "fed_funds_rate": ("delta", 5.0),
+            "breakeven_10y": ("delta", 2.5),
+            "vix": ("delta", 12.0),
+            "consumer_sentiment": ("delta", -25.0),
+            "indpro_roc_12m": ("delta", -6.0),
+        },
+    },
+    "historical_1987_black_monday": {
+        "label": "1987 Black Monday (volatility shock)",
+        "description": (
+            "19 ottobre 1987: Dow -22.6% in un giorno. VIX-equivalent picco a 150. "
+            "Ma economia reale OK: nessuna recession, Greenspan inietta liquidita'. "
+            "Pure volatility shock, credit non si rompe."
+        ),
+        "deltas": {
+            "vix": ("delta", 25.0),            # picco volatility
+            "fed_funds_rate": ("delta", -0.5), # liquidity injection
+            "nfci": ("delta", 0.4),            # tensione finanziaria moderata
+            "baa_spread": ("delta", 0.5),      # credit lievemente
+            "gdp_roc": ("delta", -0.5),        # rallenta poco
+            "consumer_sentiment": ("delta", -8.0),
+            "yield_curve_10y2y": ("delta", -0.3),
+        },
+    },
+    "historical_2000_dotcom_bust": {
+        "label": "2000-01 Dotcom bust (equity crash)",
+        "description": (
+            "Marzo 2000-Ott 2002: Nasdaq -78%. GDP rallenta ma non recessione severa "
+            "(mild recession Mar-Nov 2001). CPI scende, Fed taglia da 6.5% a 1.75%. "
+            "Credit relativamente OK (no banking crisis)."
+        ),
+        "deltas": {
+            "vix": ("delta", 15.0),            # VIX 20 → 35+
+            "gdp_roc": ("delta", -2.0),        # rallenta ma non collassa
+            "cpi_yoy": ("delta", -1.0),        # disinflation
+            "core_pce_yoy": ("delta", -0.8),
+            "unrate": ("delta", 2.0),          # 4 → 6
+            "unrate_roc": ("delta", 30.0),
+            "fed_funds_rate": ("delta", -3.0), # Fed cuts agressive
+            "yield_curve_10y2y": ("delta", -0.5),
+            "indpro_roc_12m": ("delta", -3.5),
+            "consumer_sentiment": ("delta", -15.0),
+            "baa_spread": ("delta", 0.8),      # credit modesto
+            "breakeven_10y": ("delta", -0.6),
+        },
+    },
+    "historical_2008_gfc": {
+        "label": "2008-09 Global Financial Crisis (deflation severa)",
+        "description": (
+            "Lehman Sept 2008. GDP -4.3% Q4 2008. Unrate 5% → 10%. BAA spread 2% → 6%+. "
+            "VIX picco 80. Fed taglia da 5.25% a 0%. CPI da +5.6% a -2% (deflation). "
+            "Deflation severa + credit crisis."
+        ),
+        "deltas": {
+            "gdp_roc": ("delta", -5.0),
+            "cpi_yoy": ("delta", -3.5),        # CPI collapse (oil + demand)
+            "core_pce_yoy": ("delta", -1.5),
+            "unrate": ("delta", 5.0),          # 5 → 10
+            "unrate_roc": ("delta", 100.0),    # raddoppia YoY
+            "fed_funds_rate": ("delta", -4.5), # 5.25 → 0
+            "vix": ("delta", 30.0),            # picco 80
+            "baa_spread": ("delta", 4.0),      # 2% → 6%+
+            "nfci": ("delta", 2.0),            # extreme tightening
+            "yield_curve_10y2y": ("delta", -0.5),
+            "breakeven_10y": ("delta", -1.5),  # deflation expectations
+            "lei_roc": ("delta", -8.0),
+            "indpro_roc_12m": ("delta", -12.0),
+            "payrolls_roc_12m": ("delta", -5.0),
+            "consumer_sentiment": ("delta", -30.0),
+            "housing_starts_roc_12m": ("delta", -45.0),
+        },
+    },
+    "historical_2020_covid": {
+        "label": "2020 COVID shock (rapid deflation)",
+        "description": (
+            "Marzo 2020 lockdown globale. GDP -9% Q2. Unrate 3.5% → 14.7% in 2 mesi. "
+            "VIX picco 82. Fed cuts 150bp + QE infinito. CPI scende temporaneamente. "
+            "Velocita' di shock senza precedenti (settimane, non mesi come 2008)."
+        ),
+        "deltas": {
+            "gdp_roc": ("delta", -8.0),        # Q2 2020 -9% annualized
+            "cpi_yoy": ("delta", -2.0),        # disinflation transitoria
+            "core_pce_yoy": ("delta", -1.0),
+            "unrate": ("delta", 10.0),         # 3.5 → 14.7
+            "unrate_roc": ("delta", 280.0),    # 4x YoY
+            "fed_funds_rate": ("delta", -1.5), # 1.75 → 0.25
+            "vix": ("delta", 35.0),            # picco 82
+            "baa_spread": ("delta", 3.0),
+            "nfci": ("delta", 1.8),
+            "lei_roc": ("delta", -10.0),
+            "indpro_roc_12m": ("delta", -15.0),
+            "payrolls_roc_12m": ("delta", -8.0),
+            "consumer_sentiment": ("delta", -25.0),
+            "housing_starts_roc_12m": ("delta", -20.0),
+            "initial_claims_roc": ("delta", 300.0),  # claims weekly +x10
+        },
+    },
+    "historical_2022_inflation_surge": {
+        "label": "2022 Inflation surge (stagflation soft)",
+        "description": (
+            "Post-COVID + Russia/Ukraine. CPI da 1.4% a 9.1% picco Giugno 2022. "
+            "Fed funds da 0.25% a 5.25% in 14 mesi (piu' rapido in 40 anni). "
+            "GDP rallenta ma niente recessione tecnica. Soft stagflation."
+        ),
+        "deltas": {
+            "cpi_yoy": ("delta", 6.0),         # 1.4 → 7+
+            "core_pce_yoy": ("delta", 3.5),
+            "breakeven_10y": ("delta", 1.0),
+            "fed_funds_rate": ("delta", 4.5),  # 0.25 → 4.75
+            "gdp_roc": ("delta", -1.5),        # rallenta
+            "yield_curve_10y2y": ("delta", -1.5),  # inverte
+            "yield_curve_10y3m": ("delta", -2.0),
+            "consumer_sentiment": ("delta", -20.0),  # picco minimo storico
+            "vix": ("delta", 8.0),
+            "housing_starts_roc_12m": ("delta", -15.0),  # mortgage rates 7%
+        },
+    },
 }
 
 
