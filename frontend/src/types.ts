@@ -438,6 +438,97 @@ export interface CalibrationPayload {
   use_calibrated_scoring: boolean;
 }
 
+export interface InsiderTickerVolume {
+  ticker: string;
+  usd: number;
+}
+
+export interface InsiderActivity {
+  period_start: string | null;
+  period_end: string | null;
+  n_transactions: number;
+  n_buy_filings: number;
+  n_sell_filings: number;
+  total_buy_usd: number;
+  total_sell_usd: number;
+  buy_sell_ratio: number | null;
+  net_flow_usd: number;
+  insider_score: number;
+  top_buy_tickers: InsiderTickerVolume[];
+  top_sell_tickers: InsiderTickerVolume[];
+  notes: string[];
+}
+
+export type CrisisRiskLevel = "low" | "elevated" | "high" | "extreme";
+
+export type CrisisType =
+  | "deflation_crash"
+  | "stagflation_debasement"
+  | "bubble_goldilocks"
+  | "no_crisis";
+
+export type PositioningStance = "overweight" | "neutral" | "underweight";
+
+export interface CrisisTrigger {
+  name: string;
+  value: number;
+  threshold: number;
+  operator: "ge" | "le";
+  fired: boolean;
+  description: string;
+}
+
+export interface CrisisHistoryPoint {
+  date: string;
+  risk_level: CrisisRiskLevel | "moderate";
+  risk_score: number;
+  crisis_type: CrisisType;
+  crisis_type_confidence: number;
+  historical_analog: string | null;
+  triggers_fired: number;
+  triggers_total: number;
+  summary: string;
+}
+
+export interface CrisisHistoryEpisode {
+  start: string;
+  end: string;
+  duration_points: number;
+  crisis_type: CrisisType;
+  peak_risk_score: number;
+}
+
+export interface CrisisHistoryDistEntry {
+  count: number;
+  pct: number;
+}
+
+export interface CrisisHistory {
+  n_points: number;
+  date_from: string | null;
+  date_to: string | null;
+  level_distribution: Record<string, CrisisHistoryDistEntry>;
+  type_distribution: Record<string, CrisisHistoryDistEntry>;
+  notable_episodes: CrisisHistoryEpisode[];
+  points: CrisisHistoryPoint[];
+}
+
+export interface CrisisRiskAssessment {
+  date: string;
+  risk_level: CrisisRiskLevel;
+  risk_score: number;
+  crisis_type: CrisisType;
+  crisis_type_confidence: number;
+  summary: string;
+  historical_analog: string | null;
+  positioning: Record<string, PositioningStance>;
+  triggers_fired: CrisisTrigger[];
+  triggers_all: CrisisTrigger[];
+  dedollar_combined: number;
+  indicators_snapshot: Record<string, number>;
+  notes: string[];
+}
+
 export interface RegimeExplain {
   date: string;
   regime: Regime;

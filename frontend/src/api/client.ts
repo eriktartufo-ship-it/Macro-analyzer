@@ -2,7 +2,10 @@ import { getDedollarBonusFlag } from "../hooks/useDedollarBonus";
 import type {
   BacktestResult,
   CalibrationPayload,
+  CrisisHistory,
+  CrisisRiskAssessment,
   CurrentRegime,
+  InsiderActivity,
   DataSnapshot,
   DedollarComparison,
   DedollarHistoryItem,
@@ -105,6 +108,21 @@ export const api = {
   hmmPrediction: (nStates = 4) =>
     request<HMMPrediction>(`/regime/hmm?n_states=${nStates}`, undefined, { retries: 0 }),
   regimeEnsemble: () => request<EnsembleResult>("/regime/ensemble", undefined, { retries: 0 }),
+  crisisRisk: () => request<CrisisRiskAssessment>("/regime/crisis-risk", undefined, { retries: 0 }),
+  crisisRiskHistory: (days = 365 * 30, limit?: number) => {
+    const q = new URLSearchParams();
+    q.set("days", String(days));
+    if (limit) q.set("limit", String(limit));
+    return request<CrisisHistory>(`/regime/crisis-risk/history?${q.toString()}`, undefined, { retries: 0 });
+  },
+  insiderActivity: (params: { days?: number; maxFilingsPerDay?: number; endDate?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.days) q.set("days", String(params.days));
+    if (params.maxFilingsPerDay) q.set("max_filings_per_day", String(params.maxFilingsPerDay));
+    if (params.endDate) q.set("end_date", params.endDate);
+    const qs = q.toString();
+    return request<InsiderActivity>(`/alt-data/insider-activity${qs ? `?${qs}` : ""}`, undefined, { retries: 0 });
+  },
   backtestRun: (params: { startYear?: number; endYear?: number; topN?: number; threshold?: number; costBps?: number } = {}) => {
     const q = new URLSearchParams();
     if (params.startYear) q.set("start_year", String(params.startYear));

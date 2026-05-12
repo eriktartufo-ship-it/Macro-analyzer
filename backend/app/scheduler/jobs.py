@@ -322,6 +322,25 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         except Exception as e:
             logger.warning(f"Tier 3.6 alt data {name} fetch failed: {e}")
 
+    # Tier 3.6 Fase B — SEC Form 4 insider score. Letto dall'ultimo record
+    # persistito da `daily_insider_refresh` in SecularTrend. Default 0.0
+    # (neutral) se non disponibile → classifier pillar è soft (peso 0.02-0.03).
+    try:
+        from app.database import SessionLocal
+        from app.models import SecularTrend
+
+        with SessionLocal() as session:
+            latest = (
+                session.query(SecularTrend)
+                .filter(SecularTrend.trend_name == "insider_activity")
+                .order_by(SecularTrend.date.desc())
+                .first()
+            )
+            if latest is not None and latest.score is not None:
+                indicators["insider_score"] = float(latest.score)
+    except Exception as e:
+        logger.warning(f"Insider score load skipped: {e}")
+
     return indicators
 
 
@@ -1376,6 +1395,82 @@ def _save_results(
         session.commit()
 
 
+def daily_insider_refresh():
+    """Job notturno: fetch SEC Form 4 + persisti `insider_score` in SecularTrend.
+
+    Chiama `compute_insider_activity(days=2)` per coprire ieri + 1 giorno
+    cuscinetto (SEC pubblica indexes a fine giornata business). Cache disco
+    è permanente: chiamate successive sui giorni cached sono no-op.
+
+    Sample limitato a `max_filings_per_day=30` per limitare latenza (SEC
+    rate-limit 5 req/s × 30 filings × 2 days = ~12s + parsing). Score
+    aggregato resta significativo anche su sample piccolo.
+    """
+    from datetime import date, timedelta
+    import json as _json
+    from app.database import SessionLocal
+    from app.models import SecularTrend
+    from app.services.alt_data.sec_form4 import compute_insider_activity
+
+    logger.info("Avvio daily_insider_refresh...")
+    try:
+        # End_date = ieri (oggi spesso ancora non pubblicato a fine giornata)
+        yesterday = date.today() - timedelta(days=1)
+        report = compute_insider_activity(
+            days=2,
+            end_date=yesterday,
+            max_filings_per_day=30,
+        )
+        if report.n_transactions == 0:
+            logger.warning("Insider refresh: 0 transactions fetched (likely cache empty + holiday)")
+            return
+
+        components = {
+            "n_transactions": report.n_transactions,
+            "n_buy_filings": report.n_buy_filings,
+            "n_sell_filings": report.n_sell_filings,
+            "total_buy_usd": report.total_buy_usd,
+            "total_sell_usd": report.total_sell_usd,
+            "buy_sell_ratio": report.buy_sell_ratio,
+            "net_flow_usd": report.net_flow_usd,
+            "insider_score": report.insider_score,
+            "top_buy_tickers": [{"ticker": t, "usd": v} for t, v in report.top_buy_tickers],
+            "top_sell_tickers": [{"ticker": t, "usd": v} for t, v in report.top_sell_tickers],
+            "period_start": str(report.period_start) if report.period_start else None,
+            "period_end": str(report.period_end) if report.period_end else None,
+        }
+
+        with SessionLocal() as session:
+            # Upsert by (trend_name, date) — sostituisce same-day record
+            existing = (
+                session.query(SecularTrend)
+                .filter(
+                    SecularTrend.trend_name == "insider_activity",
+                    SecularTrend.date == date.today(),
+                )
+                .first()
+            )
+            if existing is not None:
+                existing.score = report.insider_score
+                existing.components = _json.dumps(components)
+            else:
+                session.add(SecularTrend(
+                    trend_name="insider_activity",
+                    date=date.today(),
+                    score=report.insider_score,
+                    components=_json.dumps(components),
+                ))
+            session.commit()
+
+        logger.info(
+            f"Insider refresh OK: score={report.insider_score:+.3f} "
+            f"buy=${report.total_buy_usd:,.0f} sell=${report.total_sell_usd:,.0f} "
+            f"({report.n_transactions} txs)"
+        )
+    except Exception as e:
+        logger.error(f"daily_insider_refresh failed: {e}")
+
+
 def start_scheduler():
     """Avvia lo scheduler con job giornaliero."""
     scheduler.add_job(
@@ -1386,10 +1481,21 @@ def start_scheduler():
         id="daily_macro_refresh",
         replace_existing=True,
     )
+    # Insider refresh: 03:00 UTC, separato dal macro refresh per non
+    # bloccarlo in caso di lentezza SEC. Cache disco è incrementale.
+    scheduler.add_job(
+        daily_insider_refresh,
+        "cron",
+        hour=3,
+        minute=0,
+        id="daily_insider_refresh",
+        replace_existing=True,
+    )
     scheduler.start()
     logger.info(
-        f"Scheduler avviato: refresh giornaliero alle "
-        f"{settings.scheduler_hour:02d}:{settings.scheduler_minute:02d} UTC"
+        f"Scheduler avviato: macro refresh alle "
+        f"{settings.scheduler_hour:02d}:{settings.scheduler_minute:02d} UTC, "
+        f"insider refresh alle 03:00 UTC"
     )
 
 

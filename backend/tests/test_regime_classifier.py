@@ -382,3 +382,89 @@ class TestRegimeClassifier:
             enriched_result["probabilities"]["goldilocks"]
             > base_result["probabilities"]["goldilocks"]
         )
+
+
+class TestInsiderPillar:
+    """Test 7° pillar classifier: SEC Form 4 insider score.
+
+    Verifica:
+    - Default insider_score=0 → niente cambiamento (baseline behavior preservata).
+    - insider_score=+0.5 (buying strong) → boost reflation/goldilocks.
+    - insider_score=-0.5 (selling strong) → boost stagflation/deflation.
+    """
+
+    def _base_neutral_indicators(self) -> dict:
+        return {
+            "gdp_roc": 1.5,
+            "pmi": 50.0,
+            "cpi_yoy": 2.5,
+            "unrate": 4.5,
+            "unrate_roc": 0.0,
+            "yield_curve_10y2y": 0.5,
+            "initial_claims_roc": 0.0,
+            "lei_roc": 0.0,
+            "fed_funds_rate": 3.0,
+        }
+
+    def test_default_insider_score_zero_preserves_baseline(self):
+        """Senza insider_score nel dict (= default 0.0), output identico al precedente."""
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral_indicators()
+        # ind senza insider_score key
+        result_no = classify_regime(ind)
+        # ind con insider_score=0 esplicito
+        result_zero = classify_regime({**ind, "insider_score": 0.0})
+
+        for r in result_no["probabilities"]:
+            assert result_no["probabilities"][r] == result_zero["probabilities"][r]
+
+    def test_insider_buying_boosts_reflation(self):
+        """insider_score=+0.6 (buying strong) deve boostare reflation/goldilocks
+        rispetto a insider_score=0."""
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral_indicators()
+        baseline = classify_regime({**ind, "insider_score": 0.0})
+        bullish = classify_regime({**ind, "insider_score": 0.6})
+
+        # Almeno uno tra reflation o goldilocks deve crescere
+        delta_refl = bullish["probabilities"]["reflation"] - baseline["probabilities"]["reflation"]
+        delta_gold = bullish["probabilities"]["goldilocks"] - baseline["probabilities"]["goldilocks"]
+        assert delta_refl + delta_gold > 0
+
+    def test_insider_selling_boosts_deflation_or_stagflation(self):
+        """insider_score=-0.6 (selling strong) deve boostare deflation/stagflation."""
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral_indicators()
+        baseline = classify_regime({**ind, "insider_score": 0.0})
+        bearish = classify_regime({**ind, "insider_score": -0.6})
+
+        delta_defl = bearish["probabilities"]["deflation"] - baseline["probabilities"]["deflation"]
+        delta_stag = bearish["probabilities"]["stagflation"] - baseline["probabilities"]["stagflation"]
+        assert delta_defl + delta_stag > 0
+
+    def test_insider_score_does_not_flip_regime_with_strong_other_signals(self):
+        """Insider è low-weight (0.02-0.03). Non deve flippare un regime con
+        segnali macro forti opposti."""
+        from app.services.regime.classifier import classify_regime
+
+        # Macro chiaramente deflation: GDP -2, CPI 1, unrate rising, claims rising
+        deflation_macro = {
+            "gdp_roc": -2.0,
+            "pmi": 42.0,
+            "cpi_yoy": 1.0,
+            "unrate": 6.5,
+            "unrate_roc": 1.0,
+            "yield_curve_10y2y": -0.3,
+            "initial_claims_roc": 15.0,
+            "lei_roc": -2.0,
+            "fed_funds_rate": 1.0,
+            "vix": 35.0,
+            "baa_spread": 4.0,
+            "insider_score": 0.8,  # forte buying ma macro = deflation severo
+        }
+        result = classify_regime(deflation_macro)
+        # Deflation deve ancora dominare nonostante insider buying
+        assert result["regime"] == "deflation"

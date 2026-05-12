@@ -34,6 +34,7 @@ REGIME_CONDITIONS = {
         "vix_low": {"weight": 0.02, "description": "VIX < 18 (risk-on)"},
         "term_premium_low": {"weight": 0.04, "description": "ACM Term Premium 10Y < 0 (risk-on accepted)"},
         "dfm_growth_strong": {"weight": 0.02, "description": "DFM nowcast GDP YoY > 2.5% (real-time growth signal)"},
+        "insider_buying_strong": {"weight": 0.03, "description": "SEC Form 4 insider score > 0.3 (smart money bullish)"},
     },
     "stagflation": {
         "inflation_high": {"weight": 0.17, "description": "CPI YoY > 4%"},
@@ -52,6 +53,7 @@ REGIME_CONDITIONS = {
         "housing_slowdown": {"weight": 0.04, "description": "Housing starts YoY < 0"},
         "term_premium_high": {"weight": 0.04, "description": "ACM Term Premium 10Y > 0.4% (duration risk priced)"},
         "dfm_growth_weak": {"weight": 0.02, "description": "DFM nowcast GDP YoY < 1.5% (real-time slowdown signal)"},
+        "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
     },
     "deflation": {
         "gdp_negative_or_decelerating": {"weight": 0.14, "description": "GDP ROC < 1%"},
@@ -68,6 +70,7 @@ REGIME_CONDITIONS = {
         "vix_spike": {"weight": 0.06, "description": "VIX > 30 (panic)"},
         "nfci_tight": {"weight": 0.05, "description": "NFCI > 0.3 (credit stress)"},
         "breakeven_collapse": {"weight": 0.05, "description": "Breakeven 10Y < 1.5%"},
+        "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
     },
     "goldilocks": {
         "gdp_moderate": {"weight": 0.11, "description": "GDP ROC 1.5-3%"},
@@ -84,6 +87,7 @@ REGIME_CONDITIONS = {
         "vix_calm": {"weight": 0.06, "description": "VIX < 16 (tranquility)"},
         "financial_conditions_easy": {"weight": 0.06, "description": "NFCI < -0.3"},
         "breakeven_stable": {"weight": 0.05, "description": "Breakeven 10Y 1.7-2.3%"},
+        "insider_buying_strong": {"weight": 0.02, "description": "SEC Form 4 insider score > 0.3 (smart money bullish)"},
     },
 }
 
@@ -120,6 +124,10 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     # DFM nowcast GDP YoY (Tier 2.5 roadmap): default 2.0% (= trend long-run USA GDP YoY).
     # > 2.5% = growth above trend → +reflation; < 1.5% = slowdown → +stagflation.
     gdp_yoy_dfm = indicators.get("gdp_yoy_dfm", 2.0)
+    # SEC EDGAR Form 4 insider score (Tier 3.6 Fase B): default 0.0 (neutral).
+    # Tanh-bounded [-1, +1]. > +0.3 = smart money buying → +reflation/+goldilocks.
+    # < -0.3 = smart money selling → +deflation/+stagflation.
+    insider_score = indicators.get("insider_score", 0.0)
 
     # --- REFLATION conditions ---
     if condition_name == "gdp_strong":
@@ -275,6 +283,16 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     elif condition_name == "dfm_growth_weak" and regime == "stagflation":
         # DFM nowcast GDP YoY < 1.5% = slowdown real-time → +stagflation.
         return _sigmoid(-gdp_yoy_dfm, center=-1.5, scale=1.0)
+    elif condition_name == "insider_buying_strong" and regime in {"reflation", "goldilocks"}:
+        # SEC Form 4 score > 0.3 = officers/directors/10%+ holders aggressive
+        # open-market buying → bullish signal → +reflation/+goldilocks.
+        # Storicamente leading indicator forte (gennaio 2009 spike, marzo 2020 bottom).
+        return _sigmoid(insider_score, center=0.3, scale=0.2)
+    elif condition_name == "insider_selling_strong" and regime in {"stagflation", "deflation"}:
+        # SEC Form 4 score < -0.3 = aggressive selling → bearish signal.
+        # Cautela: sales spesso scheduled 10b5-1 o tax → segnale più rumoroso del buying.
+        # Peso 0.03 (low) per gestire il rumore.
+        return _sigmoid(-insider_score, center=0.3, scale=0.2)
 
     # Fallback
     return 0.5

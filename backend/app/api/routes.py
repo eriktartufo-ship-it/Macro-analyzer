@@ -1622,6 +1622,106 @@ def get_crisis_risk(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/regime/crisis-risk/history")
+def get_crisis_risk_history(
+    days: int = Query(365 * 5, ge=30, le=365 * 30),
+    limit: int | None = Query(None, ge=1, le=5000),
+    db: Session = Depends(get_db),
+):
+    """Backtest storico Crisis Risk Indicator.
+
+    Applica `assess_crisis_risk` su ogni record `RegimeClassification`
+    della finestra `days` (default 5y, max 30y). Restituisce time series
+    + statistiche aggregate.
+
+    Validazione: il crisis indicator dovrebbe accendersi durante episodi
+    storici noti (2008-09 GFC, 2020 COVID, 1973-74 oil shock, 2022 stag,
+    2000-01 dotcom). Indicatori pre-2000 hanno copertura parziale
+    (no VIX/NFCI/breakeven) — segnale meno affidabile.
+    """
+    from app.services.regime.crisis_indicator_history import (
+        aggregate_crisis_stats,
+        compute_crisis_history,
+        serialize_points,
+    )
+
+    try:
+        points = compute_crisis_history(db, days=days, limit=limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Crisis history failed: {str(e)}")
+
+    stats = aggregate_crisis_stats(points)
+
+    return {
+        "n_points": stats["n_points"],
+        "date_from": stats.get("date_from"),
+        "date_to": stats.get("date_to"),
+        "level_distribution": stats["level_distribution"],
+        "type_distribution": stats["type_distribution"],
+        "notable_episodes": stats["notable_episodes"],
+        "points": serialize_points(points),
+    }
+
+
+@router.get("/alt-data/insider-activity")
+def get_insider_activity(
+    days: int = Query(30, ge=1, le=90),
+    max_filings_per_day: int = Query(40, ge=5, le=200),
+    end_date: str | None = Query(None, description="Override end date (YYYY-MM-DD), default=oggi"),
+):
+    """SEC EDGAR Form 4 insider trading aggregate (smart money signal).
+
+    Aggrega open-market purchases (code P) e sales (code S) di ufficiali,
+    direttori e holder >10% di tutte le aziende US filing Form 4 nella
+    finestra `days`. Esclude option exercises (M), grants (A) e tax
+    withholdings (F).
+
+    Output:
+    - `total_buy_usd` / `total_sell_usd` / `buy_sell_ratio` / `net_flow_usd`
+    - `insider_score` ∈ [-1, +1] (tanh-bounded). Score > 0.3 = bullish strong,
+      < -0.3 = bearish, ~0 = neutral.
+    - `top_buy_tickers` / `top_sell_tickers`
+
+    NOTE: prima chiamata può essere lenta (fino a 30+ min full fetch per 30
+    giorni × 40 filings). I dati cached su disco sono permanenti (SEC filings
+    immutable). Scheduler aggiorna cache in background.
+    """
+    from datetime import datetime
+    from app.services.alt_data.sec_form4 import compute_insider_activity
+
+    end: date | None = None
+    if end_date:
+        try:
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="end_date deve essere YYYY-MM-DD")
+
+    try:
+        report = compute_insider_activity(
+            days=days,
+            end_date=end,
+            max_filings_per_day=max_filings_per_day,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Insider activity fetch failed: {str(e)}")
+
+    return {
+        "period_start": str(report.period_start) if report.period_start else None,
+        "period_end": str(report.period_end) if report.period_end else None,
+        "n_transactions": report.n_transactions,
+        "n_buy_filings": report.n_buy_filings,
+        "n_sell_filings": report.n_sell_filings,
+        "total_buy_usd": report.total_buy_usd,
+        "total_sell_usd": report.total_sell_usd,
+        "buy_sell_ratio": report.buy_sell_ratio,
+        "net_flow_usd": report.net_flow_usd,
+        "insider_score": report.insider_score,
+        "top_buy_tickers": [{"ticker": t, "usd": v} for t, v in report.top_buy_tickers],
+        "top_sell_tickers": [{"ticker": t, "usd": v} for t, v in report.top_sell_tickers],
+        "notes": report.notes,
+    }
+
+
 @router.get("/backtest/lead-time-sensitivity")
 def get_lead_time_sensitivity(db: Session = Depends(get_db)):
     """Sensitivity grid del lead-time NBER: hit_rate × avg_lead variando

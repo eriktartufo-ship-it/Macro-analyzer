@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { api } from "./api/client";
 import { useDedollarBonus } from "./hooks/useDedollarBonus";
-import type { CurrentRegime, Dedollarization, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
+import type { CrisisHistory, CrisisRiskAssessment, CurrentRegime, Dedollarization, InsiderActivity, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
 import { Header, type Page, type Theme } from "./components/Header";
 import { RegimeCard } from "./components/RegimeCard";
 import { ProbabilityBars } from "./components/ProbabilityBars";
@@ -9,6 +9,9 @@ import { RegimeTimelineChart } from "./components/RegimeTimelineChart";
 import { AssetRankingTable } from "./components/AssetRankingTable";
 import { DedollarizationPage } from "./components/DedollarizationPage";
 import { AnalysisPanel } from "./components/AnalysisPanel";
+import { CrisisHistoryTimeline } from "./components/CrisisHistoryTimeline";
+import { CrisisRiskPanel } from "./components/CrisisRiskPanel";
+import { InsiderActivityTile } from "./components/InsiderActivityTile";
 import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
 import { NewsPanel } from "./components/NewsPanel";
 import { DataPage } from "./components/DataPage";
@@ -42,6 +45,9 @@ export default function App() {
   const [scoreboard, setScoreboard] = useState<Scoreboard | null>(null);
   const [dedollar, setDedollar] = useState<Dedollarization | null>(null);
   const [explain, setExplain] = useState<RegimeExplain | null>(null);
+  const [crisis, setCrisis] = useState<CrisisRiskAssessment | null>(null);
+  const [crisisHistory, setCrisisHistory] = useState<CrisisHistory | null>(null);
+  const [insider, setInsider] = useState<InsiderActivity | null>(null);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,13 +67,16 @@ export default function App() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [r, h, s, e, d, n] = await Promise.all([
+    const [r, h, s, e, d, n, c, i, ch] = await Promise.all([
       safe(api.currentRegime()),
-      safe(api.regimeHistory(365)),
+      safe(api.regimeHistory(365 * 5)),
       safe(api.scoreboard()),
       safe(api.regimeExplain()),
       safe(api.dedollarization()),
       safe(api.news()),
+      safe(api.crisisRisk()),
+      safe(api.insiderActivity({ days: 7, maxFilingsPerDay: 30 })),
+      safe(api.crisisRiskHistory(365 * 30)),
     ]);
     setRegime(r);
     setRegimeHistory(h ?? []);
@@ -75,6 +84,9 @@ export default function App() {
     setExplain(e);
     setDedollar(d);
     setNews(n ?? []);
+    setCrisis(c);
+    setInsider(i);
+    setCrisisHistory(ch);
     if (!r && !s) {
       setError("Dati non ancora disponibili — attendi il primo refresh oppure premi Refresh data.");
     }
@@ -134,6 +146,11 @@ export default function App() {
               }
             />
           )}
+          {crisis && <CrisisRiskPanel data={crisis} />}
+          {crisisHistory && crisisHistory.n_points > 1 && (
+            <CrisisHistoryTimeline data={crisisHistory} />
+          )}
+          {insider && <InsiderActivityTile data={insider} />}
           {explain && <AnalysisPanel explain={explain} />}
           {explain?.trajectory && (
             <ProjectedAssetsPanel
