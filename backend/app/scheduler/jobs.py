@@ -52,6 +52,30 @@ def daily_refresh():
         # 4b. Explanation AI NON viene più generata durante il refresh.
         # L'utente la richiede on-demand via POST /api/v1/dedollarization/explanation.
 
+        # 4c. Tier 5.1 LOOP CLOSURE — Crisis modulation post-classifier.
+        # Opt-in via USE_CRISIS_MODULATION. Se attivo, modula probs in base
+        # a crisis_type + risk_score (deflation_crash → +defl, stagflation
+        # _debasement → +stag, bubble_goldilocks → +defl/+stag soft).
+        # Applicato DOPO dedollar (perché modulation legge dedollar_combined).
+        try:
+            from app.services.regime.crisis_modulation import apply_crisis_modulation
+
+            modulated = apply_crisis_modulation(
+                regime_result["probabilities"],
+                indicators,
+                dedollar_combined=dedollar_result.get("combined_score"),
+            )
+            if modulated != regime_result["probabilities"]:
+                regime_result["probabilities"] = modulated
+                # Aggiorna anche dominant regime se shift ha cambiato il top
+                regime_result["regime"] = max(modulated, key=modulated.get)
+                logger.info(
+                    f"Crisis modulation applied: regime={regime_result['regime']} "
+                    f"probs={ {k: round(v, 3) for k, v in modulated.items()} }"
+                )
+        except Exception as e:
+            logger.warning(f"Crisis modulation skipped (non bloccante): {e}")
+
         # 5. News scoring via Groq
         news_signals: dict[str, float] = {}
         scored_news: list[dict] = []
@@ -88,11 +112,14 @@ def daily_refresh():
             f"(transition risk: {trajectory['transition_risk']:.0%})"
         )
 
-        # 7. Calcola scores per tutti gli asset
+        # 7. Calcola scores per tutti gli asset.
+        # Tier 5.4 LOOP CLOSURE: passa gdp_yoy_dfm per opt-in DFM asset bonus.
+        dfm_value = indicators.get("gdp_yoy_dfm")
         scores = calculate_final_scores(
             regime_result["probabilities"],
             secular_bonus=secular_bonus,
             news_signals=news_signals or None,
+            gdp_yoy_dfm=dfm_value,
         )
 
         # 7b. Scores proiettati usando le probabilità del regime futuro
@@ -100,6 +127,7 @@ def daily_refresh():
             trajectory["projected_probabilities"],
             secular_bonus=secular_bonus,
             news_signals=news_signals or None,
+            gdp_yoy_dfm=dfm_value,
         )
         trajectory["projected_scores"] = projected_scores
         logger.info(f"Scores calcolati per {len(scores)} asset classes")
@@ -340,6 +368,64 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
                 indicators["insider_score"] = float(latest.score)
     except Exception as e:
         logger.warning(f"Insider score load skipped: {e}")
+
+    # Tier 5.3 LOOP CLOSURE — News avg sentiment come pillar classifier
+    # (opt-in via USE_NEWS_PILLAR). Letto dagli ultimi NewsSignal in DB,
+    # pesato per relevance × decay_weight. Default 0.0 (neutral) se assente.
+    try:
+        from datetime import date, timedelta
+        from app.database import SessionLocal
+        from app.models import NewsSignal
+
+        with SessionLocal() as session:
+            cutoff = date.today() - timedelta(days=7)
+            news = (
+                session.query(NewsSignal)
+                .filter(NewsSignal.date >= cutoff)
+                .filter(NewsSignal.decay_weight >= 0.1)
+                .all()
+            )
+            if news:
+                # Weighted avg: sentiment × (relevance × decay)
+                total_w = sum(n.relevance_score * n.decay_weight for n in news)
+                if total_w > 0:
+                    weighted = sum(
+                        n.sentiment_score * n.relevance_score * n.decay_weight
+                        for n in news
+                    )
+                    indicators["news_sentiment"] = float(weighted / total_w)
+    except Exception as e:
+        logger.warning(f"News sentiment pillar load skipped: {e}")
+
+    # Tier 5.2 LOOP CLOSURE — Dedollar combined come pillar classifier
+    # (opt-in via USE_DEDOLLAR_PILLAR). Letto dall'ultimo record SecularTrend
+    # persistito dal daily_refresh principale. Default 0.5 (neutral) se assente.
+    try:
+        import json as _json
+        from app.database import SessionLocal
+        from app.models import SecularTrend
+
+        with SessionLocal() as session:
+            latest_ded = (
+                session.query(SecularTrend)
+                .filter(SecularTrend.trend_name == "dedollarization")
+                .order_by(SecularTrend.date.desc())
+                .first()
+            )
+            if latest_ded is not None:
+                ded_combined = None
+                if latest_ded.components:
+                    try:
+                        payload = _json.loads(latest_ded.components)
+                        ded_combined = payload.get("combined_score")
+                    except (ValueError, TypeError):
+                        ded_combined = None
+                if ded_combined is None and latest_ded.score is not None:
+                    ded_combined = float(latest_ded.score)
+                if ded_combined is not None:
+                    indicators["dedollar_combined"] = float(ded_combined)
+    except Exception as e:
+        logger.warning(f"Dedollar pillar load skipped: {e}")
 
     return indicators
 

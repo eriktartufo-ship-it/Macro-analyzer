@@ -237,3 +237,102 @@ class TestRegressions:
         assert scores["gold"] > 65, f"Gold in stagflation = {scores['gold']}"
         assert scores["gold"] > scores["us_bonds_long"]
         assert scores["gold"] > scores["us_equities_growth"]
+
+
+class TestDfmAssetBonus:
+    """Tier 5.4 LOOP CLOSURE — DFM nowcast → asset bonus scoring.
+
+    Verifica:
+    - Flag OFF: identity (scores invariati con/senza gdp_yoy_dfm).
+    - Flag ON + gdp>2.5%: pro-cyclical assets (growth/value/em) +bonus,
+      bonds long -malus.
+    - Flag ON + gdp<1.5%: simmetrico inverso.
+    - Bonus capped a 100 (no overflow).
+    """
+
+    def _balanced_probs(self) -> dict:
+        return {
+            "reflation": 0.25,
+            "stagflation": 0.25,
+            "deflation": 0.25,
+            "goldilocks": 0.25,
+        }
+
+    def test_flag_off_preserves_baseline(self, monkeypatch):
+        monkeypatch.delenv("USE_DFM_ASSET_BONUS", raising=False)
+        from app.services.scoring.engine import calculate_final_scores
+
+        probs = self._balanced_probs()
+        s_no = calculate_final_scores(probs)
+        s_high = calculate_final_scores(probs, gdp_yoy_dfm=5.0)
+        s_low = calculate_final_scores(probs, gdp_yoy_dfm=0.5)
+
+        # Tutti gli score identici (flag OFF = ignora gdp_yoy_dfm)
+        for asset in s_no:
+            assert s_no[asset] == s_high[asset]
+            assert s_no[asset] == s_low[asset]
+
+    def test_flag_off_with_none_gdp_no_effect(self, monkeypatch):
+        """Flag ON ma gdp_yoy_dfm=None → no bonus (graceful)."""
+        monkeypatch.setenv("USE_DFM_ASSET_BONUS", "1")
+        from app.services.scoring.engine import calculate_final_scores
+
+        probs = self._balanced_probs()
+        baseline = calculate_final_scores(probs)
+        with_none = calculate_final_scores(probs, gdp_yoy_dfm=None)
+
+        for asset in baseline:
+            assert baseline[asset] == with_none[asset]
+
+    def test_strong_growth_boosts_pro_cyclical(self, monkeypatch):
+        monkeypatch.setenv("USE_DFM_ASSET_BONUS", "1")
+        from app.services.scoring.engine import calculate_final_scores
+
+        probs = self._balanced_probs()
+        baseline = calculate_final_scores(probs, gdp_yoy_dfm=2.0)  # neutral
+        bullish = calculate_final_scores(probs, gdp_yoy_dfm=4.5)   # strong growth
+
+        # Pro-cyclical boostati
+        for asset in ("us_equities_growth", "us_equities_value", "em_equities"):
+            assert bullish[asset] > baseline[asset], f"{asset} non boostato"
+        # Bonds long penalizzati
+        assert bullish["us_bonds_long"] < baseline["us_bonds_long"]
+
+    def test_weak_growth_penalizes_pro_cyclical(self, monkeypatch):
+        monkeypatch.setenv("USE_DFM_ASSET_BONUS", "1")
+        from app.services.scoring.engine import calculate_final_scores
+
+        probs = self._balanced_probs()
+        baseline = calculate_final_scores(probs, gdp_yoy_dfm=2.0)
+        bearish = calculate_final_scores(probs, gdp_yoy_dfm=0.5)  # weak
+
+        # Pro-cyclical penalizzati
+        for asset in ("us_equities_growth", "us_equities_value", "em_equities"):
+            assert bearish[asset] < baseline[asset]
+        # Bonds long boostati (duration appeal)
+        assert bearish["us_bonds_long"] > baseline["us_bonds_long"]
+
+    def test_neutral_gdp_no_change(self, monkeypatch):
+        """gdp_yoy_dfm tra 1.5 e 2.5 → zero bonus (dead band)."""
+        monkeypatch.setenv("USE_DFM_ASSET_BONUS", "1")
+        from app.services.scoring.engine import calculate_final_scores
+
+        probs = self._balanced_probs()
+        baseline = calculate_final_scores(probs)
+        neutral_2_0 = calculate_final_scores(probs, gdp_yoy_dfm=2.0)
+        neutral_1_8 = calculate_final_scores(probs, gdp_yoy_dfm=1.8)
+
+        for asset in baseline:
+            assert abs(baseline[asset] - neutral_2_0[asset]) < 0.05
+            assert abs(baseline[asset] - neutral_1_8[asset]) < 0.05
+
+    def test_scores_capped_at_100(self, monkeypatch):
+        """gdp estremo non deve far esplodere scores oltre 100."""
+        monkeypatch.setenv("USE_DFM_ASSET_BONUS", "1")
+        from app.services.scoring.engine import calculate_final_scores
+
+        # Reflation 100% per max base score growth, poi gdp estremo
+        probs = {"reflation": 1.0, "stagflation": 0.0, "deflation": 0.0, "goldilocks": 0.0}
+        extreme = calculate_final_scores(probs, gdp_yoy_dfm=10.0)
+        for asset, score in extreme.items():
+            assert 0.0 <= score <= 100.0, f"{asset} fuori range: {score}"

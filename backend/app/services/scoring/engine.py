@@ -267,6 +267,7 @@ def calculate_final_scores(
     news_signals: dict[str, float] | None = None,
     momentum_penalty: dict[str, float] | None = None,
     force_include_dedollar: bool | None = None,
+    gdp_yoy_dfm: float | None = None,
 ) -> dict[str, float]:
     """Calcola lo score finale per ogni asset class.
 
@@ -288,7 +289,7 @@ def calculate_final_scores(
     Returns:
         Dict {asset_class: score 0-100}
     """
-    from app.services.config_flags import use_dedollar_bonus
+    from app.services.config_flags import use_dedollar_bonus, use_dfm_asset_bonus
 
     if force_include_dedollar is None:
         include_dedollar = use_dedollar_bonus()
@@ -298,6 +299,23 @@ def calculate_final_scores(
     total_prob = sum(probabilities.values())
     if total_prob > 0 and abs(total_prob - 1.0) > 0.001:
         probabilities = {r: p / total_prob for r, p in probabilities.items()}
+
+    # Tier 5.4 LOOP CLOSURE — DFM nowcast bonus. Opt-in. δ=2.0 default.
+    # Pro-cyclical assets bid quando gdp_yoy_dfm > 2.5%, sold quando < 1.5%.
+    # Simmetrico verso 2.0% trend USA long-run.
+    dfm_bonus: dict[str, float] = {}
+    if use_dfm_asset_bonus() and gdp_yoy_dfm is not None:
+        delta = 2.0
+        # Strong growth nowcast (>2.5% YoY)
+        upside = max(0.0, gdp_yoy_dfm - 2.5)
+        # Weak growth nowcast (<1.5% YoY)
+        downside = max(0.0, 1.5 - gdp_yoy_dfm)
+        pro_cyclical = ("us_equities_growth", "us_equities_value", "em_equities")
+        duration_sensitive = ("us_bonds_long",)
+        for a in pro_cyclical:
+            dfm_bonus[a] = delta * upside - delta * downside
+        for a in duration_sensitive:
+            dfm_bonus[a] = -delta * upside + delta * downside
 
     scores: dict[str, float] = {}
 
@@ -310,8 +328,9 @@ def calculate_final_scores(
         bonus = (secular_bonus or {}).get(asset, 0.0) if include_dedollar else 0.0
         news = (news_signals or {}).get(asset, 0.0)
         penalty = (momentum_penalty or {}).get(asset, 0.0)
+        dfm = dfm_bonus.get(asset, 0.0)
 
-        final = base_score + bonus + news - penalty
+        final = base_score + bonus + news - penalty + dfm
         scores[asset] = max(0.0, min(100.0, round(final, 1)))
 
     return scores

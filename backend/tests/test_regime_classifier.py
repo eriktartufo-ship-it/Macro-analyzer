@@ -468,3 +468,166 @@ class TestInsiderPillar:
         result = classify_regime(deflation_macro)
         # Deflation deve ancora dominare nonostante insider buying
         assert result["regime"] == "deflation"
+
+
+class TestDedollarPillar:
+    """Tier 5.2 LOOP CLOSURE — Dedollar combined come pillar classifier.
+
+    Verifica:
+    - Flag OFF (default): comportamento invariato (zero impact pillar).
+    - Flag ON: dedollar>0.6 boosta stagflation, dedollar<0.4 boosta reflation.
+    - Soft pillar (peso 0.02-0.03) non flippa regime con macro forti opposti.
+    """
+
+    def _base_neutral(self) -> dict:
+        return {
+            "gdp_roc": 1.5, "pmi": 50.0, "cpi_yoy": 2.5, "unrate": 4.5,
+            "unrate_roc": 0.0, "yield_curve_10y2y": 0.5, "initial_claims_roc": 0.0,
+            "lei_roc": 0.0, "fed_funds_rate": 3.0,
+        }
+
+    def test_flag_off_preserves_baseline(self, monkeypatch):
+        """Default USE_DEDOLLAR_PILLAR=0: output identico con/senza dedollar_combined."""
+        monkeypatch.delenv("USE_DEDOLLAR_PILLAR", raising=False)
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        r_no = classify_regime(ind)
+        r_high = classify_regime({**ind, "dedollar_combined": 0.85})
+        r_low = classify_regime({**ind, "dedollar_combined": 0.15})
+
+        # Tutti i probabilities identici
+        for k in r_no["probabilities"]:
+            assert r_no["probabilities"][k] == r_high["probabilities"][k]
+            assert r_no["probabilities"][k] == r_low["probabilities"][k]
+
+    def test_flag_on_dedollar_high_boosts_stagflation(self, monkeypatch):
+        """USE_DEDOLLAR_PILLAR=1 + dedollar=0.85 → stagflation prob > baseline."""
+        monkeypatch.setenv("USE_DEDOLLAR_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        baseline = classify_regime({**ind, "dedollar_combined": 0.5})
+        debasement = classify_regime({**ind, "dedollar_combined": 0.85})
+
+        delta_stag = debasement["probabilities"]["stagflation"] - baseline["probabilities"]["stagflation"]
+        assert delta_stag > 0
+
+    def test_flag_on_dedollar_low_boosts_reflation(self, monkeypatch):
+        """USE_DEDOLLAR_PILLAR=1 + dedollar=0.15 → reflation prob > baseline."""
+        monkeypatch.setenv("USE_DEDOLLAR_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        baseline = classify_regime({**ind, "dedollar_combined": 0.5})
+        strong_dollar = classify_regime({**ind, "dedollar_combined": 0.15})
+
+        delta_refl = strong_dollar["probabilities"]["reflation"] - baseline["probabilities"]["reflation"]
+        assert delta_refl > 0
+
+    def test_pillar_does_not_flip_regime_with_strong_macro(self, monkeypatch):
+        """Dedollar pillar weight 0.02-0.03 = soft: non deve flippare un regime
+        con segnali macro forti opposti."""
+        monkeypatch.setenv("USE_DEDOLLAR_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        # Macro chiaramente deflation
+        deflation_macro = {
+            "gdp_roc": -2.0, "pmi": 42.0, "cpi_yoy": 1.0, "unrate": 6.5,
+            "unrate_roc": 1.0, "yield_curve_10y2y": -0.3, "initial_claims_roc": 15.0,
+            "lei_roc": -2.0, "fed_funds_rate": 1.0, "vix": 35.0, "baa_spread": 4.0,
+            "dedollar_combined": 0.85,  # debasement forte ma macro = defl severa
+        }
+        result = classify_regime(deflation_macro)
+        assert result["regime"] == "deflation"
+
+    def test_flag_on_neutral_dedollar_small_impact(self, monkeypatch):
+        """USE_DEDOLLAR_PILLAR=1 con dedollar=0.5 (neutral) → impact minimo."""
+        monkeypatch.setenv("USE_DEDOLLAR_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        baseline = classify_regime(ind)  # no key → default 0.5
+        neutral = classify_regime({**ind, "dedollar_combined": 0.5})
+
+        # Differenze trascurabili (< 1pp per ogni regime)
+        for k in baseline["probabilities"]:
+            diff = abs(baseline["probabilities"][k] - neutral["probabilities"][k])
+            assert diff < 0.01
+
+
+class TestNewsPillar:
+    """Tier 5.3 LOOP CLOSURE — News avg sentiment come pillar classifier.
+
+    Verifica:
+    - Flag OFF: identity (probs invariate con/senza news_sentiment).
+    - Flag ON: sentiment>+0.3 boosta reflation, sentiment<-0.3 boosta deflation.
+    - Soft pillar (peso 0.02) non flippa regime con macro forti opposti.
+    """
+
+    def _base_neutral(self) -> dict:
+        return {
+            "gdp_roc": 1.5, "pmi": 50.0, "cpi_yoy": 2.5, "unrate": 4.5,
+            "unrate_roc": 0.0, "yield_curve_10y2y": 0.5, "initial_claims_roc": 0.0,
+            "lei_roc": 0.0, "fed_funds_rate": 3.0,
+        }
+
+    def test_flag_off_preserves_baseline(self, monkeypatch):
+        monkeypatch.delenv("USE_NEWS_PILLAR", raising=False)
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        r_no = classify_regime(ind)
+        r_pos = classify_regime({**ind, "news_sentiment": 0.7})
+        r_neg = classify_regime({**ind, "news_sentiment": -0.7})
+
+        for k in r_no["probabilities"]:
+            assert r_no["probabilities"][k] == r_pos["probabilities"][k]
+            assert r_no["probabilities"][k] == r_neg["probabilities"][k]
+
+    def test_flag_on_positive_boosts_reflation(self, monkeypatch):
+        monkeypatch.setenv("USE_NEWS_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        baseline = classify_regime({**ind, "news_sentiment": 0.0})
+        positive = classify_regime({**ind, "news_sentiment": 0.6})
+
+        delta_refl = positive["probabilities"]["reflation"] - baseline["probabilities"]["reflation"]
+        assert delta_refl > 0
+
+    def test_flag_on_negative_boosts_deflation(self, monkeypatch):
+        monkeypatch.setenv("USE_NEWS_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        baseline = classify_regime({**ind, "news_sentiment": 0.0})
+        panic = classify_regime({**ind, "news_sentiment": -0.6})
+
+        delta_defl = panic["probabilities"]["deflation"] - baseline["probabilities"]["deflation"]
+        assert delta_defl > 0
+
+    def test_pillar_does_not_flip_regime_with_strong_macro(self, monkeypatch):
+        monkeypatch.setenv("USE_NEWS_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        # Macro chiaramente deflation, ma news positive (es. policy response)
+        ind = {
+            "gdp_roc": -2.0, "pmi": 42.0, "cpi_yoy": 1.0, "unrate": 6.5,
+            "unrate_roc": 1.0, "yield_curve_10y2y": -0.3, "initial_claims_roc": 15.0,
+            "lei_roc": -2.0, "fed_funds_rate": 1.0, "vix": 35.0, "baa_spread": 4.0,
+            "news_sentiment": 0.8,  # positive ma macro = deflation severo
+        }
+        result = classify_regime(ind)
+        assert result["regime"] == "deflation"
+
+    def test_flag_on_neutral_sentiment_small_impact(self, monkeypatch):
+        monkeypatch.setenv("USE_NEWS_PILLAR", "1")
+        from app.services.regime.classifier import classify_regime
+
+        ind = self._base_neutral()
+        baseline = classify_regime(ind)  # no key → default 0.0
+        neutral = classify_regime({**ind, "news_sentiment": 0.0})
+
+        for k in baseline["probabilities"]:
+            assert abs(baseline["probabilities"][k] - neutral["probabilities"][k]) < 1e-6

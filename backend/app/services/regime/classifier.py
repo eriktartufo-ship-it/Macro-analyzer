@@ -13,6 +13,8 @@ tra le condizioni.
 
 from typing import Any
 
+from app.services.config_flags import use_dedollar_pillar, use_news_pillar
+
 REGIMES = ["reflation", "stagflation", "deflation", "goldilocks"]
 
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
@@ -35,6 +37,8 @@ REGIME_CONDITIONS = {
         "term_premium_low": {"weight": 0.04, "description": "ACM Term Premium 10Y < 0 (risk-on accepted)"},
         "dfm_growth_strong": {"weight": 0.02, "description": "DFM nowcast GDP YoY > 2.5% (real-time growth signal)"},
         "insider_buying_strong": {"weight": 0.03, "description": "SEC Form 4 insider score > 0.3 (smart money bullish)"},
+        "dedollar_low": {"weight": 0.02, "description": "Dedollar combined < 0.4 (dollar strong, risk-on global)"},
+        "news_positive_strong": {"weight": 0.02, "description": "News avg sentiment > 0.3 (positive narrative)"},
     },
     "stagflation": {
         "inflation_high": {"weight": 0.17, "description": "CPI YoY > 4%"},
@@ -54,6 +58,7 @@ REGIME_CONDITIONS = {
         "term_premium_high": {"weight": 0.04, "description": "ACM Term Premium 10Y > 0.4% (duration risk priced)"},
         "dfm_growth_weak": {"weight": 0.02, "description": "DFM nowcast GDP YoY < 1.5% (real-time slowdown signal)"},
         "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
+        "dedollar_debasement": {"weight": 0.03, "description": "Dedollar combined > 0.6 (USD debasement, real assets bid)"},
     },
     "deflation": {
         "gdp_negative_or_decelerating": {"weight": 0.14, "description": "GDP ROC < 1%"},
@@ -71,6 +76,7 @@ REGIME_CONDITIONS = {
         "nfci_tight": {"weight": 0.05, "description": "NFCI > 0.3 (credit stress)"},
         "breakeven_collapse": {"weight": 0.05, "description": "Breakeven 10Y < 1.5%"},
         "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
+        "news_panic": {"weight": 0.02, "description": "News avg sentiment < -0.3 (panic narrative)"},
     },
     "goldilocks": {
         "gdp_moderate": {"weight": 0.11, "description": "GDP ROC 1.5-3%"},
@@ -128,6 +134,17 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     # Tanh-bounded [-1, +1]. > +0.3 = smart money buying → +reflation/+goldilocks.
     # < -0.3 = smart money selling → +deflation/+stagflation.
     insider_score = indicators.get("insider_score", 0.0)
+    # Dedollar combined (Tier 5.2 LOOP CLOSURE): default 0.5 (neutral mid-range).
+    # Range 0-1. > 0.6 = USD debasement signal → +stagflation_debasement.
+    # < 0.4 = USD strong → +reflation (risk-on global).
+    # Opt-in via USE_DEDOLLAR_PILLAR=1 (default OFF per back-compat puro).
+    dedollar_combined = indicators.get("dedollar_combined", 0.5)
+    # News avg sentiment (Tier 5.3 LOOP CLOSURE): default 0.0 (neutral).
+    # Range tipico [-1, +1]. > 0.3 = positive narrative → +reflation.
+    # < -0.3 = panic narrative → +deflation.
+    # Opt-in via USE_NEWS_PILLAR=1. Pillar è soft (peso 0.02) per gestire
+    # rumorosità intraday e LLM-scoring variance.
+    news_sentiment = indicators.get("news_sentiment", 0.0)
 
     # --- REFLATION conditions ---
     if condition_name == "gdp_strong":
@@ -293,6 +310,33 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
         # Cautela: sales spesso scheduled 10b5-1 o tax → segnale più rumoroso del buying.
         # Peso 0.03 (low) per gestire il rumore.
         return _sigmoid(-insider_score, center=0.3, scale=0.2)
+    elif condition_name == "dedollar_debasement" and regime == "stagflation":
+        # Tier 5.2 LOOP CLOSURE: dedollar_combined > 0.6 = USD debasement
+        # persistente (currency stress, real assets bid). 2022 saw this clearly.
+        # Opt-in via USE_DEDOLLAR_PILLAR; spento = 0.0 (zero impact, NO neutral
+        # 0.5 bias) per non sporcare backtest pre-2026.
+        if not use_dedollar_pillar():
+            return 0.0
+        return _sigmoid(dedollar_combined, center=0.6, scale=0.15)
+    elif condition_name == "dedollar_low" and regime == "reflation":
+        # Tier 5.2 LOOP CLOSURE: dedollar_combined < 0.4 = USD strength
+        # (global risk-on, capital flows verso US assets). Pattern '90s + 2014-15.
+        if not use_dedollar_pillar():
+            return 0.0
+        return _sigmoid(-dedollar_combined, center=-0.4, scale=0.15)
+    elif condition_name == "news_positive_strong" and regime == "reflation":
+        # Tier 5.3 LOOP CLOSURE: news_sentiment > 0.3 = positive narrative
+        # (corporate guidance, macro upside, dovish Fed). Opt-in flag-gated.
+        # Soft (peso 0.02) per gestire rumorosità intraday + LLM variance.
+        if not use_news_pillar():
+            return 0.0
+        return _sigmoid(news_sentiment, center=0.3, scale=0.15)
+    elif condition_name == "news_panic" and regime == "deflation":
+        # Tier 5.3 LOOP CLOSURE: news_sentiment < -0.3 = panic narrative.
+        # Storicamente: 2008 settembre/ottobre, 2020 marzo COVID, 2022 Q4 banche.
+        if not use_news_pillar():
+            return 0.0
+        return _sigmoid(-news_sentiment, center=0.3, scale=0.15)
 
     # Fallback
     return 0.5

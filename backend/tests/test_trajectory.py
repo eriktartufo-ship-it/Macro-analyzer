@@ -113,3 +113,104 @@ class TestTrajectoryPressures:
         # Deve comunque produrre un output valido
         assert "projected_regime" in result
         assert sum(result["projected_probabilities"].values()) > 0.99
+
+
+class TestInsiderTrajectoryForce:
+    """Tier 5.5 LOOP CLOSURE — Insider score come trajectory force.
+
+    Insider è leading indicator (smart money 6-12m ahead). Threshold
+    |score|>0.3 = signal forte → boost reflation/goldilocks proiettati
+    se positive, deflation/stagflation se negative.
+    """
+
+    def _base_neutral_probs(self) -> dict:
+        return {
+            "reflation": 0.25,
+            "goldilocks": 0.25,
+            "deflation": 0.25,
+            "stagflation": 0.25,
+        }
+
+    def _neutral_indicators(self) -> dict:
+        return {"cpi_yoy": 2.0, "gdp_roc": 2.0}
+
+    def test_no_insider_score_no_force(self):
+        """Senza insider_score nel dict, nessuna force `insider_*` deve apparire."""
+        result = calculate_trajectory(
+            current_probabilities=self._base_neutral_probs(),
+            indicators=self._neutral_indicators(),
+        )
+        names = [f["name"] for f in result["forces"]]
+        assert not any(n.startswith("insider_") for n in names)
+
+    def test_insider_score_neutral_no_force(self):
+        """insider_score=0.0 (default) o ±0.2 (sotto threshold) → no force."""
+        for score in [0.0, 0.2, -0.2, 0.3, -0.3]:
+            result = calculate_trajectory(
+                current_probabilities=self._base_neutral_probs(),
+                indicators={**self._neutral_indicators(), "insider_score": score},
+            )
+            names = [f["name"] for f in result["forces"]]
+            assert not any(n.startswith("insider_") for n in names), \
+                f"score {score} non doveva produrre force"
+
+    def test_insider_strong_buying_boosts_reflation(self):
+        """insider_score=+0.6 → reflation projected > baseline."""
+        probs = self._base_neutral_probs()
+        baseline = calculate_trajectory(
+            current_probabilities=probs,
+            indicators=self._neutral_indicators(),
+        )
+        bullish = calculate_trajectory(
+            current_probabilities=probs,
+            indicators={**self._neutral_indicators(), "insider_score": 0.6},
+        )
+        # Reflation/goldilocks insieme devono crescere
+        delta_refl = bullish["projected_probabilities"]["reflation"] - baseline["projected_probabilities"]["reflation"]
+        delta_gold = bullish["projected_probabilities"]["goldilocks"] - baseline["projected_probabilities"]["goldilocks"]
+        assert delta_refl + delta_gold > 0
+        names = [f["name"] for f in bullish["forces"]]
+        assert "insider_strong_buying" in names
+
+    def test_insider_strong_selling_boosts_deflation(self):
+        """insider_score=-0.6 → deflation/stagflation projected > baseline."""
+        probs = self._base_neutral_probs()
+        baseline = calculate_trajectory(
+            current_probabilities=probs,
+            indicators=self._neutral_indicators(),
+        )
+        bearish = calculate_trajectory(
+            current_probabilities=probs,
+            indicators={**self._neutral_indicators(), "insider_score": -0.6},
+        )
+        delta_defl = bearish["projected_probabilities"]["deflation"] - baseline["projected_probabilities"]["deflation"]
+        delta_stag = bearish["projected_probabilities"]["stagflation"] - baseline["projected_probabilities"]["stagflation"]
+        assert delta_defl + delta_stag > 0
+        names = [f["name"] for f in bearish["forces"]]
+        assert "insider_strong_selling" in names
+
+    def test_insider_extreme_score_scales_strength(self):
+        """insider_score=+1.0 deve avere strength maggiore di +0.4."""
+        probs = self._base_neutral_probs()
+        moderate = calculate_trajectory(
+            current_probabilities=probs,
+            indicators={**self._neutral_indicators(), "insider_score": 0.4},
+        )
+        extreme = calculate_trajectory(
+            current_probabilities=probs,
+            indicators={**self._neutral_indicators(), "insider_score": 1.0},
+        )
+        mod_force = next((f for f in moderate["forces"] if f["name"] == "insider_strong_buying"), None)
+        ext_force = next((f for f in extreme["forces"] if f["name"] == "insider_strong_buying"), None)
+        assert mod_force is not None and ext_force is not None
+        assert abs(ext_force["strength"]) > abs(mod_force["strength"])
+
+    def test_insider_force_does_not_break_probability_sum(self):
+        """Probs proiettate devono sempre sommare a ~1.0."""
+        probs = self._base_neutral_probs()
+        result = calculate_trajectory(
+            current_probabilities=probs,
+            indicators={**self._neutral_indicators(), "insider_score": 0.7},
+        )
+        total = sum(result["projected_probabilities"].values())
+        assert 0.99 < total < 1.01

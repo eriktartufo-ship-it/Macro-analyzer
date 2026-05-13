@@ -1622,6 +1622,64 @@ def get_crisis_risk(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/regime/vol-regime")
+def get_vol_regime(db: Session = Depends(get_db)):
+    """Tier 5.7 LOOP CLOSURE — Vol regime separato + change-point detection.
+
+    Classifica VIX corrente in 4 vol regimes (calm/normal/elevated/spike) +
+    detect change-point via rolling z-score 20gg. Sub-regime informativo,
+    ortogonale al regime 4-quadranti.
+    """
+    import json
+    from app.models import RegimeClassification, MacroIndicator
+    from app.services.regime.vol_regime import assess_vol_regime
+
+    last = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc()).first()
+    )
+    if last is None:
+        raise HTTPException(status_code=404, detail="Nessuna classificazione in DB")
+    meta = json.loads(last.conditions_met) if last.conditions_met else {}
+    indicators = meta.get("indicators", {}) or {}
+    vix = indicators.get("vix")
+    if vix is None:
+        raise HTTPException(status_code=404, detail="VIX non disponibile in indicators")
+
+    # Calcola ma20 + std20 dalla MacroIndicator history (VIX daily)
+    vix_ma20 = None
+    vix_std20 = None
+    try:
+        recent_vix = (
+            db.query(MacroIndicator)
+            .filter(MacroIndicator.code == "vix")
+            .order_by(MacroIndicator.date.desc())
+            .limit(20)
+            .all()
+        )
+        values = [float(r.value) for r in recent_vix if r.value is not None]
+        if len(values) >= 5:
+            vix_ma20 = sum(values) / len(values)
+            mean = vix_ma20
+            var = sum((v - mean) ** 2 for v in values) / len(values)
+            vix_std20 = var ** 0.5
+    except Exception:
+        pass
+
+    result = assess_vol_regime(float(vix), vix_ma20=vix_ma20, vix_std20=vix_std20)
+    return {
+        "date": str(last.date),
+        "vol_regime": result.vol_regime,
+        "vol_score": result.vol_score,
+        "vix": result.vix,
+        "vix_ma20": result.vix_ma20,
+        "vix_std20": result.vix_std20,
+        "change_point": result.change_point,
+        "change_magnitude": result.change_magnitude,
+        "description": result.description,
+    }
+
+
 @router.get("/regime/crisis-risk/history")
 def get_crisis_risk_history(
     days: int = Query(365 * 5, ge=30, le=365 * 30),

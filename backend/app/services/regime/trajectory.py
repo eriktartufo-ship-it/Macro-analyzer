@@ -158,6 +158,27 @@ NEWS_REGIME_PRESSURE = {
     },
 }
 
+# Insider score → pressione regime (Tier 5.5 LOOP CLOSURE).
+# Insider è leading indicator: officers/directors/10%+ holders aggressive
+# buying = bullish forward 6-12m (Cook 2009-01 AAPL prima del rally),
+# aggressive selling = bearish (NB: sales più rumorose di buying per
+# 10b5-1 scheduled / tax planning, quindi peso asimmetrico).
+INSIDER_REGIME_PRESSURE = {
+    "strong_buying": {  # insider_score > +0.3
+        "reflation": 0.10,
+        "goldilocks": 0.08,
+        "deflation": -0.08,
+        "stagflation": -0.05,
+    },
+    "strong_selling": {  # insider_score < -0.3
+        "deflation": 0.10,
+        "stagflation": 0.08,
+        "reflation": -0.08,
+        "goldilocks": -0.05,
+    },
+}
+
+
 # Dedollarizzazione → pressione regime
 DEDOLLAR_REGIME_PRESSURE = {
     "high": {  # score > 0.6
@@ -342,6 +363,32 @@ def calculate_trajectory(
                 "description": f"News sentiment: {news_cat.replace('_', ' ')}",
                 "pushes_toward": top_regime,
                 "strength": round(mapping[top_regime], 2),
+            })
+
+    # 3a. INSIDER SCORE — Tier 5.5 LOOP CLOSURE. Insider è leading indicator
+    # (smart money 6-12m ahead). Threshold |score|>0.3 = signal forte.
+    # Default 0.0 (neutral) = no force aggiunto. Strength scalata da abs(score).
+    insider_score = indicators.get("insider_score", 0.0)
+    insider_cat: str | None = None
+    if insider_score > 0.3:
+        insider_cat = "strong_buying"
+    elif insider_score < -0.3:
+        insider_cat = "strong_selling"
+    if insider_cat:
+        mapping = INSIDER_REGIME_PRESSURE.get(insider_cat, {})
+        # Scala strength da abs(insider_score), clamped a [0.3, 1.0] mapped 1.0-1.5
+        # (sopra +0.3 strength = 1.0; +1.0 estremo strength = 1.5).
+        score_scale = min(1.5, 1.0 + (abs(insider_score) - 0.3) * 0.7)
+        for regime, weight in mapping.items():
+            pressure[regime] += weight * score_scale
+        top_regime = max(mapping, key=mapping.get) if mapping else None
+        if top_regime:
+            forces.append({
+                "name": f"insider_{insider_cat}",
+                "type": "insider",
+                "description": f"Insider smart money: {insider_cat.replace('_', ' ')} (score {insider_score:+.2f})",
+                "pushes_toward": top_regime,
+                "strength": round(mapping[top_regime] * score_scale, 2),
             })
 
     # 3. DEDOLLARIZZAZIONE — solo se include_dedollar attivo (env USE_DEDOLLAR_BONUS=1
