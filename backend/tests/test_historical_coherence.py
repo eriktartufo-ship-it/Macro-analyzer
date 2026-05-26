@@ -12,6 +12,20 @@ import pytest
 from app.services.regime.classifier import classify_regime
 
 
+@pytest.fixture(autouse=True)
+def _isolate_classifier_flags(monkeypatch):
+    """Test historical coherence valida il classifier rule-based puro.
+    Disabilita ML blend (T8.3), freshness weighting (T6.9), gdp_collapse (T7.1)
+    che modificano le probs in modo non deterministico per asserzioni strict.
+
+    T10b 2026-05-17: USE_ML_REGIME_BLEND e USE_GDP_COLLAPSE_OVERRIDE promossi
+    default-ON. Force "0" explicit (non delenv).
+    """
+    for flag in ("USE_ML_REGIME_BLEND", "USE_GDP_COLLAPSE_OVERRIDE"):
+        monkeypatch.setenv(flag, "0")
+    monkeypatch.delenv("USE_FRESHNESS_WEIGHTING", raising=False)
+
+
 HISTORICAL_CASES = [
     # 1974 stagflation (oil shock): CPI ~12%, GDP -0.5%, UNRATE 5.5% rising, PMI <50
     (

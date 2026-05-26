@@ -48,6 +48,11 @@ class TestApplyCrisisModulationFlagGating:
 
 
 class TestApplyCrisisModulationScenarios:
+    @pytest.fixture(autouse=True)
+    def _isolate_other_flags(self, monkeypatch):
+        for k in ("USE_ML_REGIME_BLEND", "USE_FRESHNESS_WEIGHTING", "USE_GDP_COLLAPSE_OVERRIDE"):
+            monkeypatch.delenv(k, raising=False)
+
     def test_2008_scenario_boosts_deflation(self, monkeypatch):
         monkeypatch.setenv("USE_CRISIS_MODULATION", "1")
         probs = {"reflation": 0.15, "stagflation": 0.15, "deflation": 0.50, "goldilocks": 0.20}

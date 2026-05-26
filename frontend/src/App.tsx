@@ -12,6 +12,8 @@ import { AnalysisPanel } from "./components/AnalysisPanel";
 import { CrisisHistoryTimeline } from "./components/CrisisHistoryTimeline";
 import { CrisisRiskPanel } from "./components/CrisisRiskPanel";
 import { InsiderActivityTile } from "./components/InsiderActivityTile";
+import { Tier9TransitionPanel } from "./components/Tier9TransitionPanel";
+import { Tier9ForecastPanel } from "./components/Tier9ForecastPanel";
 import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
 import { NewsPanel } from "./components/NewsPanel";
 import { DataPage } from "./components/DataPage";
@@ -151,6 +153,8 @@ export default function App() {
             <CrisisHistoryTimeline data={crisisHistory} />
           )}
           {insider && <InsiderActivityTile data={insider} />}
+          <Tier9TransitionPanel />
+          <Tier9ForecastPanel />
           {explain && <AnalysisPanel explain={explain} />}
           {explain?.trajectory && (
             <ProjectedAssetsPanel

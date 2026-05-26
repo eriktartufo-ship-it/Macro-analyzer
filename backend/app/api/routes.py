@@ -1,7 +1,7 @@
 """API endpoints per il Macro Analyzer."""
 
 import json
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -1619,6 +1619,585 @@ def get_crisis_risk(db: Session = Depends(get_db)):
         "dedollar_combined": dedollar_combined,
         "indicators_snapshot": result.indicators_snapshot,
         "notes": result.notes,
+    }
+
+
+@router.get("/config/flags")
+def get_config_flags():
+    """Snapshot di tutti i feature flag noti con source (runtime/env/default).
+
+    Frontend FeatureFlagToggle usa questo per popolare lo stato corrente.
+    """
+    from app.services.config_flags import get_all_flags_state
+    return get_all_flags_state()
+
+
+class FlagUpdate(BaseModel):
+    name: str
+    value: bool | None  # None = clear runtime override
+
+
+@router.post("/config/flags")
+def set_config_flag(update: FlagUpdate):
+    """Set/clear runtime override per un feature flag (process-local).
+
+    Persiste finchè backend resta up. NO file/DB write — restart = reset.
+    Per persistenza permanente: usa env var.
+    """
+    from app.services.config_flags import get_all_flags_state, set_runtime_flag
+    known = set(get_all_flags_state().keys())
+    if update.name not in known:
+        raise HTTPException(status_code=400, detail=f"Unknown flag: {update.name}")
+    set_runtime_flag(update.name, update.value)
+    return {"ok": True, "flags": get_all_flags_state()}
+
+
+@router.get("/portfolio/allocation")
+def get_portfolio_allocation(
+    method: str = Query("equal_weight", description="equal_weight | score_weighted | risk_parity | kelly_fractional"),
+    top_n: int = Query(5, ge=1, le=15),
+    fraction: float = Query(0.25, ge=0.05, le=1.0, description="Solo per kelly_fractional"),
+    vol_target: float | None = Query(None, ge=0.02, le=0.40, description="T6.10: target annualized vol (es. 0.10 = 10%). Se None, no vol targeting."),
+    avg_correlation: float = Query(0.3, ge=0.0, le=1.0, description="T6.10: correlazione media assumed cross-asset"),
+    max_leverage: float = Query(2.0, ge=1.0, le=5.0, description="T6.10: cap leverage scale factor"),
+    db: Session = Depends(get_db),
+):
+    """Tier 6.4 — Position sizing layer.
+
+    Converte gli ultimi asset scores in pesi portfolio % via 4 algoritmi.
+    Output uniforme: weights dict (sum=1), method, top_n, metadata.
+
+    Risk-parity e Kelly_fractional richiedono vols → estratti da
+    ASSET_REGIME_DATA (vol media weighted regime).
+    """
+    from app.services.config_flags import use_position_sizing_layer
+    if not use_position_sizing_layer():
+        raise HTTPException(
+            status_code=403,
+            detail="USE_POSITION_SIZING_LAYER flag richiesto (opt-in T6.4)",
+        )
+
+    from app.models import DailySignal, RegimeClassification
+    from app.services.portfolio.position_sizing import compute_allocation
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    # Carica ultimi asset scores da DailySignal
+    last_classification = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .first()
+    )
+    if last_classification is None:
+        raise HTTPException(status_code=404, detail="No classification available")
+
+    signals = (
+        db.query(DailySignal)
+        .filter(DailySignal.date == last_classification.date)
+        .all()
+    )
+    if not signals:
+        raise HTTPException(status_code=404, detail="No daily signals available")
+
+    scores = {s.asset_class: float(s.final_score) for s in signals if s.final_score is not None}
+    if not scores:
+        raise HTTPException(status_code=404, detail="No valid scores")
+
+    # Vols: media weighted regime per asset
+    vols = {}
+    for asset in scores:
+        regime_data = ASSET_REGIME_DATA.get(asset, {})
+        if regime_data:
+            avg_vol = sum(r.get("vol", 0.15) for r in regime_data.values()) / len(regime_data)
+            vols[asset] = avg_vol
+
+    try:
+        allocation = compute_allocation(
+            method=method,
+            scores=scores,
+            vols=vols if method in {"risk_parity", "kelly_fractional"} else None,
+            top_n=top_n,
+            fraction=fraction,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    base_response = {
+        "method": allocation.method,
+        "top_n": allocation.top_n,
+        "weights": allocation.weights,
+        "total_weight": allocation.total_weight,
+        "excluded_assets": allocation.excluded_assets,
+        "description": allocation.description,
+        "metadata": allocation.metadata,
+        "as_of": str(last_classification.date),
+    }
+
+    # T6.10: vol targeting + leverage post position-sizing.
+    # Attivo se vol_target esplicitamente passato OR flag globale ON.
+    from app.services.config_flags import use_vol_targeting
+    if vol_target is not None or use_vol_targeting():
+        from app.services.portfolio.position_sizing import apply_vol_targeting
+        target = vol_target if vol_target is not None else 0.10
+        vt = apply_vol_targeting(
+            allocation,
+            vols=vols,
+            target_vol=target,
+            avg_correlation=avg_correlation,
+            max_leverage=max_leverage,
+        )
+        base_response["vol_targeting"] = {
+            "target_vol": vt.target_vol,
+            "realized_vol_pre": vt.realized_vol_pre,
+            "realized_vol_post": vt.realized_vol_post,
+            "scale_factor": vt.scale_factor,
+            "weights_scaled": vt.weights,
+            "leverage_used": vt.leverage_used,
+            "cash_buffer": vt.cash_buffer,
+            "description": vt.description,
+        }
+
+    return base_response
+
+
+@router.get("/portfolio/methods")
+def list_portfolio_methods():
+    """Lista algoritmi position sizing disponibili (T6.4)."""
+    from app.services.portfolio.position_sizing import list_methods
+    return {"methods": list_methods()}
+
+
+@router.get("/scoring/calibration/snapshots")
+def get_calibration_snapshots(
+    limit: int = Query(24, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """Tier 6.6 — Lista snapshot history calibration `asset_regime_data`.
+
+    Ogni snapshot = run mensile scheduler. Solo l'ultimo è `is_active=True`.
+    """
+    from app.services.scoring.live_calibration import list_snapshots
+    return list_snapshots(db, limit=limit)
+
+
+@router.post("/scoring/calibration/refresh")
+def trigger_calibration_refresh(db: Session = Depends(get_db)):
+    """Tier 6.6 — Force refresh manuale della live calibration.
+
+    Utile per testing/dev. Il scheduler la chiama auto il 1° del mese.
+    """
+    from app.services.scoring.live_calibration import calibrate_and_persist
+    result = calibrate_and_persist(db)
+    if result is None:
+        raise HTTPException(status_code=500, detail="Calibration refresh failed")
+    return {
+        "version": result.version,
+        "calibrated_on": str(result.calibrated_on),
+        "n_classifications": result.n_classifications,
+        "n_assets": result.n_assets,
+    }
+
+
+class OverrideCreate(BaseModel):
+    target_type: str
+    target_name: str
+    delta: float
+    expires_at: datetime
+    reason: str
+    author: str = "anonymous"
+
+
+@router.get("/scoring/overrides")
+def list_overrides(db: Session = Depends(get_db)):
+    """Tier 6.7 — Lista override discrezionali attivi (expires_at > now)."""
+    from app.services.scoring.discretionary import load_active_overrides
+    overrides = load_active_overrides(db)
+    return [
+        {
+            "id": o.id,
+            "target_type": o.target_type,
+            "target_name": o.target_name,
+            "delta": o.delta,
+            "expires_at": o.expires_at.isoformat() if o.expires_at else None,
+            "reason": o.reason,
+            "author": o.author,
+            "created_at": o.created_at.isoformat() if o.created_at else None,
+        }
+        for o in overrides
+    ]
+
+
+@router.post("/scoring/overrides")
+def post_override(payload: OverrideCreate, db: Session = Depends(get_db)):
+    """Tier 6.7 — Crea nuovo override discrezionale (audit-trail).
+
+    target_type: 'asset' (additivo a score 0-100) | 'regime' (shift probs Σ=1).
+    delta: range tipico ±30 per asset, ±0.20 per regime.
+    expires_at: timestamp UTC dopo cui l'override è inattivo (auto-rollback).
+    """
+    from app.services.scoring.discretionary import create_override
+    try:
+        rec = create_override(
+            db,
+            target_type=payload.target_type,
+            target_name=payload.target_name,
+            delta=payload.delta,
+            expires_at=payload.expires_at,
+            reason=payload.reason,
+            author=payload.author,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "id": rec.id,
+        "target_type": rec.target_type,
+        "target_name": rec.target_name,
+        "delta": rec.delta,
+        "expires_at": rec.expires_at.isoformat(),
+        "reason": rec.reason,
+        "author": rec.author,
+    }
+
+
+@router.get("/regime/transition-check")
+def get_transition_check(db: Session = Depends(get_db)):
+    """Tier 9 — Verifica se il regime corrente è in transizione confusionaria
+    e suggerisce allocazione difensiva.
+
+    Triggers (2 di 3 fired → transizione):
+
+    - max(regime_probs) < 0.45 (no dominant regime)
+    - entropy(probs) > 1.40 (high uncertainty)
+    - confidence < 0.40 (model unsure)
+
+    Quando in transizione, Buffett/Taleb/raydalio dicono: meglio cash + bonds +
+    gold che inseguire un regime ambiguo.
+    """
+    from app.services.regime.classifier import classify_regime
+    from app.services.regime.transition_detector import (
+        assess_transition,
+        get_defensive_allocation,
+    )
+
+    latest = db.query(RegimeClassification).order_by(
+        RegimeClassification.date.desc()
+    ).first()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No regime classification found")
+
+    indicators_json = latest.conditions_met or {}
+    if isinstance(indicators_json, str):
+        try:
+            indicators_json = json.loads(indicators_json)
+        except (ValueError, TypeError):
+            indicators_json = {}
+    indicators = (
+        indicators_json.get("indicators", {})
+        if isinstance(indicators_json, dict)
+        else {}
+    )
+
+    out = classify_regime(indicators)
+    assessment = assess_transition(
+        probs=out["probabilities"],
+        confidence=out.get("confidence", 0.5),
+    )
+    defensive = get_defensive_allocation()
+
+    return {
+        "date": str(latest.date),
+        "current_regime": out["regime"],
+        "current_probs": {k: round(v, 4) for k, v in out["probabilities"].items()},
+        "confidence": out.get("confidence", 0.0),
+        "is_transition": assessment.is_transition,
+        "triggers_fired": assessment.triggers_fired,
+        "triggers_count": assessment.triggers_count,
+        "max_prob": assessment.max_prob,
+        "entropy": assessment.entropy,
+        "description": assessment.description,
+        "defensive_allocation": defensive if assessment.is_transition else None,
+    }
+
+
+@router.get("/regime/ml-forecast")
+def get_ml_forecast(
+    horizons: str = Query("1,3,6", description="Comma-separated months (e.g. '1,3,6,12')"),
+    top_n: int = Query(5, ge=1, le=15),
+    use_percentile: bool = Query(False, description="Use T7.2 rank percentile scoring"),
+    db: Session = Depends(get_db),
+):
+    """Tier 8.4 — Forecast regime + asset allocation prossimi N mesi.
+
+    Pipeline:
+    1. Legge latest RegimeClassification + indicators.
+    2. Se USE_ML_REGIME_BLEND ON: blend rule+ML per probs t0.
+    3. Stima transition matrix monthly da DB (1027 records storici).
+    4. Propaga probs t0 via T^k per ogni horizon.
+    5. Calcola top-N asset weighted by forecasted regime probs.
+
+    Risposta inclusiva: ottieni dove allocare oggi E dove sarà profittevole
+    allocare tra 1/3/6 mesi se il regime evolve come storicamente.
+    """
+    from app.services.regime.classifier import classify_regime
+    from app.services.regime.ml_forecast import (
+        asset_allocation_forecast,
+        estimate_transition_matrix,
+        forecast_horizons,
+    )
+    from app.services.scoring.engine import (
+        ASSET_CLASSES,
+        _asset_regime_score,
+        _asset_regime_score_percentile,
+    )
+
+    latest = db.query(RegimeClassification).order_by(
+        RegimeClassification.date.desc()
+    ).first()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No regime classification found")
+
+    indicators_json = latest.conditions_met or {}
+    if isinstance(indicators_json, str):
+        try:
+            indicators_json = json.loads(indicators_json)
+        except (ValueError, TypeError):
+            indicators_json = {}
+    indicators = (
+        indicators_json.get("indicators", {})
+        if isinstance(indicators_json, dict)
+        else {}
+    )
+
+    # Re-classify per ottenere probs aggiornate (con eventual flag ML attivo)
+    out = classify_regime(indicators)
+    current_probs = out["probabilities"]
+
+    # Transition matrix da DB
+    T_matrix = estimate_transition_matrix(db)
+
+    # Parse horizons
+    try:
+        h_list = tuple(sorted(set(int(h.strip()) for h in horizons.split(",") if h.strip())))
+        h_list = tuple(h for h in h_list if 1 <= h <= 24)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid horizons format")
+    if not h_list:
+        h_list = (1, 3, 6)
+
+    forecasts = forecast_horizons(current_probs, T_matrix, h_list)
+
+    # Asset allocation forecast
+    score_fn = _asset_regime_score_percentile if use_percentile else _asset_regime_score
+    asset_top = asset_allocation_forecast(forecasts, score_fn, ASSET_CLASSES, top_n)
+
+    return {
+        "date": str(latest.date),
+        "current_regime": out["regime"],
+        "current_probs": {k: round(v, 4) for k, v in current_probs.items()},
+        "ml_blend_active": "ml_blend" in out,
+        "ml_blend_metadata": out.get("ml_blend"),
+        "forecasts": [
+            {
+                "horizon_months": fc.horizon_months,
+                "probs": fc.probs,
+                "expected_regime": fc.expected_regime,
+                "entropy": fc.entropy,
+                "top_assets": [
+                    {"asset": a, "weighted_score": s}
+                    for a, s in asset_top.get(fc.horizon_months, [])
+                ],
+            }
+            for fc in forecasts
+        ],
+    }
+
+
+@router.get("/regime/regime-2d")
+def get_regime_2d(
+    blend: float = Query(0.5, ge=0.0, le=1.0),
+    db: Session = Depends(get_db),
+):
+    """Tier 6.2 — Regime continuo 2D (growth_z, inflation_z).
+
+    Combina probabilities (autoritative, 4 quadranti) con indicators puntuali
+    (gdp_roc, cpi_yoy) per esporre coordinate continue ∈ [-1, +1].
+
+    `blend` ∈ [0, 1]: 0 = solo probs, 1 = solo indicators, 0.5 = balanced.
+
+    Quadranti:
+    - reflation = (+,+), stagflation = (-,+),
+    - deflation = (-,-), goldilocks = (+,-).
+    """
+    from app.services.config_flags import use_regime_2d
+    from app.services.regime.regime_2d import assess_regime_2d
+
+    if not use_regime_2d():
+        raise HTTPException(
+            status_code=403,
+            detail="USE_REGIME_2D flag is OFF (Tier 6.2 opt-in)",
+        )
+
+    latest = db.query(RegimeClassification).order_by(
+        RegimeClassification.date.desc()
+    ).first()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No regime classification found")
+
+    probs = latest.probabilities or {}
+    if isinstance(probs, str):
+        try:
+            probs = json.loads(probs)
+        except (ValueError, TypeError):
+            probs = {}
+
+    indicators_json = latest.conditions_met or {}
+    if isinstance(indicators_json, str):
+        try:
+            indicators_json = json.loads(indicators_json)
+        except (ValueError, TypeError):
+            indicators_json = {}
+    indicators = (
+        indicators_json.get("indicators", {})
+        if isinstance(indicators_json, dict)
+        else {}
+    )
+
+    assessment = assess_regime_2d(
+        probs=probs if probs else None,
+        indicators=indicators if indicators else None,
+        blend=blend,
+    )
+    return {
+        "date": str(latest.date),
+        "primary_regime": latest.regime,
+        "growth_z": assessment.growth_z,
+        "inflation_z": assessment.inflation_z,
+        "nearest_quadrant": assessment.nearest_quadrant,
+        "distance_to_quadrants": assessment.distance_to_quadrants,
+        "source": assessment.source,
+        "blend": blend,
+    }
+
+
+@router.get("/regime/sub-regime")
+def get_sub_regime(db: Session = Depends(get_db)):
+    """Tier 6.8 — Hierarchical sub-regime intra-quadrante per regime corrente.
+
+    Legge latest RegimeClassification + indicators, applica secondary classifier
+    rule-light. Ritorna sub_regime + breakdown score.
+    """
+    from app.services.config_flags import use_sub_regimes
+    from app.services.regime.sub_regimes import classify_sub_regime, list_sub_regimes_for
+
+    if not use_sub_regimes():
+        raise HTTPException(
+            status_code=403,
+            detail="USE_SUB_REGIMES flag is OFF (Tier 6.8 opt-in)",
+        )
+
+    latest = db.query(RegimeClassification).order_by(
+        RegimeClassification.date.desc()
+    ).first()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No regime classification found")
+
+    indicators_json = latest.conditions_met or {}
+    if isinstance(indicators_json, str):
+        try:
+            indicators_json = json.loads(indicators_json)
+        except (ValueError, TypeError):
+            indicators_json = {}
+    indicators = indicators_json.get("indicators", {}) if isinstance(indicators_json, dict) else {}
+
+    assessment = classify_sub_regime(latest.regime, indicators)
+    if assessment is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sub-regime classification not supported for '{latest.regime}'",
+        )
+    return {
+        "date": str(latest.date),
+        "primary_regime": assessment.primary_regime,
+        "sub_regime": assessment.sub_regime,
+        "score": assessment.score,
+        "description": assessment.description,
+        "breakdown": assessment.breakdown,
+        "available_sub_regimes": list_sub_regimes_for(assessment.primary_regime),
+    }
+
+
+@router.delete("/scoring/overrides/{override_id}")
+def remove_override(override_id: int, db: Session = Depends(get_db)):
+    """Tier 6.7 — Cancella override per id."""
+    from app.services.scoring.discretionary import delete_override
+    ok = delete_override(db, override_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Override not found")
+    return {"deleted": override_id}
+
+
+@router.get("/regime/correlation-regime")
+def get_correlation_regime(
+    window_days: int = Query(60, ge=20, le=252),
+):
+    """Tier 6.5 — Cross-asset correlation regime detection.
+
+    Rolling N-day daily returns su 4 asset class core (us_equities_growth,
+    us_bonds_long, gold, broad_commodities) → matrix correlation → avg
+    pairwise → classify (crisis/elevated/moderate/diversified).
+
+    In regime "correlation_crisis" (avg > 0.7): diversification fails,
+    flight-to-safety pattern. Feed into crisis_indicator come trigger
+    `correlation_breakdown` (peso doppio critical).
+    """
+    from datetime import date, timedelta
+    from app.services.prices.yahoo_fetcher import YahooFetcher
+    from app.services.regime.correlation_regime import (
+        compute_correlation_regime,
+        list_default_assets,
+        returns_from_prices,
+    )
+
+    # Fetch prezzi recenti via Yahoo per i 4 asset core
+    assets_map = {
+        "us_equities_growth": "QQQ",
+        "us_bonds_long": "TLT",
+        "gold": "GLD",
+        "broad_commodities": "DBC",
+    }
+    fetcher = YahooFetcher()
+    end = date.today()
+    start = end - timedelta(days=window_days * 2 + 30)  # cushion for non-trading days
+    prices_dict = {}
+    for asset_key, ticker in assets_map.items():
+        try:
+            s = fetcher.fetch(ticker, start_date=start, end_date=end)
+            if s is not None and not s.empty:
+                prices_dict[asset_key] = s
+        except Exception:
+            continue
+    if not prices_dict:
+        raise HTTPException(status_code=503, detail="No price data available")
+
+    import pandas as pd
+    prices = pd.DataFrame(prices_dict)
+    returns = returns_from_prices(prices)
+    assessment = compute_correlation_regime(
+        returns,
+        window_days=window_days,
+        assets=list_default_assets(),
+    )
+
+    return {
+        "regime": assessment.regime,
+        "avg_pairwise_correlation": assessment.avg_pairwise_correlation,
+        "n_assets": assessment.n_assets,
+        "n_observations": assessment.n_observations,
+        "is_breakdown": assessment.is_breakdown,
+        "description": assessment.description,
+        "top_correlations": [
+            {"asset_a": a, "asset_b": b, "corr": c}
+            for a, b, c in assessment.matrix_excerpt
+        ],
     }
 
 

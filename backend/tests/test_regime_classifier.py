@@ -10,6 +10,20 @@ Quadrante macro (crescita x inflazione):
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_ml_blend(monkeypatch):
+    """Module-level: test del classifier rule-based puro.
+    Disabilita ML blend (T8.3), freshness (T6.9), gdp_collapse (T7.1) per
+    asserzioni numeriche deterministiche.
+
+    T10b 2026-05-17: USE_ML_REGIME_BLEND e USE_GDP_COLLAPSE_OVERRIDE promossi
+    default-ON. Force "0" explicit (non delenv) per preservare baseline rule-based.
+    """
+    for flag in ("USE_ML_REGIME_BLEND", "USE_GDP_COLLAPSE_OVERRIDE"):
+        monkeypatch.setenv(flag, "0")
+    monkeypatch.delenv("USE_FRESHNESS_WEIGHTING", raising=False)
+
+
 class TestRegimeClassifier:
     """Test classificazione regime con scenari macro noti."""
 
@@ -213,8 +227,13 @@ class TestRegimeClassifier:
         assert result["regime"] == "goldilocks"
         assert result["probabilities"]["goldilocks"] > 0.3
 
-    def test_high_confidence_clear_signal(self):
-        """Con segnali molto chiari, confidence deve essere alta."""
+    def test_high_confidence_clear_signal(self, monkeypatch):
+        """Con segnali molto chiari, confidence deve essere alta.
+
+        Test del classifier base — disabilita T6.9 freshness (che riduce
+        intenzionalmente il peso degli indicators stale come GDP/CPI).
+        """
+        monkeypatch.delenv("USE_FRESHNESS_WEIGHTING", raising=False)
         from app.services.regime.classifier import classify_regime
 
         # Tutti gli indicatori puntano chiaramente a deflation/recession
@@ -239,23 +258,36 @@ class TestRegimeClassifier:
         assert result["confidence"] > 0.7
 
     def test_low_confidence_mixed_signals(self):
-        """Con segnali contrastanti, confidence deve essere bassa."""
+        """Con segnali contrastanti, confidence deve essere bassa.
+
+        T9-AUDIT-FIX: scenario aggiornato. CPI 7% non è "mixed signal" è
+        chiaramente stagflation (dopo bug-fix bughunter HIGH-1 reflation
+        penalty per CPI>3.5). Uso scenario VERAMENTE borderline.
+        """
         from app.services.regime.classifier import classify_regime
 
-        # Mix: GDP buono ma PMI basso, inflation alta ma claims bassi
+        # Borderline reflation/goldilocks: GDP medio, CPI vicino target, mixed altri
         indicators = {
-            "gdp_roc": 3.0,           # Segnale reflation
-            "pmi": 45.0,              # Segnale deflation
-            "cpi_yoy": 7.0,           # Segnale stagflation
-            "unrate": 3.5,            # Segnale goldilocks
-            "unrate_roc": -0.2,       # Segnale reflation
-            "yield_curve_10y2y": -0.3, # Segnale deflation
-            "initial_claims_roc": -5.0, # Segnale reflation
-            "lei_roc": -2.0,          # Segnale deflation
-            "fed_funds_rate": 3.0,
+            "gdp_roc": 2.0,
+            "pmi": 50.0,
+            "cpi_yoy": 2.8,
+            "unrate": 4.5,
+            "unrate_roc": 0.0,
+            "yield_curve_10y2y": 0.3,
+            "initial_claims_roc": 0.0,
+            "lei_roc": 0.0,
+            "fed_funds_rate": 3.5,
+            "core_pce_yoy": 2.6,
+            "consumer_sentiment": 75.0,
+            "breakeven_10y": 2.3,
+            "baa_10y_spread": 2.0,
+            "vix": 18.0,
+            "indpro_roc_12m": 1.5,
+            "payrolls_roc_12m": 1.5,
         }
         result = classify_regime(indicators)
 
+        # Segnali borderline → confidence < 0.5 (modello incerto)
         assert result["confidence"] < 0.5
 
     def test_only_four_regimes(self):

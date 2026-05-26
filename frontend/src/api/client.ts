@@ -2,6 +2,7 @@ import { getDedollarBonusFlag } from "../hooks/useDedollarBonus";
 import type {
   BacktestResult,
   CalibrationPayload,
+  ConfigFlags,
   CrisisHistory,
   CrisisRiskAssessment,
   CurrentRegime,
@@ -29,6 +30,10 @@ import type {
   Scoreboard,
   SignalsHistoryItem,
   TransitionMatrix,
+  TransitionCheckResponse,
+  MLForecastResponse,
+  SubRegimeResponse,
+  Regime2DResponse,
 } from "../types";
 
 const BASE = "/api/v1";
@@ -109,6 +114,28 @@ export const api = {
     request<HMMPrediction>(`/regime/hmm?n_states=${nStates}`, undefined, { retries: 0 }),
   regimeEnsemble: () => request<EnsembleResult>("/regime/ensemble", undefined, { retries: 0 }),
   crisisRisk: () => request<CrisisRiskAssessment>("/regime/crisis-risk", undefined, { retries: 0 }),
+  // T9-AUDIT endpoints
+  transitionCheck: () => request<TransitionCheckResponse>("/regime/transition-check", undefined, { retries: 0 }),
+  mlForecast: (horizons = "1,3,6", topN = 5) =>
+    request<MLForecastResponse>(
+      `/regime/ml-forecast?horizons=${encodeURIComponent(horizons)}&top_n=${topN}`,
+      undefined,
+      { retries: 0 },
+    ),
+  subRegime: () => request<SubRegimeResponse>("/regime/sub-regime", undefined, { retries: 0 }),
+  regime2D: (blend = 0.5) =>
+    request<Regime2DResponse>(`/regime/regime-2d?blend=${blend}`, undefined, { retries: 0 }),
+  getConfigFlags: () => request<ConfigFlags>("/config/flags", undefined, { retries: 0 }),
+  setConfigFlag: (name: string, value: boolean | null) =>
+    request<{ ok: boolean; flags: ConfigFlags }>(
+      "/config/flags",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, value }),
+      },
+      { retries: 0 },
+    ),
   crisisRiskHistory: (days = 365 * 30, limit?: number) => {
     const q = new URLSearchParams();
     q.set("days", String(days));

@@ -8,6 +8,8 @@ Verifica:
 """
 from __future__ import annotations
 
+import pytest
+
 from app.services.regime.crisis_indicator import (
     _classify_crisis_type,
     _compute_risk_level,
@@ -141,6 +143,26 @@ class TestComputeRiskLevel:
 
 
 class TestAssessCrisisRiskEndToEnd:
+    """End-to-end tests con default flag OFF (baseline pre-T5/T6).
+
+    Auto-isolate: ogni test garantisce env pulito per testare logica base.
+    Test specifici per pillar opt-in vivono in test files dedicati.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_flags(self, monkeypatch):
+        """T10b: USE_GDP_COLLAPSE_OVERRIDE e USE_ML_REGIME_BLEND default-ON. Force "0"."""
+        for k in ("USE_GDP_COLLAPSE_OVERRIDE", "USE_ML_REGIME_BLEND"):
+            monkeypatch.setenv(k, "0")
+        for k in (
+            "USE_DEDOLLAR_PILLAR", "USE_CRISIS_MODULATION", "USE_NEWS_PILLAR",
+            "USE_DFM_ASSET_BONUS", "USE_ASSET_FEEDBACK",
+            "USE_ADAPTIVE_THRESHOLDS", "USE_CORRELATION_REGIME",
+            "USE_CROSS_ASSET_PILLARS",
+            "USE_FRESHNESS_WEIGHTING",
+        ):
+            monkeypatch.delenv(k, raising=False)
+
     def test_full_2008_scenario(self):
         ind = {
             "gdp_roc": -3.0, "pmi": 35.0, "cpi_yoy": 1.0, "unrate": 8.0,
@@ -196,3 +218,51 @@ class TestAssessCrisisRiskEndToEnd:
         assert result.date
         assert isinstance(result.triggers, list)
         assert isinstance(result.positioning, dict)
+
+
+class TestCorrelationBreakdownTrigger:
+    """Tier 6.5 integration — correlation_breakdown trigger in crisis_indicator.
+
+    Verifica:
+    - Nessun correlation_assessment passato → trigger NON aggiunto (back-compat).
+    - correlation_assessment con is_breakdown=True → trigger fired aggiunto.
+    - correlation_assessment con is_breakdown=False → trigger NOT fired.
+    """
+    def _ind_normal(self):
+        return {
+            "gdp_roc": 2.0, "cpi_yoy": 2.0, "unrate": 4.0, "unrate_roc": 0.0,
+            "vix": 17.0, "baa_spread": 1.8, "yield_curve_10y2y": 0.8,
+            "breakeven_10y": 2.0, "nfci": -0.3,
+        }
+
+    def test_no_assessment_no_correlation_trigger(self):
+        ind = self._ind_normal()
+        result = assess_crisis_risk(ind, dedollar_combined=0.4)
+        trigger_names = {t["name"] for t in result.triggers}
+        assert "correlation_breakdown" not in trigger_names
+
+    def test_breakdown_assessment_adds_fired_trigger(self):
+        ind = self._ind_normal()
+        # Mock minimale del dataclass CorrelationRegimeAssessment
+        class FakeAssessment:
+            avg_pairwise_correlation = 0.85
+            is_breakdown = True
+        result = assess_crisis_risk(
+            ind, dedollar_combined=0.4, correlation_assessment=FakeAssessment()
+        )
+        triggers = {t["name"]: t for t in result.triggers}
+        assert "correlation_breakdown" in triggers
+        assert triggers["correlation_breakdown"]["fired"] is True
+        assert triggers["correlation_breakdown"]["value"] == 0.85
+
+    def test_non_breakdown_assessment_adds_unfired_trigger(self):
+        ind = self._ind_normal()
+        class FakeAssessment:
+            avg_pairwise_correlation = 0.30
+            is_breakdown = False
+        result = assess_crisis_risk(
+            ind, dedollar_combined=0.4, correlation_assessment=FakeAssessment()
+        )
+        triggers = {t["name"]: t for t in result.triggers}
+        assert "correlation_breakdown" in triggers
+        assert triggers["correlation_breakdown"]["fired"] is False

@@ -201,6 +201,104 @@ FRED_SERIES = {
         "frequency": "monthly",
         "transform": "roc",
     },
+    "m2_yoy": {
+        "fred_id": "M2SL",
+        "description": "M2 Money Stock YoY (leading inflation indicator)",
+        "frequency": "monthly",
+        "transform": "yoy",
+    },
+    # --- T9: Banking & Credit ---
+    "delinquency_rate_loans": {
+        "fred_id": "DRBLACBS",
+        "description": "Delinquency Rate on Business Loans (recession leading indicator)",
+        "frequency": "quarterly",
+        "transform": "level",
+    },
+    "bank_credit": {
+        "fred_id": "TOTBKCR",
+        "description": "Bank Credit, All Commercial Banks YoY",
+        "frequency": "weekly",
+        "transform": "yoy",
+    },
+    "commercial_industrial_loans": {
+        "fred_id": "BUSLOANS",
+        "description": "Commercial & Industrial Loans (corporate borrowing)",
+        "frequency": "weekly",
+        "transform": "yoy",
+    },
+    # --- T9: Treasury market positioning ---
+    "treasury_volatility_move": {
+        "fred_id": "VIXCLS",  # Fallback to VIX since MOVE not freely available on FRED
+        "description": "VIX as bond volatility proxy (MOVE index not on FRED free)",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    # --- T9: Wage growth (stagflation leading) ---
+    "avg_hourly_earnings_yoy": {
+        "fred_id": "CES0500000003",
+        "description": "Average Hourly Earnings YoY (private nonfarm, wage inflation)",
+        "frequency": "monthly",
+        "transform": "yoy",
+    },
+    # --- T9: Valuation (Shiller CAPE proxy via S&P 500 + earnings) ---
+    "sp500": {
+        "fred_id": "SP500",
+        "description": "S&P 500 Index (daily, for CAPE/valuation calc)",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    # --- T9: Fed dot plot / forward guidance proxy ---
+    "fed_funds_futures_1y": {
+        "fred_id": "DGS1",
+        "description": "1Y Treasury yield (forward expectation Fed funds in 1y, proxy)",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    # --- T9: Global liquidity / global financial conditions ---
+    "global_real_economic_activity_index": {
+        "fred_id": "IGREA",
+        "description": "Kilian Global Real Economic Activity Index (shipping rates proxy)",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    # --- T9: Yield curve detail (key recession lead) ---
+    "yield_curve_3m10y": {
+        "fred_id": "T10Y3M",
+        "description": "10Y minus 3M Treasury spread (NY Fed recession model best fit)",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    # --- T9-AUDIT P1: 5 feeds aggiunti post-council ---
+    "fed_balance_sheet": {
+        "fred_id": "WALCL",
+        "description": "Fed Balance Sheet (Total Assets, weekly) — QE/QT regime shift signal",
+        "frequency": "weekly",
+        "transform": "roc",
+    },
+    "hy_oas_baml": {
+        "fred_id": "BAMLH0A0HYM2",
+        "description": "BAML US HY Master OAS — tail credit stress, complement to BAA",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    "reverse_repo": {
+        "fred_id": "RRPONTSYD",
+        "description": "Overnight Reverse Repo Facility — liquidity drain, leading deflation",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    "wilshire_5000": {
+        "fred_id": "WILL5000IND",
+        "description": "Wilshire 5000 Total Market Index (for Buffett indicator Wilshire/GDP)",
+        "frequency": "daily",
+        "transform": "level",
+    },
+    "nfci_leverage": {
+        "fred_id": "NFCILEVERAGE",
+        "description": "Chicago Fed NFCI Leverage subindex — separates leverage from volatility",
+        "frequency": "weekly",
+        "transform": "level",
+    },
     # --- Housing ---
     "housing_starts": {
         "fred_id": "HOUST",

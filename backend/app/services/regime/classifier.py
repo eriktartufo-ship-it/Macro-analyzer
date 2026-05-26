@@ -13,7 +13,16 @@ tra le condizioni.
 
 from typing import Any
 
-from app.services.config_flags import use_dedollar_pillar, use_news_pillar
+from app.services.config_flags import (
+    use_adaptive_thresholds,
+    use_cross_asset_pillars,
+    use_dedollar_pillar,
+    use_freshness_weighting,
+    use_gdp_collapse_override,
+    use_ml_regime_blend,
+    use_news_pillar,
+)
+from app.services.regime.freshness import effective_weight, freshness_for
 
 REGIMES = ["reflation", "stagflation", "deflation", "goldilocks"]
 
@@ -39,6 +48,8 @@ REGIME_CONDITIONS = {
         "insider_buying_strong": {"weight": 0.03, "description": "SEC Form 4 insider score > 0.3 (smart money bullish)"},
         "dedollar_low": {"weight": 0.02, "description": "Dedollar combined < 0.4 (dollar strong, risk-on global)"},
         "news_positive_strong": {"weight": 0.02, "description": "News avg sentiment > 0.3 (positive narrative)"},
+        "copper_gold_strong": {"weight": 0.03, "description": "Copper/gold ratio > 0.45 (cyclical strength)"},
+        "hy_ig_tight": {"weight": 0.02, "description": "HY/IG spread ratio < 3 (credit risk-on)"},
     },
     "stagflation": {
         "inflation_high": {"weight": 0.17, "description": "CPI YoY > 4%"},
@@ -59,6 +70,7 @@ REGIME_CONDITIONS = {
         "dfm_growth_weak": {"weight": 0.02, "description": "DFM nowcast GDP YoY < 1.5% (real-time slowdown signal)"},
         "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
         "dedollar_debasement": {"weight": 0.03, "description": "Dedollar combined > 0.6 (USD debasement, real assets bid)"},
+        "gold_oil_low": {"weight": 0.03, "description": "Gold/oil ratio < 15 (oil-driven inflation, stagflation 1973-style)"},
     },
     "deflation": {
         "gdp_negative_or_decelerating": {"weight": 0.14, "description": "GDP ROC < 1%"},
@@ -77,6 +89,9 @@ REGIME_CONDITIONS = {
         "breakeven_collapse": {"weight": 0.05, "description": "Breakeven 10Y < 1.5%"},
         "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
         "news_panic": {"weight": 0.02, "description": "News avg sentiment < -0.3 (panic narrative)"},
+        "copper_gold_weak": {"weight": 0.03, "description": "Copper/gold ratio < 0.30 (cyclical collapse, deflation)"},
+        "gold_oil_high": {"weight": 0.03, "description": "Gold/oil ratio > 30 (gold strong vs oil collapse, deflation)"},
+        "hy_ig_stress": {"weight": 0.03, "description": "HY/IG spread ratio > 5 (credit stress 2008-style)"},
     },
     "goldilocks": {
         "gdp_moderate": {"weight": 0.11, "description": "GDP ROC 1.5-3%"},
@@ -98,13 +113,57 @@ REGIME_CONDITIONS = {
 }
 
 
-def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, float]) -> float:
+def _resolve_sigmoid_params(
+    condition_name: str,
+    default_center: float,
+    default_scale: float,
+    adaptive_recipes: dict | None,
+    sign: int = 1,
+) -> tuple[float, float]:
+    """Restituisce (center, scale) per il sigmoid.
+
+    Se `use_adaptive_thresholds()` è ON e `adaptive_recipes` ha la key
+    per `condition_name`, usa quei params calcolati da quantili rolling.
+    Altrimenti default hardcoded.
+
+    `sign=+1` per condizioni "high" (sigmoid(x, center, scale)).
+    `sign=-1` per "low" (sigmoid(-x, -center, scale)): center va negato
+    perché il classifier passa `-value` al sigmoid; ma il valore quantile
+    è positivo (es. q25 di VIX), quindi center=-q25 quando sign=-1.
+    """
+    if not use_adaptive_thresholds() or not adaptive_recipes:
+        return default_center, default_scale
+    recipe = adaptive_recipes.get(condition_name)
+    if recipe is None:
+        return default_center, default_scale
+    # recipe.center è positivo (quantile valore originale).
+    # Il classifier per condizioni "low" passa _sigmoid(-value, center=-X, scale=Y).
+    # Quindi sign=-1 → center negato per matchare quel pattern.
+    center = recipe.center * sign
+    scale = recipe.scale
+    return center, scale
+
+
+def _evaluate_condition(
+    condition_name: str,
+    regime: str,
+    indicators: dict[str, float],
+    adaptive_recipes: dict | None = None,
+) -> float:
     """Valuta una singola condizione e ritorna score 0-1.
 
     Usa funzioni sigmoidali soft per evitare cutoff binari.
+
+    Args:
+        adaptive_recipes: dict {condition_name: AdaptiveRecipe} opzionale.
+            Se passato e flag T6.1 ON, sostituisce center/scale hardcoded
+            per le 13 condizioni in `_CONDITION_RECIPES` (VIX/BAA/CPI/
+            yield_curve/NFCI).
     """
     gdp = indicators.get("gdp_roc", 0.0)
-    pmi = indicators.get("pmi", 50.0)
+    # T9-AUDIT-BUG-4: NAPM (PMI) discontinuato FRED → proxy via indpro_yoy
+    from app.services.common.indicator_aliases import derive_pmi_proxy
+    pmi = derive_pmi_proxy(indicators)
     cpi = indicators.get("cpi_yoy", 2.0)
     unrate = indicators.get("unrate", 4.5)
     unrate_roc = indicators.get("unrate_roc", 0.0)
@@ -145,6 +204,11 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     # Opt-in via USE_NEWS_PILLAR=1. Pillar è soft (peso 0.02) per gestire
     # rumorosità intraday e LLM-scoring variance.
     news_sentiment = indicators.get("news_sentiment", 0.0)
+    # Cross-asset ratios (Tier 6.3): default neutral mid-range storici.
+    # Opt-in via USE_CROSS_ASSET_PILLARS. Soft pillar 0.02-0.03 each.
+    copper_gold_ratio = indicators.get("copper_gold_ratio", 0.37)
+    gold_oil_ratio = indicators.get("gold_oil_ratio", 17.0)
+    hy_ig_spread_ratio = indicators.get("hy_ig_spread_ratio", 3.5)
 
     # --- REFLATION conditions ---
     if condition_name == "gdp_strong":
@@ -152,7 +216,20 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     elif condition_name == "pmi_expansion" and regime == "reflation":
         return _sigmoid(pmi, center=52.0, scale=3.0)
     elif condition_name == "inflation_rising":
-        return _sigmoid(cpi, center=2.8, scale=1.0)
+        # T9-AUDIT-BUG-FIX (bughunter): pre-fix sigmoid centro 2.8 →
+        # CPI 4% contribuisce 0.76 a reflation. CONCETTUALMENTE SBAGLIATO:
+        # CPI > 3.5% NON è reflation salutare, è proto-stagflation.
+        # Fix: bell-curve centrata a 2.5%, satura sopra 3.5% (penalty).
+        # Reflation "salutare" = CPI 2.0-3.0%. Sopra 3.5% peso decresce.
+        c, s = _resolve_sigmoid_params(condition_name, 2.5, 0.6, adaptive_recipes, sign=+1)
+        # Bell curve: massimo a CPI=center, decresce sia sotto sia sopra.
+        # Per CPI > center+1.5σ → contributo riduce (è "troppa inflation"
+        # per essere reflation).
+        if cpi > c + 1.5 * s:
+            # Decrescita lineare sopra threshold
+            excess = (cpi - c - 1.5 * s) / s
+            return max(0.0, _sigmoid(cpi, center=c, scale=s) * (1.0 - 0.5 * excess))
+        return _sigmoid(cpi, center=c, scale=s)
     elif condition_name == "unemployment_low_or_falling":
         # Combina: o livello basso o in calo
         low_level = _sigmoid(-unrate, center=-4.5, scale=1.0)
@@ -163,13 +240,15 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     elif condition_name == "lei_positive" and regime == "reflation":
         return _sigmoid(lei_roc, center=0.5, scale=1.0)
     elif condition_name == "yield_curve_steep":
-        return _sigmoid(yield_spread, center=0.8, scale=0.8)
+        c, s = _resolve_sigmoid_params(condition_name, 0.8, 0.8, adaptive_recipes, sign=+1)
+        return _sigmoid(yield_spread, center=c, scale=s)
     elif condition_name == "policy_accommodative":
         return _sigmoid(-fed_funds, center=-2.5, scale=1.5)
 
     # --- STAGFLATION conditions ---
     elif condition_name == "inflation_high":
-        return _sigmoid(cpi, center=4.0, scale=1.5)
+        c, s = _resolve_sigmoid_params(condition_name, 4.0, 1.5, adaptive_recipes, sign=+1)
+        return _sigmoid(cpi, center=c, scale=s)
     elif condition_name == "gdp_weak":
         return _sigmoid(-gdp, center=-1.0, scale=1.0)
     elif condition_name == "pmi_weak":
@@ -191,7 +270,8 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     elif condition_name == "pmi_contraction":
         return _sigmoid(-pmi, center=-49.0, scale=2.5)
     elif condition_name == "inflation_low" and regime == "deflation":
-        return _sigmoid(-cpi, center=-2.0, scale=0.8)
+        c, s = _resolve_sigmoid_params(condition_name, -2.0, 0.8, adaptive_recipes, sign=-1)
+        return _sigmoid(-cpi, center=c, scale=s)
     elif condition_name == "lei_negative" and regime == "deflation":
         return _sigmoid(-lei_roc, center=0.5, scale=1.0)
     elif condition_name == "claims_rising" and regime == "deflation":
@@ -238,38 +318,50 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
     elif condition_name == "core_pce_contained":
         return _sigmoid(-core_pce, center=-2.3, scale=0.6)
     elif condition_name == "credit_spread_tight":
-        return _sigmoid(-baa_spread, center=-1.9, scale=0.5)
+        c, s = _resolve_sigmoid_params(condition_name, -1.9, 0.5, adaptive_recipes, sign=-1)
+        return _sigmoid(-baa_spread, center=c, scale=s)
     elif condition_name == "credit_spread_wide" and regime == "stagflation":
-        return _sigmoid(baa_spread, center=2.3, scale=0.5)
+        c, s = _resolve_sigmoid_params(condition_name, 2.3, 0.5, adaptive_recipes, sign=+1)
+        return _sigmoid(baa_spread, center=c, scale=s)
     elif condition_name == "credit_spread_wide" and regime == "deflation":
-        return _sigmoid(baa_spread, center=2.5, scale=0.6)
+        c, s = _resolve_sigmoid_params(condition_name, 2.5, 0.6, adaptive_recipes, sign=+1)
+        return _sigmoid(baa_spread, center=c, scale=s)
     elif condition_name == "sentiment_high":
         return _sigmoid(sentiment, center=82.0, scale=6.0)
     elif condition_name == "sentiment_low":
         return _sigmoid(-sentiment, center=-70.0, scale=7.0)
 
     # --- Nuove condizioni: VIX / NFCI / Breakeven / Housing ---
+    # T6.1 adaptive thresholds: 4 VIX conditions + 3 NFCI usano
+    # _resolve_sigmoid_params se flag ON + recipes disponibili.
     elif condition_name == "vix_low":
-        # Risk-on: VIX sotto 18 (contributo reflation)
-        return _sigmoid(-vix, center=-18.0, scale=3.0)
+        # Risk-on: VIX sotto q25 rolling 10y (default -18 hardcoded)
+        c, s = _resolve_sigmoid_params(condition_name, -18.0, 3.0, adaptive_recipes, sign=-1)
+        return _sigmoid(-vix, center=c, scale=s)
     elif condition_name == "vix_calm":
-        # Tranquilita totale: VIX < 16 (goldilocks)
-        return _sigmoid(-vix, center=-16.0, scale=2.0)
+        # Goldilocks tranquilità: VIX sotto q10
+        c, s = _resolve_sigmoid_params(condition_name, -16.0, 2.0, adaptive_recipes, sign=-1)
+        return _sigmoid(-vix, center=c, scale=s)
     elif condition_name == "vix_elevated":
-        # Stress: VIX > 25 (stagflation)
-        return _sigmoid(vix, center=25.0, scale=3.0)
+        # Stress: VIX sopra q75
+        c, s = _resolve_sigmoid_params(condition_name, 25.0, 3.0, adaptive_recipes, sign=+1)
+        return _sigmoid(vix, center=c, scale=s)
     elif condition_name == "vix_spike":
-        # Panic: VIX > 30 (deflation classica)
-        return _sigmoid(vix, center=30.0, scale=4.0)
+        # Panic: VIX sopra q95
+        c, s = _resolve_sigmoid_params(condition_name, 30.0, 4.0, adaptive_recipes, sign=+1)
+        return _sigmoid(vix, center=c, scale=s)
     elif condition_name == "financial_conditions_loose":
-        # NFCI negativo = credit easy (reflation)
-        return _sigmoid(-nfci, center=0.1, scale=0.15)
+        # NFCI sotto q25 = credit easy (reflation)
+        c, s = _resolve_sigmoid_params(condition_name, 0.1, 0.15, adaptive_recipes, sign=-1)
+        return _sigmoid(-nfci, center=c, scale=s)
     elif condition_name == "financial_conditions_easy":
-        # NFCI < -0.3 = condizioni molto accomodanti (goldilocks)
-        return _sigmoid(-nfci, center=0.3, scale=0.2)
+        # NFCI sotto q10 = condizioni molto accomodanti (goldilocks)
+        c, s = _resolve_sigmoid_params(condition_name, 0.3, 0.2, adaptive_recipes, sign=-1)
+        return _sigmoid(-nfci, center=c, scale=s)
     elif condition_name == "nfci_tight":
-        # NFCI > 0.3 = stress creditizio (deflation)
-        return _sigmoid(nfci, center=0.3, scale=0.2)
+        # NFCI sopra q75 = stress creditizio (deflation)
+        c, s = _resolve_sigmoid_params(condition_name, 0.3, 0.2, adaptive_recipes, sign=+1)
+        return _sigmoid(nfci, center=c, scale=s)
     elif condition_name == "breakeven_high":
         # Breakeven > 2.5% = aspettative inflazione (stagflation/reflation)
         return _sigmoid(breakeven, center=2.5, scale=0.3)
@@ -337,6 +429,32 @@ def _evaluate_condition(condition_name: str, regime: str, indicators: dict[str, 
         if not use_news_pillar():
             return 0.0
         return _sigmoid(-news_sentiment, center=0.3, scale=0.15)
+    # T6.3 Cross-asset ratios pillars (opt-in USE_CROSS_ASSET_PILLARS).
+    # Flag-gated pattern come T5.2/T5.3: spento → return 0.0 (zero impact).
+    elif condition_name == "copper_gold_strong" and regime == "reflation":
+        if not use_cross_asset_pillars():
+            return 0.0
+        return _sigmoid(copper_gold_ratio, center=0.45, scale=0.08)
+    elif condition_name == "copper_gold_weak" and regime == "deflation":
+        if not use_cross_asset_pillars():
+            return 0.0
+        return _sigmoid(-copper_gold_ratio, center=-0.30, scale=0.08)
+    elif condition_name == "gold_oil_high" and regime == "deflation":
+        if not use_cross_asset_pillars():
+            return 0.0
+        return _sigmoid(gold_oil_ratio, center=30.0, scale=10.0)
+    elif condition_name == "gold_oil_low" and regime == "stagflation":
+        if not use_cross_asset_pillars():
+            return 0.0
+        return _sigmoid(-gold_oil_ratio, center=-15.0, scale=5.0)
+    elif condition_name == "hy_ig_stress" and regime == "deflation":
+        if not use_cross_asset_pillars():
+            return 0.0
+        return _sigmoid(hy_ig_spread_ratio, center=5.0, scale=1.0)
+    elif condition_name == "hy_ig_tight" and regime == "reflation":
+        if not use_cross_asset_pillars():
+            return 0.0
+        return _sigmoid(-hy_ig_spread_ratio, center=-3.0, scale=0.5)
 
     # Fallback
     return 0.5
@@ -356,7 +474,10 @@ def _bell(x: float, center: float, width: float) -> float:
     return math.exp(-0.5 * ((x - center) / width) ** 2)
 
 
-def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
+def classify_regime(
+    indicators: dict[str, float],
+    adaptive_recipes: dict | None = None,
+) -> dict[str, Any]:
     """Classifica il regime macro corrente in 4 quadranti.
 
     Args:
@@ -386,20 +507,30 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     """
     raw_scores: dict[str, float] = {}
     conditions_detail: dict[str, dict] = {}
+    apply_freshness = use_freshness_weighting()
 
     for regime in REGIMES:
         regime_score = 0.0
         regime_conditions = {}
 
         for cond_name, cond_config in REGIME_CONDITIONS[regime].items():
-            score = _evaluate_condition(cond_name, regime, indicators)
-            weighted = score * cond_config["weight"]
+            score = _evaluate_condition(cond_name, regime, indicators, adaptive_recipes=adaptive_recipes)
+            base_w = cond_config["weight"]
+            if apply_freshness:
+                w = effective_weight(cond_name, base_w)
+            else:
+                w = base_w
+            weighted = score * w
             regime_score += weighted
-            regime_conditions[cond_name] = {
+            cond_detail = {
                 "raw_score": round(score, 3),
-                "weight": cond_config["weight"],
+                "weight": base_w,
                 "weighted_score": round(weighted, 4),
             }
+            if apply_freshness:
+                cond_detail["freshness"] = freshness_for(cond_name)
+                cond_detail["effective_weight"] = round(w, 4)
+            regime_conditions[cond_name] = cond_detail
 
         raw_scores[regime] = regime_score
         conditions_detail[regime] = regime_conditions
@@ -408,7 +539,45 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     cpi = indicators.get("cpi_yoy", 2.0)
     gdp = indicators.get("gdp_roc", 0.0)
     unrate = indicators.get("unrate", 4.5)
+    unrate_roc = indicators.get("unrate_roc", 0.0)
     breakeven = indicators.get("breakeven_10y", 2.0)
+    vix = indicators.get("vix", 18.0)
+
+    # T7.1 GDP COLLAPSE OVERRIDE (continualizzato post-T9 audit council):
+    # cattura le recessioni disinflazionistiche (2008/2020/2001/1990) dove
+    # CPI è ancora alto (lagging) ma forward inflation crolla.
+    #
+    # Pre-T9: 4 condition AND-rigid (data-dredged 2008/2020). Council ha
+    # rilevato che non generalizza a 1990/2015/2018 dove uno dei 4 trigger
+    # marginalmente non scatta.
+    #
+    # T9 continualizzato: severity score = sigmoid(z(gdp) + z(unrate_roc) +
+    # z(vix) - z(breakeven)) ∈ [0, 1]. Scaling moltiplicatori proporzionale
+    # alla severity invece che binary on/off.
+    gdp_collapse_triggered = False
+    gdp_collapse_severity = 0.0
+    if use_gdp_collapse_override():
+        # Z-score normalizzato (anchor mean/std come ml_classifier)
+        gdp_z = -(gdp - 2.5) / 3.0  # invertito: gdp basso → z positivo
+        unrate_roc_z = (unrate_roc - 0.0) / 1.0
+        vix_z = (vix - 19.0) / 10.0
+        breakeven_z = -(breakeven - 2.3) / 1.0  # invertito: breakeven basso → z positivo
+        # Severity composta: media degli z positivi (recession indicators)
+        severity_raw = (gdp_z + unrate_roc_z + vix_z + breakeven_z) / 4.0
+        # Sigmoid (logistic) per mappare a [0, 1], centro 0.5 → 0.5
+        import math
+        gdp_collapse_severity = 1.0 / (1.0 + math.exp(-2.0 * severity_raw))
+        # Trigger flag se severity > 0.55 (conservativo: evita falsi positivi
+        # borderline su baseline neutri che producono ~0.52)
+        gdp_collapse_triggered = gdp_collapse_severity > 0.55
+        # Scaling moltiplicatori:
+        # severity 0 → no shift (×1.0 / ×1.0)
+        # severity 0.5 → mild (stag ×0.6, defl ×1.5)
+        # severity 1.0 → max (stag ×0.25, defl ×2.2) come pre-T9
+        stag_mult = 1.0 - 0.75 * gdp_collapse_severity  # 1.0 → 0.25
+        defl_mult = 1.0 + 1.2 * gdp_collapse_severity  # 1.0 → 2.2
+        raw_scores["stagflation"] *= stag_mult
+        raw_scores["deflation"] *= defl_mult
 
     # Deflation richiede inflation NON alta. Soglia allineata al Fed target (2%):
     # sopra 2.5% (= target + buffer) la deflation classica e' incompatibile per definizione.
@@ -435,6 +604,15 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     # Reflation richiede GDP positivo — penalizza se GDP < 0
     if gdp < 0:
         raw_scores["reflation"] *= max(0.3, 1.0 + gdp * 0.15)
+    # T9-AUDIT-BUG-FIX (bughunter HIGH-1 + council P0): reflation richiede CPI
+    # sotto target Fed + buffer. CPI > 3.5% NON è reflation salutare.
+    # Pre-P0: soft penalty (max 70% reduction at CPI 6%).
+    # Post-P0: HARD penalty progressivamente più forte sopra 3.5%.
+    # Es. CPI 3.5% -> ×1.0, CPI 4.0% -> ×0.55, CPI 4.5% -> ×0.35, CPI 5.0% -> floor 0.20.
+    # Filosofia council: "nessun investitore esperto chiamerebbe reflation un
+    # regime con inflazione al 4%".
+    if cpi > 3.5:
+        raw_scores["reflation"] *= max(0.20, 1.0 - (cpi - 3.5) * 0.90)
     # Goldilocks richiede inflation bassa — soglia 2.5% (Fed target+buffer), prima era 3.5
     # (troppo permissivo: 3.5% non e' goldilocks per nessuna definizione moderna).
     if cpi > 2.5:
@@ -479,10 +657,56 @@ def classify_regime(indicators: dict[str, float]) -> dict[str, Any]:
     confidence = (spread_confidence * 0.4) + (agreement_ratio * 0.35) + (concentration_score * 0.25)
     confidence = max(0.0, min(1.0, confidence))
 
-    return {
+    # T8.3 — ML ensemble blend (opt-in). Risolve confusioni rule-based su
+    # recessioni disinflazionistiche (2000, 1990) mantenendo stabilità.
+    ml_metadata: dict[str, Any] | None = None
+    if use_ml_regime_blend():
+        try:
+            from app.services.regime.ml_ensemble import blend_with_rule_based
+            # T9-FIX-2: alpha ridotto da 0.4 a 0.25 post-audit
+            # (ratio features/samples sub-determinato → ML deve essere tie-breaker, non dominante)
+            blended, ml_only = blend_with_rule_based(probabilities, indicators, alpha=0.25)
+            ml_metadata = {
+                "ml_only_probs": {k: round(v, 4) for k, v in ml_only.items()},
+                "rule_based_probs": {k: round(v, 4) for k, v in probabilities.items()},
+                "alpha": 0.25,
+            }
+            # NB: no rounding qui per preservare Σ=1 strict
+            probabilities = blended
+            # Ricalcola regime dominante post-blend
+            regime = max(probabilities, key=probabilities.get)
+        except Exception as e:
+            # Audit visibile invece di silent failure (raydalio reco)
+            import logging
+            logging.getLogger(__name__).warning(
+                "ML regime blend failed: %s — falling back to rule-based", e
+            )
+            ml_metadata = {"error": str(e), "fallback": "rule_based"}
+
+    out = {
         "regime": regime,
         "probabilities": probabilities,
         "fit_scores": fit_scores,
         "confidence": round(confidence, 3),
         "conditions_detail": conditions_detail,
     }
+    if gdp_collapse_triggered:
+        out["gdp_collapse_triggered"] = True
+        out["gdp_collapse_severity"] = round(gdp_collapse_severity, 4)
+    if ml_metadata:
+        out["ml_blend"] = ml_metadata
+
+    # T9-AUDIT-FIX: financial-stress veto layer (post-classifier).
+    # Cattura 2018 Q4 / 2023 SVB dove macro indicators sembravano ok ma
+    # market+credit stress era in essere. Riduce confidence × 0.5.
+    from app.services.config_flags import use_financial_stress_veto
+    if use_financial_stress_veto():
+        try:
+            from app.services.regime.financial_stress_veto import apply_veto_to_classification
+            out = apply_veto_to_classification(out, indicators)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "financial_stress_veto failed: %s", e
+            )
+    return out

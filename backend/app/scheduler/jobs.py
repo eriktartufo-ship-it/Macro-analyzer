@@ -31,8 +31,10 @@ def daily_refresh():
         # 2. Prepara indicatori per il classifier
         indicators = _prepare_indicators(latest, fetcher)
 
-        # 3. Classifica regime
-        regime_result = classify_regime(indicators)
+        # 3. Classifica regime. T6.1: estrai adaptive_recipes (popolato in
+        # _prepare_indicators se flag USE_ADAPTIVE_THRESHOLDS=1) e passalo.
+        adaptive_recipes = indicators.pop("__adaptive_recipes__", None)
+        regime_result = classify_regime(indicators, adaptive_recipes=adaptive_recipes)
         logger.info(
             f"Regime: {regime_result['regime']} "
             f"(confidence: {regime_result['confidence']:.2f})"
@@ -369,6 +371,102 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     except Exception as e:
         logger.warning(f"Insider score load skipped: {e}")
 
+    # Tier 6.3 CROSS-ASSET SIGNALS — Compute 3 ratio se opt-in.
+    # T9-AUDIT-BUG-FIX HIGH-4 (council): cross-asset ratios SEMPRE popolati
+    # (era condizionale a USE_CROSS_ASSET_PILLARS, ma indicator JSON ne ha
+    # bisogno anche quando flag OFF — copper_gold/gold_oil sono signal
+    # informativi generali, non solo pillar classifier).
+    # Pre-fix: gold_oil_ratio usava `gold_price` FRED (index) ÷ `oil_price`
+    # → valore 1.71 sbagliato. copper_gold_ratio scalato ×2500 arbitrariamente.
+    # Post-fix: usa Yahoo Finance futures GC=F/HG=F/CL=F sempre.
+    try:
+        from app.services.indicators.cross_asset import (
+            compute_copper_gold_ratio,
+            compute_gold_oil_ratio,
+            compute_hy_ig_spread_ratio,
+        )
+        from app.services.prices.yahoo_fetcher import YahooFetcher
+
+        yh = YahooFetcher()
+        try:
+            copper_s = yh.fetch("HG=F")  # $/lb
+            gold_s = yh.fetch("GC=F")    # $/oz
+            oil_s = yh.fetch("CL=F")     # $/barrel
+            copper_p = float(copper_s.iloc[-1]) if copper_s is not None and not copper_s.empty else None
+            gold_p = float(gold_s.iloc[-1]) if gold_s is not None and not gold_s.empty else None
+            oil_p = float(oil_s.iloc[-1]) if oil_s is not None and not oil_s.empty else None
+        except Exception:
+            copper_p = gold_p = oil_p = None
+
+        cg = compute_copper_gold_ratio(copper_p, gold_p)
+        if cg is not None:
+            indicators["copper_gold_ratio"] = cg
+        go = compute_gold_oil_ratio(gold_p, oil_p)
+        if go is not None:
+            indicators["gold_oil_ratio"] = go
+        # HY/IG spread ratio dai dati FRED già fetched
+        hy = latest.get("hy_credit_spread")
+        ig = latest.get("ig_credit_spread")
+        hy_ig = compute_hy_ig_spread_ratio(hy, ig)
+        if hy_ig is not None:
+            indicators["hy_ig_spread_ratio"] = hy_ig
+
+        # T9-AUDIT MED-5 (bughunter): hy_oas + energy_yoy dead paths.
+        # hy_oas = High Yield OAS (BAML index BAMLH0A0HYM2 via FRED).
+        # Stesso valore di hy_credit_spread se popolato; popola anche con
+        # nome canonico atteso da financial_stress_veto.py.
+        if hy is not None:
+            indicators["hy_oas"] = hy
+
+        # energy_yoy: variazione 12-mesi dell'energy index Yahoo (XLE o WTI).
+        try:
+            energy_s = yh.fetch("CL=F")  # WTI crude
+            if energy_s is not None and len(energy_s) > 252:  # ~12m daily
+                p_now = float(energy_s.iloc[-1])
+                p_year_ago = float(energy_s.iloc[-252])
+                if p_year_ago > 0:
+                    indicators["energy_yoy"] = (p_now / p_year_ago - 1.0) * 100.0
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning(f"Cross-asset ratios skipped: {e}")
+
+    # Tier 6.1 ADAPTIVE THRESHOLDS — Precompute recipes per il classifier
+    # se flag USE_ADAPTIVE_THRESHOLDS=1. Pattern: carica serie storiche
+    # dalle RegimeClassification + calcola quantili rolling 10y.
+    # Output salvato in `indicators["__adaptive_recipes__"]` (key speciale
+    # consumata dal scheduler, NON dal classifier direttamente).
+    try:
+        from app.services.config_flags import use_adaptive_thresholds
+        if use_adaptive_thresholds():
+            from app.database import SessionLocal
+            from app.services.indicators.adaptive_thresholds import (
+                _CONDITION_RECIPES,
+                get_recipe_for_condition,
+                list_adaptive_conditions,
+                load_series_from_classifications,
+            )
+
+            with SessionLocal() as session:
+                # Carica serie per gli indicator unici target
+                target_keys = {v[0] for v in _CONDITION_RECIPES.values()}
+                series_by_key = {
+                    k: load_series_from_classifications(session, k)
+                    for k in target_keys
+                }
+                recipes = {}
+                for cond in list_adaptive_conditions():
+                    ind_key, _ttype = _CONDITION_RECIPES[cond]
+                    series = series_by_key.get(ind_key)
+                    if series is None or series.empty:
+                        continue
+                    r = get_recipe_for_condition(cond, series, window_years=10)
+                    if r is not None:
+                        recipes[cond] = r
+                indicators["__adaptive_recipes__"] = recipes
+    except Exception as e:
+        logger.warning(f"T6.1 adaptive recipes precompute skipped: {e}")
+
     # Tier 5.3 LOOP CLOSURE — News avg sentiment come pillar classifier
     # (opt-in via USE_NEWS_PILLAR). Letto dagli ultimi NewsSignal in DB,
     # pesato per relevance × decay_weight. Default 0.0 (neutral) se assente.
@@ -496,11 +594,23 @@ def _prepare_dedollarization_indicators(
         except Exception:
             pass
 
-    # Gold/Oil ratio
-    if "gold_price" in latest and "oil_price" in latest:
-        oil = latest["oil_price"]
-        if oil > 0:
-            dedollar["gold_oil_ratio"] = latest["gold_price"] / oil
+    # Gold/Oil ratio via Yahoo futures
+    # T9-AUDIT-BUG-FIX HIGH-4 (council): pre-fix usava FRED gold_price (index)
+    # ÷ oil_price → valore 1.71 sbagliato. Ora usa Yahoo GC=F/CL=F.
+    # Storicamente: ~17-20 in goldilocks, ~30+ in deflation (gold strong),
+    # ~10-15 in stagflation (oil strong).
+    try:
+        from app.services.prices.yahoo_fetcher import YahooFetcher
+        _yh = YahooFetcher()
+        _au = _yh.fetch("GC=F")
+        _oil = _yh.fetch("CL=F")
+        if _au is not None and not _au.empty and _oil is not None and not _oil.empty:
+            _au_p = float(_au.iloc[-1])
+            _oil_p = float(_oil.iloc[-1])
+            if _oil_p > 0:
+                dedollar["gold_oil_ratio"] = _au_p / _oil_p
+    except Exception:
+        pass
 
     # === Debt/GDP (trimestrale) ===
     if "debt_gdp" in latest:
@@ -639,20 +749,21 @@ def _prepare_player_signals(
     except Exception:
         pass
 
-    # --- SYSTEM: Copper/Gold ratio (entrambi monthly) ---
-    # Copper è USD/MT (~9000), gold_price è un indice → normalizziamo.
-    # Usiamo ratio normalizzato: rapporto delle variazioni relative dal 2000.
+    # --- SYSTEM: Copper/Gold ratio via Yahoo futures ---
+    # T9-AUDIT-BUG-FIX HIGH-4 (council): rimosso scaling ×2500 arbitrario
+    # su FRED gold_price (index, non $/oz). Ora usa Yahoo HG=F (copper $/lb)
+    # e GC=F (gold $/oz) → ratio raw 0.001-0.002 (storicamente ~0.0017 in
+    # contesto normale).
     try:
-        if "copper_price" in latest and "gold_price" in latest:
-            copper_raw = fetcher.fetch_series("copper_price")
-            gold_raw = fetcher.fetch_series("gold_price")
-            if copper_raw is not None and gold_raw is not None:
-                joined = copper_raw.to_frame("cu").join(gold_raw.to_frame("au"), how="inner").dropna()
-                if len(joined) > 0:
-                    cu_norm = joined["cu"] / joined["cu"].iloc[0] * 100
-                    au_norm = joined["au"] / joined["au"].iloc[0] * 100
-                    ratio = cu_norm / au_norm * 2500  # riscalato al range "classico" copper/gold (~2500)
-                    dedollar["copper_gold_ratio"] = float(ratio.iloc[-1])
+        from app.services.prices.yahoo_fetcher import YahooFetcher
+        _yh = YahooFetcher()
+        _cu = _yh.fetch("HG=F")
+        _au = _yh.fetch("GC=F")
+        if _cu is not None and not _cu.empty and _au is not None and not _au.empty:
+            _cu_p = float(_cu.iloc[-1])
+            _au_p = float(_au.iloc[-1])
+            if _au_p > 0:
+                dedollar["copper_gold_ratio"] = _cu_p / _au_p
     except Exception:
         pass
 
@@ -1557,6 +1668,33 @@ def daily_insider_refresh():
         logger.error(f"daily_insider_refresh failed: {e}")
 
 
+def monthly_calibration_refresh():
+    """Tier 6.6 — Job mensile: ricalcola live calibration `asset_regime_data`.
+
+    Chiama `live_calibration.calibrate_and_persist(db)` che riusa la
+    pipeline Bayesian shrinkage esistente + persiste snapshot versionato
+    in DB. Best-effort: se calibration fallisce, no-op (la pipeline scoring
+    cade su prior hardcoded automaticamente).
+    """
+    from app.database import SessionLocal
+    from app.services.scoring.live_calibration import calibrate_and_persist
+
+    logger.info("Avvio monthly_calibration_refresh...")
+    try:
+        with SessionLocal() as session:
+            result = calibrate_and_persist(session)
+            if result:
+                logger.info(
+                    f"Calibration refresh OK: version={result.version} "
+                    f"n_classifications={result.n_classifications} "
+                    f"n_assets={result.n_assets}"
+                )
+            else:
+                logger.warning("Calibration refresh: no result (data insufficient?)")
+    except Exception as e:
+        logger.error(f"monthly_calibration_refresh failed: {e}")
+
+
 def start_scheduler():
     """Avvia lo scheduler con job giornaliero."""
     scheduler.add_job(
@@ -1575,6 +1713,16 @@ def start_scheduler():
         hour=3,
         minute=0,
         id="daily_insider_refresh",
+        replace_existing=True,
+    )
+    # T6.6: live calibration refresh mensile (primo del mese, 04:00 UTC).
+    scheduler.add_job(
+        monthly_calibration_refresh,
+        "cron",
+        day=1,
+        hour=4,
+        minute=0,
+        id="monthly_calibration_refresh",
         replace_existing=True,
     )
     scheduler.start()

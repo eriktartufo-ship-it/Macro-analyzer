@@ -1,5 +1,8 @@
 """Test TDD per il sistema di scoring finale (4 regimi)."""
 
+import pytest
+
+
 class TestFinalScoring:
     """Test calcolo score finale per asset class."""
 
@@ -138,7 +141,32 @@ class TestFinalScoring:
 
 
 class TestRegressions:
-    """Test di regressione per bug noti corretti (rev. 2)."""
+    """Test di regressione per bug noti corretti (rev. 2).
+
+    NOTA: questi test si basano sui prior hardcoded ASSET_REGIME_DATA.
+    Con `USE_CALIBRATED_SCORING=1` o `USE_LIVE_CALIBRATION=1` i numeri
+    cambiano (data-driven shrinkage). Isolation fixture autouse forza
+    flag OFF per garantire stabilità delle asserzioni storiche.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_calibration_flags(self, monkeypatch):
+        """T10b: USE_CALIBRATED_SCORING promosso default-ON. Forza "0"."""
+        monkeypatch.setenv("USE_CALIBRATED_SCORING", "0")
+        for flag in (
+            "USE_LIVE_CALIBRATION",
+            "USE_DISCRETIONARY_OVERRIDES",
+            "USE_DEDOLLAR_BONUS",
+            "USE_DFM_ASSET_BONUS",
+            "USE_RANK_PERCENTILE_SCORING",
+            "USE_DOWNSIDE_PROTECTION_BONUS",
+        ):
+            monkeypatch.delenv(flag, raising=False)
+        # Forza reload calibration con flag OFF
+        from app.services.scoring.engine import reload_calibration
+        reload_calibration()
+        yield
+        reload_calibration()
 
     def test_cash_not_dominant_in_stagflation(self):
         """Bug fix: il cash perde potere d'acquisto in stagflation (real return negativo)

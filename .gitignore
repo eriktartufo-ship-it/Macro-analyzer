@@ -47,3 +47,11 @@ Thumbs.db
 
 # --- Docker volume data (se mappata localmente) ---
 pgdata/
+
+# --- T10 validation reports (ephemeral; copia ufficiale in Obsidian) ---
+backend/T10_Honest_Validation_Report*.md
+backend/T10_Honest_Validation_Report*.json
+backend/T10b_*.md
+backend/T10b_*.json
+backend/T10c_*.md
+backend/T10c_*.json

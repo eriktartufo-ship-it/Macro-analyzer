@@ -134,8 +134,18 @@ class CrisisRiskAssessment:
     notes: list[str] = field(default_factory=list)
 
 
-def _evaluate_triggers(ind: dict, regime_probs: dict[str, float]) -> list[dict]:
-    """Valuta ogni trigger contro le soglie. Output: lista con `fired: bool`."""
+def _evaluate_triggers(
+    ind: dict,
+    regime_probs: dict[str, float],
+    correlation_assessment=None,
+) -> list[dict]:
+    """Valuta ogni trigger contro le soglie. Output: lista con `fired: bool`.
+
+    Args:
+        correlation_assessment: opzionale `CorrelationRegimeAssessment` da
+            Tier 6.5. Se passato e `is_breakdown=True`, aggiunge trigger
+            `correlation_breakdown` (peso doppio per critical).
+    """
     triggers = []
     checks = [
         ("deflation_prob_high", regime_probs.get("deflation", 0.0), _THRESHOLDS["deflation_prob"], "ge", "Probabilita' deflation regime alta"),
@@ -164,6 +174,21 @@ def _evaluate_triggers(ind: dict, regime_probs: dict[str, float]) -> list[dict]:
             "fired": bool(fired),
             "description": description,
         })
+
+    # Tier 6.5: correlation breakdown trigger (opt-in via caller).
+    # Aggiunge un trigger conditional se correlation_assessment passato.
+    if correlation_assessment is not None:
+        avg_corr = float(getattr(correlation_assessment, "avg_pairwise_correlation", 0.0))
+        is_breakdown = bool(getattr(correlation_assessment, "is_breakdown", False))
+        triggers.append({
+            "name": "correlation_breakdown",
+            "value": avg_corr,
+            "threshold": 0.70,
+            "operator": "ge",
+            "fired": is_breakdown,
+            "description": "Cross-asset correlation breakdown (flight to safety)",
+        })
+
     return triggers
 
 
@@ -237,11 +262,18 @@ def _compute_risk_level(triggers: list[dict], crisis_type: str) -> tuple[str, fl
     fired_count = sum(1 for t in triggers if t["fired"])
     # Weight per criticita': vix_spike, credit_extreme, defl_prob_high pesano di piu'
     critical = {"vix_spike", "credit_spread_extreme", "deflation_prob_high",
-                "stagflation_prob_high", "yield_curve_inverted"}
+                "stagflation_prob_high", "yield_curve_inverted",
+                "correlation_breakdown"}  # T6.5: flight-to-safety = critical
     critical_count = sum(1 for t in triggers if t["fired"] and t["name"] in critical)
 
+    # Denominatore basato sui critical EFFETTIVAMENTE presenti nei triggers
+    # (T6.5: correlation_breakdown aggiunto solo se caller passa assessment,
+    # quindi `critical` può essere più ampio dei trigger effettivi).
+    trigger_names = {t["name"] for t in triggers}
+    critical_present = critical & trigger_names
     # Score 0-1: combina critical (peso 2) + others (peso 1) / max possible
-    score = (critical_count * 2 + (fired_count - critical_count)) / (len(critical) * 2 + (len(triggers) - len(critical)))
+    denom = len(critical_present) * 2 + (len(triggers) - len(critical_present))
+    score = (critical_count * 2 + (fired_count - critical_count)) / denom if denom > 0 else 0.0
     score = max(0.0, min(1.0, score))
 
     if crisis_type == "no_crisis":
@@ -289,6 +321,7 @@ def assess_crisis_risk(
     indicators: dict[str, float],
     dedollar_combined: float | None = None,
     date: str | None = None,
+    correlation_assessment=None,
 ) -> CrisisRiskAssessment:
     """Pipeline completa crisis risk assessment.
 
@@ -307,8 +340,8 @@ def assess_crisis_risk(
     regime_result = classify_regime(indicators)
     regime_probs = regime_result["probabilities"]
 
-    # Valuta tutti i triggers
-    triggers = _evaluate_triggers(indicators, regime_probs)
+    # Valuta tutti i triggers (incluso correlation_breakdown se T6.5 passa assessment)
+    triggers = _evaluate_triggers(indicators, regime_probs, correlation_assessment=correlation_assessment)
 
     # Identifica tipo crisi
     crisis_type, conf, analog = _classify_crisis_type(

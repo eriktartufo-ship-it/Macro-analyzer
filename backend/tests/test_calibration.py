@@ -56,17 +56,22 @@ class TestOutlier:
 
 
 class TestEnvOptIn:
-    def test_default_uses_prior(self):
-        """Con USE_CALIBRATED_SCORING non settato, scoring usa hardcoded."""
-        # Salva env state e ripristina
-        prev = os.environ.pop("USE_CALIBRATED_SCORING", None)
+    def test_disabled_uses_prior(self):
+        """Con USE_CALIBRATED_SCORING=0 esplicito, scoring usa hardcoded prior.
+
+        T10b 2026-05-17: flag promosso default-ON dopo validation walk-forward
+        (Sortino delta +0.881). Test rinominato per riflettere opt-OUT esplicito.
+        """
+        prev = os.environ.get("USE_CALIBRATED_SCORING")
+        os.environ["USE_CALIBRATED_SCORING"] = "0"
         try:
             from app.services.scoring.engine import _calibrated_or_prior, ASSET_REGIME_DATA
             data = _calibrated_or_prior()
-            # Deve essere literally il dict hardcoded
             assert data is ASSET_REGIME_DATA
         finally:
-            if prev is not None:
+            if prev is None:
+                os.environ.pop("USE_CALIBRATED_SCORING", None)
+            else:
                 os.environ["USE_CALIBRATED_SCORING"] = prev
 
 

@@ -273,7 +273,39 @@ def compute_gdp_nowcast(
         ols = _ols_factor_to_gdp(factor_series, gdp_yoy)
         if ols is not None:
             ols_alpha, ols_beta, ols_r2 = ols
-            gdp_yoy_implied = ols_alpha + ols_beta * float(factor_series.iloc[-1])
+            gdp_yoy_implied_raw = ols_alpha + ols_beta * float(factor_series.iloc[-1])
+            # T9-AUDIT-BUG-10 (rev2, bughunter HIGH-3): anchor a gdp_roc × 4
+            # con discrepancy gate. Cap fisso [-8,+8] era troppo largo.
+            # Nuova logica:
+            # - Stima YoY proxy = gdp_roc (QoQ) × 4 (semplice annualization).
+            # - Se |DFM raw - proxy| > 2.5pp → DFM è inaffidabile.
+            #   In tal caso usa proxy (gdp_roc × 4) come fallback.
+            # - Altrimenti cap a [proxy - 2, proxy + 2] per smoothing.
+            if gdp_yoy_implied_raw is not None:
+                try:
+                    last_gdp_qoq = float(gdp_quarterly.iloc[-1])
+                except Exception:
+                    last_gdp_qoq = None
+                if last_gdp_qoq is not None:
+                    proxy_yoy = last_gdp_qoq * 4.0
+                    discrepancy = abs(gdp_yoy_implied_raw - proxy_yoy)
+                    if discrepancy > 2.5:
+                        gdp_yoy_implied = max(-5.0, min(5.0, proxy_yoy))
+                        notes.append(
+                            f"gdp_yoy_dfm raw={gdp_yoy_implied_raw:.2f} diverge "
+                            f"{discrepancy:.1f}pp da proxy={proxy_yoy:.2f}, "
+                            f"FALLBACK to proxy={gdp_yoy_implied:.2f}"
+                        )
+                    else:
+                        gdp_yoy_implied = max(
+                            proxy_yoy - 2.0,
+                            min(proxy_yoy + 2.0, gdp_yoy_implied_raw),
+                        )
+                else:
+                    # Fallback al vecchio cap range se gdp_roc non disponibile
+                    gdp_yoy_implied = max(-5.0, min(5.0, gdp_yoy_implied_raw))
+            else:
+                gdp_yoy_implied = None
         else:
             notes.append("OLS factor → GDP YoY skipped (overlap < 12 mesi)")
     except Exception as e:

@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { useDedollarBonus } from "../hooks/useDedollarBonus";
+import { FeatureFlagsPanel } from "./FeatureFlagsPanel";
 
 export type Page = "dashboard" | "sentiment" | "dedollar" | "assets" | "data";
 export type Theme = "light" | "dark";
@@ -33,7 +34,8 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0, opacity: 0 });
   const [mobilePillStyle, setMobilePillStyle] = useState({ left: 0, width: 0, opacity: 0 });
   const [dedollarOn, setDedollarOn] = useDedollarBonus();
-  
+  const [flagsOpen, setFlagsOpen] = useState(false);
+
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const mobileTabsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -73,6 +75,15 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
           </div>
         </div>
         <div className="header-actions">
+          <button
+            className="theme-toggle glass-active"
+            onClick={() => setFlagsOpen(true)}
+            aria-label="Feature flags"
+            title="Tier 5 feature flags (A/B testing live)"
+            style={{ fontSize: 13 }}
+          >
+            T5
+          </button>
           <button
             className="theme-toggle glass-active"
             onClick={() => setDedollarOn(!dedollarOn)}
@@ -125,6 +136,8 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
           </button>
         ))}
       </div>
+
+      <FeatureFlagsPanel open={flagsOpen} onClose={() => setFlagsOpen(false)} />
 
       <div className="nav-bottom" role="tablist" style={{ position: "fixed" }}>
         <div 

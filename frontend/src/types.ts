@@ -438,6 +438,13 @@ export interface CalibrationPayload {
   use_calibrated_scoring: boolean;
 }
 
+export interface FlagState {
+  value: boolean;
+  source: "runtime" | "env" | "default";
+}
+
+export type ConfigFlags = Record<string, FlagState>;
+
 export interface InsiderTickerVolume {
   ticker: string;
   usd: number;
@@ -539,4 +546,58 @@ export interface RegimeExplain {
   top_drivers: ConditionDetail[];
   dedollar_indicators: Record<string, number>;
   trajectory: Trajectory | null;
+}
+
+// === T9-AUDIT response types ===
+
+export interface TransitionCheckResponse {
+  date: string;
+  current_regime: Regime;
+  current_probs: RegimeProbabilities;
+  confidence: number;
+  is_transition: boolean;
+  triggers_fired: string[];
+  triggers_count: number;
+  max_prob: number;
+  entropy: number;
+  description: string;
+  defensive_allocation: Record<string, number> | null;
+}
+
+export interface MLForecastHorizon {
+  horizon_months: number;
+  probs: RegimeProbabilities;
+  expected_regime: string;  // può essere "uniform"
+  entropy: number;
+  top_assets: { asset: string; weighted_score: number }[];
+}
+
+export interface MLForecastResponse {
+  date: string;
+  current_regime: Regime;
+  current_probs: RegimeProbabilities;
+  ml_blend_active: boolean;
+  ml_blend_metadata: Record<string, unknown> | null;
+  forecasts: MLForecastHorizon[];
+}
+
+export interface SubRegimeResponse {
+  date: string;
+  primary_regime: Regime;
+  sub_regime: string;
+  score: number;
+  description: string;
+  breakdown: Record<string, number>;
+  available_sub_regimes: string[];
+}
+
+export interface Regime2DResponse {
+  date: string;
+  primary_regime: Regime;
+  growth_z: number;
+  inflation_z: number;
+  nearest_quadrant: string;
+  distance_to_quadrants: Record<string, number>;
+  source: "probs" | "indicators" | "blended" | "empty";
+  blend: number;
 }

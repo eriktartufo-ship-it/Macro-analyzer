@@ -162,45 +162,70 @@ ASSET_REGIME_DATA: dict[str, dict[str, dict[str, float]]] = {
         "goldilocks":   {"hit_rate": 0.40, "avg_return": 0.00, "vol": 0.01, "sharpe": 0.00},
     },
     "bitcoin": {
-        # 2020-21 BTC +300% nominal +290% real; 2024 +120% real
-        "reflation":    {"hit_rate": 0.65, "avg_return": 0.45, "vol": 0.75, "sharpe": 0.60},
-        # 2022 BTC -65% + 8% CPI = -73% real
+        # T9-AUDIT-FIX: parametri haircut da council (raydalio/taleb/buffett).
+        # Sample N=15 anni in regime liquidità infinita = survivorship trap.
+        # Pre-T9: avg_return 0.45 sharpe 0.60 in reflation → bitcoin top-1 in 6/9 OOS
+        # ma reale in 2/9. Bias structural. Haircut: cap upside, accept asymmetric vol.
+        "reflation":    {"hit_rate": 0.55, "avg_return": 0.20, "vol": 0.75, "sharpe": 0.30},
         "stagflation":  {"hit_rate": 0.30, "avg_return": -0.40, "vol": 0.85, "sharpe": -0.47},
-        # 2020 Mar flash crash -50%, 2022 deleveraging multiplo
         "deflation":    {"hit_rate": 0.25, "avg_return": -0.35, "vol": 0.85, "sharpe": -0.41},
-        "goldilocks":   {"hit_rate": 0.60, "avg_return": 0.30, "vol": 0.70, "sharpe": 0.43},
+        "goldilocks":   {"hit_rate": 0.50, "avg_return": 0.15, "vol": 0.70, "sharpe": 0.25},
     },
     "crypto_broad": {
-        # Amplificato rispetto a BTC: beta 1.3-1.5x su up e down
-        "reflation":    {"hit_rate": 0.60, "avg_return": 0.40, "vol": 0.85, "sharpe": 0.47},
+        # T9-AUDIT-FIX: amplificato rispetto a BTC ma applico stessa logica haircut.
+        # Pre-T9: avg_return 0.40 sharpe 0.47 → crypto_broad anche lui top-N inflato.
+        "reflation":    {"hit_rate": 0.52, "avg_return": 0.18, "vol": 0.85, "sharpe": 0.22},
         "stagflation":  {"hit_rate": 0.25, "avg_return": -0.50, "vol": 0.90, "sharpe": -0.56},
         "deflation":    {"hit_rate": 0.22, "avg_return": -0.45, "vol": 0.95, "sharpe": -0.47},
-        "goldilocks":   {"hit_rate": 0.55, "avg_return": 0.25, "vol": 0.80, "sharpe": 0.31},
+        "goldilocks":   {"hit_rate": 0.48, "avg_return": 0.12, "vol": 0.80, "sharpe": 0.18},
     },
 }
 
 
 def _calibrated_or_prior() -> dict[str, dict[str, dict[str, float]]]:
-    """Carica la calibrazione persistita se presente E se USE_CALIBRATED_SCORING e'
-    abilitato; fallback sull'hardcoded.
+    """Carica la calibrazione persistita se presente E se flag abilitati;
+    fallback sull'hardcoded.
+
+    Priority lookup (Tier 6.6):
+    1. DB `asset_regime_calibrations` table (auto-refresh mensile) → se
+       `USE_LIVE_CALIBRATION` ON.
+    2. JSON `seed/calibrated_asset_regime.json` (legacy) → se
+       `USE_CALIBRATED_SCORING` ON.
+    3. Hardcoded `ASSET_REGIME_DATA` (default).
 
     La calibrazione e' generata da `services/scoring/calibration.py` via shrinkage
-    Bayesiano contro rendimenti reali misurati. File: seed/calibrated_asset_regime.json.
+    Bayesiano contro rendimenti reali misurati.
 
     NOTA: la calibrazione attualmente eredita il bias del regime classifier (es. i
     "regimi stagflation" del classifier moderno includono il 2022-24, periodo con
-    caratteristiche miste). Per questo motivo e' OPT-IN — abilitala con
-    env var USE_CALIBRATED_SCORING=1 dopo aver validato i delta in /asset-validation.
+    caratteristiche miste). Per questo motivo e' OPT-IN.
     """
-    import os
-    if os.getenv("USE_CALIBRATED_SCORING", "0") not in ("1", "true", "yes"):
+    from app.services.config_flags import use_calibrated_scoring, use_live_calibration
+
+    payload = None
+
+    # T6.6: priorità DB se flag attivo
+    if use_live_calibration():
+        try:
+            from app.database import SessionLocal
+            from app.services.scoring.live_calibration import load_latest_from_db
+            with SessionLocal() as session:
+                payload = load_latest_from_db(session)
+        except Exception:
+            payload = None
+
+    # Fallback: JSON legacy se flag attivo e DB non disponibile
+    if payload is None and use_calibrated_scoring():
+        try:
+            from app.services.scoring.calibration import load_calibration
+            payload = load_calibration()
+        except Exception:
+            payload = None
+
+    # Né DB né JSON disponibili → hardcoded prior
+    if payload is None:
         return ASSET_REGIME_DATA
 
-    try:
-        from app.services.scoring.calibration import load_calibration
-        payload = load_calibration()
-    except Exception:
-        payload = None
     if payload and "asset_regime_data" in payload:
         # Costruisci un dict compatibile con ASSET_REGIME_DATA, ignorando
         # i campi extra (n_observations, source).
@@ -230,8 +255,9 @@ _ACTIVE_DATA = _calibrated_or_prior()
 
 def reload_calibration() -> None:
     """Forza il reload della calibrazione (es. dopo `calibration.calibrate()`)."""
-    global _ACTIVE_DATA
+    global _ACTIVE_DATA, _REGIME_PERCENTILES
     _ACTIVE_DATA = _calibrated_or_prior()
+    _REGIME_PERCENTILES = {}  # invalida cache T7.2
 
 
 def _asset_regime_score(asset: str, regime: str) -> float:
@@ -261,6 +287,63 @@ def _asset_regime_score(asset: str, regime: str) -> float:
     return max(0.0, min(100.0, score))
 
 
+# T9-AUDIT-FIX: asset con prior calibrato su sample troppo piccolo (BTC ~15y,
+# crypto_broad ~10y) NON possono dominare il top-rank. Cap percentile a 0.80.
+# Quando live_calibration avrà sample_size ≥ 30 cicli, rimuovere cap.
+_LIMITED_SAMPLE_ASSETS = {"bitcoin", "crypto_broad"}
+_LIMITED_SAMPLE_PERCENTILE_CAP = 0.80
+
+
+def _compute_regime_percentiles() -> dict[str, dict[str, float]]:
+    """Tier 7.2 + T9-AUDIT: pre-compute rank percentile within-regime per asset.
+
+    Per ogni regime, ordina i 15 asset per `_asset_regime_score(asset, regime)`,
+    assegna percentile = rank / (n-1) ∈ [0, 1]. Score più alto → percentile 1.0.
+
+    **T9-AUDIT-FIX**: cap percentile a 0.80 per asset in `_LIMITED_SAMPLE_ASSETS`
+    (bitcoin, crypto_broad). Senza cap, BTC scora top-1 in 6/9 OOS ma reale 2/9
+    (over-confidence su sample N=15 anni). Cap permette comunque top-3 ma non top-1.
+
+    Restituisce dict {regime: {asset: percentile}}.
+    """
+    out: dict[str, dict[str, float]] = {}
+    regimes = ("reflation", "stagflation", "deflation", "goldilocks")
+    for regime in regimes:
+        scores = [(a, _asset_regime_score(a, regime)) for a in ASSET_CLASSES]
+        scores.sort(key=lambda x: x[1])
+        n = len(scores)
+        if n <= 1:
+            out[regime] = {a: 0.5 for a in ASSET_CLASSES}
+            continue
+        out[regime] = {
+            a: min(
+                rank / (n - 1),
+                _LIMITED_SAMPLE_PERCENTILE_CAP if a in _LIMITED_SAMPLE_ASSETS else 1.0,
+            )
+            for rank, (a, _) in enumerate(scores)
+        }
+    return out
+
+
+# Cache module-level: ricalcolato in `reload_calibration` se _ACTIVE_DATA cambia.
+_REGIME_PERCENTILES: dict[str, dict[str, float]] = {}
+
+# T7.6 — Stato dell'ultima invocazione di `calculate_final_scores` con override
+# applicati. Permette di esporre l'audit trail tramite
+# `calculate_final_scores_with_metadata` SENZA rompere back-compat dei 30+
+# callers di `calculate_final_scores` che si aspettano `dict[str, float]`.
+_LAST_APPLIED_OVERRIDES: list[dict] = []
+_LAST_APPLIED_ASSET_OVERRIDES: list[dict] = []
+
+
+def _asset_regime_score_percentile(asset: str, regime: str) -> float:
+    """T7.2: ritorna il rank percentile within-regime × 100 (0-100 scale)."""
+    global _REGIME_PERCENTILES
+    if not _REGIME_PERCENTILES:
+        _REGIME_PERCENTILES = _compute_regime_percentiles()
+    return _REGIME_PERCENTILES.get(regime, {}).get(asset, 0.5) * 100.0
+
+
 def calculate_final_scores(
     probabilities: dict[str, float],
     secular_bonus: dict[str, float] | None = None,
@@ -268,6 +351,7 @@ def calculate_final_scores(
     momentum_penalty: dict[str, float] | None = None,
     force_include_dedollar: bool | None = None,
     gdp_yoy_dfm: float | None = None,
+    indicators: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """Calcola lo score finale per ogni asset class.
 
@@ -289,7 +373,13 @@ def calculate_final_scores(
     Returns:
         Dict {asset_class: score 0-100}
     """
-    from app.services.config_flags import use_dedollar_bonus, use_dfm_asset_bonus
+    from app.services.config_flags import (
+        use_dedollar_bonus,
+        use_dfm_asset_bonus,
+        use_discretionary_overrides,
+        use_downside_protection_bonus,
+        use_rank_percentile_scoring,
+    )
 
     if force_include_dedollar is None:
         include_dedollar = use_dedollar_bonus()
@@ -300,11 +390,51 @@ def calculate_final_scores(
     if total_prob > 0 and abs(total_prob - 1.0) > 0.001:
         probabilities = {r: p / total_prob for r, p in probabilities.items()}
 
+    # T6.7 — apply regime overrides PRE asset score calc (shift probs).
+    active_overrides: list = []
+    applied_regime_overrides: list = []
+    if use_discretionary_overrides():
+        try:
+            from app.database import SessionLocal
+            from app.services.scoring.discretionary import (
+                apply_regime_overrides,
+                load_active_overrides,
+            )
+            with SessionLocal() as session:
+                active_overrides = load_active_overrides(session)
+                regime_actives = [o for o in active_overrides if o.target_type == "regime"]
+            if regime_actives:
+                probabilities, applied_regime_overrides = apply_regime_overrides(
+                    probabilities, regime_actives
+                )
+        except Exception:
+            active_overrides = []
+    # T7.6: traccia di metadata (esposto via calculate_final_scores_with_metadata)
+    _LAST_APPLIED_OVERRIDES.clear()
+    for ov in applied_regime_overrides:
+        _LAST_APPLIED_OVERRIDES.append({
+            "id": ov.id,
+            "target_type": ov.target_type,
+            "target_name": ov.target_name,
+            "delta": ov.delta,
+            "reason": ov.reason,
+            "author": ov.author,
+            "expires_at": ov.expires_at.isoformat() if ov.expires_at else None,
+        })
+
     # Tier 5.4 LOOP CLOSURE — DFM nowcast bonus. Opt-in. δ=2.0 default.
     # Pro-cyclical assets bid quando gdp_yoy_dfm > 2.5%, sold quando < 1.5%.
     # Simmetrico verso 2.0% trend USA long-run.
     dfm_bonus: dict[str, float] = {}
     if use_dfm_asset_bonus() and gdp_yoy_dfm is not None:
+        # T9-AUDIT P0 (council): DFM nowcast NOT validated (only 2 records in DB).
+        # Log warning ogni volta che il flag attivo applica DFM bonus.
+        import logging
+        logging.getLogger(__name__).warning(
+            "USE_DFM_ASSET_BONUS=ON but DFM nowcast has <30 historical "
+            "validation pairs. Council recommends backfill before production use. "
+            "gdp_yoy_dfm=%s applied with caveat.", gdp_yoy_dfm
+        )
         delta = 2.0
         # Strong growth nowcast (>2.5% YoY)
         upside = max(0.0, gdp_yoy_dfm - 2.5)
@@ -319,9 +449,20 @@ def calculate_final_scores(
 
     scores: dict[str, float] = {}
 
+    # T7.2 — Rank percentile within-regime: cattura il "winner relativo" anche
+    # se score assoluto basso (es. gold in deflation, cash in stagflation).
+    use_percentile = use_rank_percentile_scoring()
+    score_fn = _asset_regime_score_percentile if use_percentile else _asset_regime_score
+
+    # T7.3 — Downside-protection bonus: ai safe-asset (vol < 0.05) quando
+    # stress regimes (stag+defl) > 40%. Scaling lineare 40%→100% = 0→25 punti.
+    apply_downside_bonus = use_downside_protection_bonus()
+    stress_share = probabilities.get("stagflation", 0.0) + probabilities.get("deflation", 0.0)
+    downside_bonus_active = apply_downside_bonus and stress_share > 0.4
+
     for asset in ASSET_CLASSES:
         base_score = sum(
-            probabilities.get(regime, 0.0) * _asset_regime_score(asset, regime)
+            probabilities.get(regime, 0.0) * score_fn(asset, regime)
             for regime in probabilities
         )
 
@@ -330,7 +471,104 @@ def calculate_final_scores(
         penalty = (momentum_penalty or {}).get(asset, 0.0)
         dfm = dfm_bonus.get(asset, 0.0)
 
-        final = base_score + bonus + news - penalty + dfm
+        downside = 0.0
+        if downside_bonus_active:
+            # Calcola vol e avg_return medi cross-regime
+            asset_data = _ACTIVE_DATA.get(asset, {})
+            avg_vol = sum(d.get("vol", 0.5) for d in asset_data.values()) / max(1, len(asset_data))
+            avg_real_return = sum(d.get("avg_return", -0.5) for d in asset_data.values()) / max(1, len(asset_data))
+            if avg_vol < 0.05 and avg_real_return > -0.05:
+                # Scala bonus per quanto stress domina (40%-100% → 0-25 punti)
+                downside = 25.0 * min(1.0, (stress_share - 0.4) / 0.6)
+
+        final = base_score + bonus + news - penalty + dfm + downside
         scores[asset] = max(0.0, min(100.0, round(final, 1)))
 
+    # T9-AUDIT-FIX: Conditional asset scoring P(asset | regime, stress) — blend.
+    # Sostituisce parzialmente lo scoring percentile con tabella esplicita
+    # 12-bucket (regime × stress). Atteso top-5 overlap 2.11 → 2.6+.
+    from app.services.config_flags import use_conditional_asset_scoring
+    if use_conditional_asset_scoring() and indicators is not None:
+        try:
+            from app.services.scoring.asset_conditional import calculate_conditional_scores
+            cond_scores, _ = calculate_conditional_scores(
+                probabilities=probabilities,
+                indicators=indicators,
+                asset_classes=ASSET_CLASSES,
+                base_scores=scores,
+            )
+            scores = {k: round(v, 1) for k, v in cond_scores.items()}
+        except Exception:
+            pass
+
+    # T6.7 — apply asset overrides POST score computation (additive delta + clamp).
+    _LAST_APPLIED_ASSET_OVERRIDES.clear()
+    if use_discretionary_overrides() and active_overrides:
+        try:
+            from app.services.scoring.discretionary import apply_asset_overrides
+            asset_actives = [o for o in active_overrides if o.target_type == "asset"]
+            if asset_actives:
+                scores, applied_asset = apply_asset_overrides(scores, asset_actives)
+                scores = {k: round(v, 1) for k, v in scores.items()}
+                for ov in applied_asset:
+                    _LAST_APPLIED_ASSET_OVERRIDES.append({
+                        "id": ov.id,
+                        "target_type": ov.target_type,
+                        "target_name": ov.target_name,
+                        "delta": ov.delta,
+                        "reason": ov.reason,
+                        "author": ov.author,
+                        "expires_at": ov.expires_at.isoformat() if ov.expires_at else None,
+                    })
+        except Exception:
+            pass
+
     return scores
+
+
+def calculate_final_scores_with_metadata(
+    probabilities: dict[str, float],
+    secular_bonus: dict[str, float] | None = None,
+    news_signals: dict[str, float] | None = None,
+    momentum_penalty: dict[str, float] | None = None,
+    force_include_dedollar: bool | None = None,
+    gdp_yoy_dfm: float | None = None,
+) -> dict:
+    """T7.6 — Wrapper di `calculate_final_scores` che espone l'audit trail
+    degli override applicati (Bridgewater radical transparency).
+
+    Returns:
+        {
+            "scores": dict[str, float],
+            "applied_regime_overrides": list[dict],
+            "applied_asset_overrides": list[dict],
+            "downside_protection_active": bool,
+            "rank_percentile_active": bool,
+        }
+    """
+    from app.services.config_flags import (
+        use_downside_protection_bonus,
+        use_rank_percentile_scoring,
+    )
+
+    scores = calculate_final_scores(
+        probabilities=probabilities,
+        secular_bonus=secular_bonus,
+        news_signals=news_signals,
+        momentum_penalty=momentum_penalty,
+        force_include_dedollar=force_include_dedollar,
+        gdp_yoy_dfm=gdp_yoy_dfm,
+    )
+    stress_share = (
+        probabilities.get("stagflation", 0.0)
+        + probabilities.get("deflation", 0.0)
+    )
+    return {
+        "scores": scores,
+        "applied_regime_overrides": list(_LAST_APPLIED_OVERRIDES),
+        "applied_asset_overrides": list(_LAST_APPLIED_ASSET_OVERRIDES),
+        "downside_protection_active": (
+            use_downside_protection_bonus() and stress_share > 0.5
+        ),
+        "rank_percentile_active": use_rank_percentile_scoring(),
+    }
