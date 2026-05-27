@@ -525,6 +525,26 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     except Exception as e:
         logger.warning(f"Dedollar pillar load skipped: {e}")
 
+    # T11 (2026-05-27): momentum derivatives per pillar acceleration-based.
+    # Riusa la helper di backfill per consistency (cpi_yoy_change_6m etc.).
+    try:
+        import pandas as _pd
+        from app.services.regime.backfill import _enrich_with_momentum_derivatives
+
+        series_for_momentum: dict[str, _pd.Series] = {}
+        for name in ("cpi", "core_pce", "real_gdp"):
+            try:
+                s = fetcher.fetch_series(name)
+                if s is not None and not s.empty:
+                    series_for_momentum[name] = s
+            except Exception:
+                pass
+        if series_for_momentum:
+            cutoff = _pd.Timestamp.now()
+            _enrich_with_momentum_derivatives(indicators, series_for_momentum, cutoff)
+    except Exception as e:
+        logger.warning(f"Momentum derivatives skipped: {e}")
+
     return indicators
 
 

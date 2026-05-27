@@ -170,7 +170,27 @@ def _build_indicators_as_of(
         indicators["housing_starts_roc_12m"] = v
 
     # T11 (2026-05-27): momentum derivatives per pillar acceleration-based.
-    # Cattura change YoY su 6 mesi (es. CPI 2.0% → 3.95% in 6m = +1.95).
+    _enrich_with_momentum_derivatives(indicators, series, cutoff)
+
+    return indicators
+
+
+def _enrich_with_momentum_derivatives(
+    indicators: dict[str, float],
+    series: dict[str, pd.Series],
+    cutoff: pd.Timestamp,
+) -> None:
+    """T11: arricchisce indicators dict con derivati momentum-based.
+
+    Calcola in-place:
+    - cpi_yoy_change_6m: cpi_yoy(now) - cpi_yoy(now-6m)
+    - core_pce_yoy_change_6m
+    - gdp_roc_change_6m: quarter-to-quarter delta GDP ROC
+    - cpi_yoy_min_last_6m: min YoY% ultimi 6 mesi (sticky inflation)
+
+    Usato sia da `_build_indicators_as_of` (backfill batch) che da scheduler
+    (refresh giornaliero) per consistency.
+    """
 
     def yoy_change_6m(name: str) -> Optional[float]:
         """cpi_yoy(now) - cpi_yoy(now - 6m). Richiede ≥ 18 osservazioni mensili."""
@@ -235,8 +255,6 @@ def _build_indicators_as_of(
     v = cpi_yoy_min_last_6m()
     if v is not None:
         indicators["cpi_yoy_min_last_6m"] = v
-
-    return indicators
 
 
 def backfill_regime_history_long(

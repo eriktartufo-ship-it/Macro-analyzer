@@ -90,6 +90,30 @@ def _compute_sharpe(monthly_returns: list[float]) -> float:
     return float(arr.mean() / arr.std() * np.sqrt(12))
 
 
+def _compute_risk_parity_weights(top5, real_matrix, current_date, vol_window: int = 12):
+    """Q1.4 council: pesa top-5 inversamente alla vol rolling 12m da real returns.
+
+    Pattern Bridgewater All-Weather. Asset volatili pesati meno → DD-control.
+    Fallback equal-weight se vol non calcolabile (history insufficient).
+    """
+    from app.services.portfolio.position_sizing import risk_parity
+    target = pd.Timestamp(year=current_date.year, month=current_date.month, day=1) + pd.offsets.MonthEnd(0)
+    asset_names = [a for a, _ in top5]
+    vols = {}
+    for asset in asset_names:
+        if asset not in real_matrix.columns:
+            vols[asset] = 0.20  # default 20% annualized
+            continue
+        hist = real_matrix.loc[real_matrix.index <= target, asset].dropna().tail(vol_window)
+        if len(hist) >= 6:
+            vols[asset] = float(hist.std(ddof=1)) * (12 ** 0.5)
+        else:
+            vols[asset] = 0.20
+    scores_dict = {a: s for a, s in top5}
+    alloc = risk_parity(scores_dict, vols, top_n=len(top5))
+    return alloc.weights or {a: 1.0 / len(top5) for a, _ in top5}
+
+
 def _compute_sortino(monthly_returns: list[float], target: float = 0.0) -> float:
     """T10: Sortino annualized = mean / downside_std * sqrt(12).
 
@@ -147,6 +171,7 @@ def run_simulation(
     use_calm_gate: bool = False,
     real_returns_matrix=None,
     walk_forward_cache=None,
+    allocation_method: str = "equal",
 ) -> SimulationResult | None:
     """Simula partenza random per N anni.
 
@@ -234,7 +259,17 @@ def run_simulation(
             if gate.is_fired:
                 calm_gate_fires += 1
         else:
-            top5_weights = {a: 0.20 for a, _ in top5}  # equal weight top-5
+            # Q1.4 council: allocation method opzionale (equal, risk_parity, score_weighted)
+            if allocation_method == "risk_parity" and real_returns_matrix is not None:
+                top5_weights = _compute_risk_parity_weights(
+                    top5, real_returns_matrix, current
+                )
+            elif allocation_method == "score_weighted":
+                top5_dict = {a: s for a, s in top5}
+                total = sum(top5_dict.values()) or 1.0
+                top5_weights = {a: s / total for a, s in top5_dict.items()}
+            else:
+                top5_weights = {a: 0.20 for a, _ in top5}  # equal weight top-5
 
         # T10c: defensive transition mode (allocation-side) integration.
         # Quando flag attivo + classifier indica transizione confusionaria,
@@ -369,6 +404,11 @@ def main():
                    help="T10b: classifica on-the-fly per ogni month-end (NO future "
                         "leak) invece di leggere classifications DB pre-computed. "
                         "Sblocca testabilita flag classifier-side.")
+    p.add_argument("--allocation", choices=["equal", "risk_parity", "score_weighted"],
+                   default="equal",
+                   help="Q1.4 council: allocation method top-5. equal=20%% each, "
+                        "risk_parity=inverse vol (Bridgewater All-Weather), "
+                        "score_weighted=proportional to asset score.")
     args = p.parse_args()
 
     print(f"=== RANDOM-START BACKTEST SIMULATOR ===")
@@ -431,6 +471,7 @@ def main():
             use_calm_gate=args.calm_gate,
             real_returns_matrix=real_matrix,
             walk_forward_cache=wf_cache,
+            allocation_method=args.allocation,
         )
         if res is None:
             print(f"  Sim {i+1}: SKIP (no data)")
