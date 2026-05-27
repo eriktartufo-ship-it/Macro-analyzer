@@ -42,12 +42,13 @@ async def lifespan(app: FastAPI):
     # gli overrides salvati (sopravvivenza docker compose restart).
     try:
         from app.database import Base, engine
-        from app.models import ModelSnapshot, RuntimeFlagOverride  # noqa: F401
+        from app.models import ModelSnapshot, PredictionLog, RuntimeFlagOverride  # noqa: F401
         from app.services.config_flags import load_runtime_flags_from_db
 
         Base.metadata.create_all(bind=engine, tables=[
             RuntimeFlagOverride.__table__,
             ModelSnapshot.__table__,
+            PredictionLog.__table__,
         ])
         n = load_runtime_flags_from_db()
         if n > 0:
