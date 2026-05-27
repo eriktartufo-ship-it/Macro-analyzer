@@ -192,9 +192,10 @@ def _log_and_evaluate_predictions(
     )
     from app.services.scoring.engine import ASSET_REGIME_DATA
 
-    # Top-5 weighted by score (normalize per somma).
-    # Paper trading insight 2026-05-27: uncertainty gate (default ON).
-    # Se confidence < 0.30 → top-5 sostituito con 60/40 (no aggressive bet).
+    # Paper trading TEST F validation 2026-05-27 (council 5/5):
+    # TOP-7 EQUAL WEIGHT optimal config (Sharpe 1.28, α 60/40 +4.09pp CI [+2.08, +5.94]).
+    # Equal cattura full edge dei picks classifier (risk_parity dilute alpha).
+    # Top-7 sweet spot vs top-5 (+1.61pp alpha) e top-10 (-1.47pp).
     confidence = regime_result.get("confidence", 0.0)
     try:
         from app.services.config_flags import use_uncertainty_gate
@@ -205,21 +206,22 @@ def _log_and_evaluate_predictions(
             ]
             allocation_mode = "uncertainty_fallback_60_40"
         else:
-            sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:5]
-            total = sum(s for _, s in sorted_scores) or 1.0
+            # Top-7 equal weight (paper trading validated)
+            sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:7]
+            n = len(sorted_scores)
             top5_assets = [
-                {"asset": a, "score": round(s, 2), "weight": round(s / total, 4)}
+                {"asset": a, "score": round(s, 2), "weight": round(1.0 / n, 4)}
                 for a, s in sorted_scores
             ]
-            allocation_mode = "regime_based"
+            allocation_mode = "top7_equal_weight"
     except Exception:
-        sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:5]
-        total = sum(s for _, s in sorted_scores) or 1.0
+        sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:7]
+        n = len(sorted_scores)
         top5_assets = [
-            {"asset": a, "score": round(s, 2), "weight": round(s / total, 4)}
+            {"asset": a, "score": round(s, 2), "weight": round(1.0 / n, 4)}
             for a, s in sorted_scores
         ]
-        allocation_mode = "regime_based"
+        allocation_mode = "top7_equal_weight"
 
     classify_output = {
         "regime": regime_result["regime"],

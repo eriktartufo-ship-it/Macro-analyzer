@@ -93,17 +93,25 @@ def _classify_severity(alpha: float | None) -> str:
     return "winning"
 
 
-def _compute_top5_weights(probs, real_matrix, target_ts):
-    """Top-5 risk_parity weights dato regime probabilities."""
+def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5, method: str = "risk_parity"):
+    """Top-N weights dato regime probabilities. Method: risk_parity, equal, score_weighted."""
     from app.services.scoring.engine import calculate_final_scores
-    from app.services.portfolio.position_sizing import risk_parity
+    from app.services.portfolio.position_sizing import risk_parity, equal_weight, score_weighted
 
     try:
         asset_scores = calculate_final_scores(probs)
     except Exception:
         return None
 
-    sorted_scores = sorted(asset_scores.items(), key=lambda x: -x[1])[:5]
+    sorted_scores = sorted(asset_scores.items(), key=lambda x: -x[1])[:top_n]
+
+    if method == "equal":
+        return {a: 1.0 / len(sorted_scores) for a, _ in sorted_scores}
+    if method == "score_weighted":
+        total = sum(s for _, s in sorted_scores) or 1.0
+        return {a: s / total for a, s in sorted_scores}
+
+    # risk_parity (default)
     vols = {}
     for asset, _ in sorted_scores:
         if asset in real_matrix.columns:
@@ -138,6 +146,8 @@ def run_paper_trade_dynamic(
     wf_cache,
     rebalance_freq: str = "monthly",
     transaction_cost_bps: float = 10.0,
+    top_n: int = 5,
+    allocation_method: str = "risk_parity",
 ) -> PaperTrade | None:
     """Sim 12m con allocazione DINAMICA (rebalance mensile o trimestrale).
 
@@ -194,7 +204,7 @@ def run_paper_trade_dynamic(
         # Compute new top-5 weights (con uncertainty gate)
         if is_rebalance_month:
             target_ts = pd.Timestamp(current.year, current.month, 1) + pd.offsets.MonthEnd(0)
-            new_weights = _compute_top5_weights(probs, real_matrix, target_ts)
+            new_weights = _compute_top5_weights(probs, real_matrix, target_ts, top_n=top_n, method=allocation_method)
             if new_weights is None:
                 new_weights = current_weights or dict(BENCHMARK_60_40)
 
@@ -332,6 +342,16 @@ def main():
     p.add_argument("--uncertainty-gate", action="store_true",
                    help="Override default-ON. Use --no-uncertainty-gate to disable.")
     p.add_argument("--no-uncertainty-gate", action="store_true")
+    p.add_argument("--crisis-window", choices=["2008", "2020", "2022", "all_crisis"],
+                   default=None,
+                   help="Council Test A: limit random dates a crisis window. "
+                        "2008 = 2007-Q4 to 2009-Q1, 2020 = 2019-12 to 2020-08, "
+                        "2022 = 2021-12 to 2022-12. all_crisis = union.")
+    p.add_argument("--top-n", type=int, default=5,
+                   help="Council Test F: top-N asset (default 5).")
+    p.add_argument("--allocation-method", choices=["risk_parity", "equal", "score_weighted"],
+                   default="risk_parity",
+                   help="Council Test E: allocation algorithm.")
     args = p.parse_args()
 
     os.environ["USE_MOMENTUM_PILLARS"] = "1" if args.momentum else "0"
@@ -369,15 +389,43 @@ def main():
     rng = random.Random(args.seed)
     trades: list[PaperTrade] = []
 
+    # Crisis windows (Test A council)
+    CRISIS_WINDOWS = {
+        "2008": [(2007, 10), (2008, 12)],  # GFC pre-bottom
+        "2020": [(2019, 12), (2020, 8)],   # COVID + recovery
+        "2022": [(2021, 12), (2022, 12)],  # Inflation surge
+    }
+    crisis_dates_pool = None
+    if args.crisis_window:
+        crisis_dates_pool = []
+        windows = (
+            [CRISIS_WINDOWS[args.crisis_window]] if args.crisis_window != "all_crisis"
+            else list(CRISIS_WINDOWS.values())
+        )
+        for (y0, m0), (y1, m1) in windows:
+            y, m = y0, m0
+            while (y, m) <= (y1, m1):
+                crisis_dates_pool.append(date(y, m, 1))
+                if m == 12:
+                    y, m = y + 1, 1
+                else:
+                    m += 1
+        print(f"\nCrisis window pool: {len(crisis_dates_pool)} months available")
+
     print(f"\nRunning {args.n_sims} dynamic paper trades...\n")
     for i in range(args.n_sims):
-        y = rng.randint(args.start_min_year, args.start_max_year)
-        m = rng.randint(1, 12)
-        d = date(y, m, 1)
+        if crisis_dates_pool:
+            d = rng.choice(crisis_dates_pool)
+        else:
+            y = rng.randint(args.start_min_year, args.start_max_year)
+            m = rng.randint(1, 12)
+            d = date(y, m, 1)
         trade = run_paper_trade_dynamic(
             d, real_matrix, wf_cache,
             rebalance_freq=args.rebalance,
             transaction_cost_bps=args.transaction_cost_bps,
+            top_n=args.top_n,
+            allocation_method=args.allocation_method,
         )
         if trade is None or trade.realized_return_12m is None:
             print(f"  Sim {i+1}: SKIP")
