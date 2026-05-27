@@ -55,9 +55,12 @@ class PaperTrade:
     benchmark_60_40_12m: float | None = None
     benchmark_aw_12m: float | None = None
     benchmark_pp_12m: float | None = None
+    benchmark_sp500_12m: float | None = None
+    max_drawdown: float = 0.0  # cum DD durante 12m
     alpha_vs_60_40: float | None = None
     alpha_vs_aw: float | None = None
     alpha_vs_pp: float | None = None
+    alpha_vs_sp500: float | None = None
 
     # Reverse engineering
     severity: str = "n/a"
@@ -73,6 +76,9 @@ BENCHMARK_PERMANENT = {
     "us_equities_growth": 0.25, "us_bonds_long": 0.25,
     "gold": 0.25, "cash_money_market": 0.25,
 }
+# User request 2026-05-27: aggiungere S&P500 come benchmark.
+# Proxy: 100% us_equities_growth (QQQ/Nasdaq nel nostro asset universe).
+BENCHMARK_SP500 = {"us_equities_growth": 1.0}
 
 
 def _classify_severity(alpha: float | None) -> str:
@@ -154,6 +160,7 @@ def run_paper_trade_dynamic(
 
     current_weights: dict[str, float] = {}
     last_regime: str | None = None
+    bench_sp500_monthly: list[float] = []
 
     for month_idx in range(12):
         # Rebalance check
@@ -212,6 +219,7 @@ def run_paper_trade_dynamic(
         r_b60 = _portfolio_return_month(real_matrix, current.year, current.month, BENCHMARK_60_40)
         r_aw = _portfolio_return_month(real_matrix, current.year, current.month, BENCHMARK_ALL_WEATHER)
         r_pp = _portfolio_return_month(real_matrix, current.year, current.month, BENCHMARK_PERMANENT)
+        r_sp = _portfolio_return_month(real_matrix, current.year, current.month, BENCHMARK_SP500)
 
         if r_model is None:
             # Skip this month
@@ -238,6 +246,8 @@ def run_paper_trade_dynamic(
             bench_aw_monthly.append(r_aw)
         if r_pp is not None:
             bench_pp_monthly.append(r_pp)
+        if r_sp is not None:
+            bench_sp500_monthly.append(r_sp)
 
         # Next month
         if current.month == 12:
@@ -253,12 +263,20 @@ def run_paper_trade_dynamic(
     cum_b60 = float(np.prod([1.0 + r for r in bench_60_40_monthly]) - 1.0) if bench_60_40_monthly else None
     cum_aw = float(np.prod([1.0 + r for r in bench_aw_monthly]) - 1.0) if bench_aw_monthly else None
     cum_pp = float(np.prod([1.0 + r for r in bench_pp_monthly]) - 1.0) if bench_pp_monthly else None
+    cum_sp = float(np.prod([1.0 + r for r in bench_sp500_monthly]) - 1.0) if bench_sp500_monthly else None
+
+    # Max drawdown durante 12m (cumulative path)
+    cum_path = np.cumprod([1.0 + r for r in model_monthly_returns])
+    peak = np.maximum.accumulate(cum_path)
+    dd = (cum_path / peak - 1.0)
+    trade.max_drawdown = float(dd.min()) if len(dd) > 0 else 0.0
 
     trade.realized_return_12m = cum_model
     trade.realized_volatility = float(np.std(model_monthly_returns) * np.sqrt(12))
     trade.benchmark_60_40_12m = cum_b60
     trade.benchmark_aw_12m = cum_aw
     trade.benchmark_pp_12m = cum_pp
+    trade.benchmark_sp500_12m = cum_sp
 
     if cum_b60 is not None:
         trade.alpha_vs_60_40 = cum_model - cum_b60
@@ -266,6 +284,8 @@ def run_paper_trade_dynamic(
         trade.alpha_vs_aw = cum_model - cum_aw
     if cum_pp is not None:
         trade.alpha_vs_pp = cum_model - cum_pp
+    if cum_sp is not None:
+        trade.alpha_vs_sp500 = cum_model - cum_sp
 
     trade.severity = _classify_severity(trade.alpha_vs_60_40)
 
@@ -390,6 +410,8 @@ def main():
     alphas_60_40 = [t.alpha_vs_60_40 for t in trades if t.alpha_vs_60_40 is not None]
     alphas_aw = [t.alpha_vs_aw for t in trades if t.alpha_vs_aw is not None]
     alphas_pp = [t.alpha_vs_pp for t in trades if t.alpha_vs_pp is not None]
+    alphas_sp = [t.alpha_vs_sp500 for t in trades if t.alpha_vs_sp500 is not None]
+    drawdowns = [t.max_drawdown for t in trades]
     rebalances = [t.n_rebalances for t in trades]
     regime_changes = [t.n_regime_changes for t in trades]
     turnovers = [t.total_turnover for t in trades]
@@ -406,10 +428,20 @@ def main():
           f"({100*sum(1 for a in alphas_aw if a > 0)/len(alphas_aw):.0f}%)")
     print(f"  Win rate vs Permanent: {sum(1 for a in alphas_pp if a > 0)}/{len(alphas_pp)} "
           f"({100*sum(1 for a in alphas_pp if a > 0)/len(alphas_pp):.0f}%)")
+    print(f"  Win rate vs S&P500: {sum(1 for a in alphas_sp if a > 0)}/{len(alphas_sp)} "
+          f"({100*sum(1 for a in alphas_sp if a > 0)/len(alphas_sp):.0f}%)")
     print(f"")
     print(f"  Mean alpha vs 60/40: {np.mean(alphas_60_40)*100:+.2f}pp")
     print(f"  Mean alpha vs All-Weather: {np.mean(alphas_aw)*100:+.2f}pp")
     print(f"  Mean alpha vs Permanent: {np.mean(alphas_pp)*100:+.2f}pp")
+    print(f"  Mean alpha vs S&P500: {np.mean(alphas_sp)*100:+.2f}pp")
+    print(f"")
+    print(f"  Mean max drawdown: {np.mean(drawdowns)*100:.2f}%")
+    print(f"  Worst max drawdown: {min(drawdowns)*100:.2f}%")
+    # Calmar = annualized return / |max DD|
+    calmars = [t.realized_return_12m / abs(t.max_drawdown) if t.max_drawdown < -0.001 else 0.0
+               for t in trades]
+    print(f"  Mean Calmar ratio: {np.mean(calmars):.2f}")
     print(f"")
     print(f"  Mean rebalances: {np.mean(rebalances):.1f}/12 months")
     print(f"  Mean regime changes: {np.mean(regime_changes):.1f}")

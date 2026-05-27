@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "n_sims": 100,
+    "seed": 42,
+    "rebalance_freq": "monthly",
+    "transaction_cost_bps": 10.0,
+    "uncertainty_gate": true,
+    "momentum": true
+  },
+  "summary": {
+    "mean_return_12m": 0.10571131875580474,
+    "mean_vol": 0.08292529194276939,
+    "mean_alpha_60_40": 0.0067185975990048715,
+    "mean_alpha_aw": 0.03335638172342133,
+    "mean_alpha_pp": 0.029865545589206715,
+    "win_rate_60_40": 0.44,
+    "win_rate_aw": 0.74,
+    "win_rate_pp": 0.7,
+    "mean_rebalances": 12.0,
+    "mean_regime_changes": 2.58,
+    "mean_turnover": 5.0235243908307305
+  }
+}

@@ -61,7 +61,8 @@ class TestMomentumPillarsFlagOff:
     def test_flag_off_no_effect_on_stagflation(self, monkeypatch):
         from app.services.regime.classifier import classify_regime
 
-        monkeypatch.delenv("USE_MOMENTUM_PILLARS", raising=False)
+        # T11 promoted default-ON post paper trading. Force OFF for legacy test.
+        monkeypatch.setenv("USE_MOMENTUM_PILLARS", "0")
         ind = _base_indicators()
         # Anche con CPI accelerating +2%, flag OFF → no effect
         ind["cpi_yoy_change_6m"] = 2.0

@@ -103,6 +103,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_GDP_COLLAPSE_OVERRIDE": True,      # T10b promoted
         "USE_ML_REGIME_BLEND": True,            # T10b promoted
         "USE_UNCERTAINTY_GATE": True,           # Paper trading promoted 2026-05-27
+        "USE_MOMENTUM_PILLARS": True,           # Paper trading 4-test promoted 2026-05-27
     }
     known = [
         "USE_CALIBRATED_SCORING",
@@ -535,14 +536,17 @@ def use_momentum_pillars() -> bool:
     - `inflation_persistent`: min(cpi_yoy_last_6m) > 2.5% (peso 0.04 stagflation)
     - `dfm_growth_decelerating`: gdp_yoy_dfm_change_3m < -0.4% (peso 0.03 stag, 0.04 defla)
 
-    Hybrid level+momentum (Bridgewater all-weather 1996+, raydalio "delta primary").
-    Filosofia: level cattura stato stazionario, momentum cattura transizioni
-    (early warning regime shift). Tail events richiedono momentum.
+    **Paper trading validation 2026-05-27 PROMOTED DEFAULT-ON**:
+    - N=100 sims monthly rebalance: Sharpe 1.27 → 1.28
+    - α vs All-Weather: +3.07pp → +3.34pp (+0.27pp boost)
+    - Win rate vs All-Weather: 70% → 74%
+    - Consistente miglioramento (no regression)
 
-    Default: False (validation walk-forward pending). Vedi
-    `obsidian/Erik/02_Progetti/Macro_Analyzer/Macro_Analyzer_T11_Momentum_Pillars.md`.
+    Hybrid level+momentum (Bridgewater all-weather 1996+, raydalio "delta primary").
+
+    Default: True (post paper trading validation). Disable via env=0.
     """
-    return _read_flag("USE_MOMENTUM_PILLARS")
+    return _read_flag("USE_MOMENTUM_PILLARS", default=True)
 
 
 def use_ml_regime_blend() -> bool:

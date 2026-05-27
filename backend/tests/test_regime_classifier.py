@@ -19,7 +19,7 @@ def _isolate_ml_blend(monkeypatch):
     T10b 2026-05-17: USE_ML_REGIME_BLEND e USE_GDP_COLLAPSE_OVERRIDE promossi
     default-ON. Force "0" explicit (non delenv) per preservare baseline rule-based.
     """
-    for flag in ("USE_ML_REGIME_BLEND", "USE_GDP_COLLAPSE_OVERRIDE"):
+    for flag in ("USE_ML_REGIME_BLEND", "USE_GDP_COLLAPSE_OVERRIDE", "USE_MOMENTUM_PILLARS"):
         monkeypatch.setenv(flag, "0")
     monkeypatch.delenv("USE_FRESHNESS_WEIGHTING", raising=False)
 
