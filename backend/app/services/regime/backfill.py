@@ -169,6 +169,73 @@ def _build_indicators_as_of(
     if v is not None:
         indicators["housing_starts_roc_12m"] = v
 
+    # T11 (2026-05-27): momentum derivatives per pillar acceleration-based.
+    # Cattura change YoY su 6 mesi (es. CPI 2.0% → 3.95% in 6m = +1.95).
+
+    def yoy_change_6m(name: str) -> Optional[float]:
+        """cpi_yoy(now) - cpi_yoy(now - 6m). Richiede ≥ 18 osservazioni mensili."""
+        s = series.get(name)
+        if s is None or s.empty:
+            return None
+        filtered = s[s.index <= cutoff]
+        if len(filtered) < 19:
+            return None
+        try:
+            curr_yoy = (float(filtered.iloc[-1]) / float(filtered.iloc[-13]) - 1) * 100
+            prev_yoy = (float(filtered.iloc[-7]) / float(filtered.iloc[-19]) - 1) * 100
+            return curr_yoy - prev_yoy
+        except Exception:
+            return None
+
+    v = yoy_change_6m("cpi")
+    if v is not None:
+        indicators["cpi_yoy_change_6m"] = v
+
+    v = yoy_change_6m("core_pce")
+    if v is not None:
+        indicators["core_pce_yoy_change_6m"] = v
+
+    # GDP quarterly: ROC è 1-period change. Per change 6m = 2 quarter diff.
+    def gdp_roc_change_6m_calc() -> Optional[float]:
+        s = series.get("real_gdp")
+        if s is None or s.empty:
+            return None
+        filtered = s[s.index <= cutoff]
+        if len(filtered) < 4:
+            return None
+        try:
+            curr_roc = (float(filtered.iloc[-1]) / float(filtered.iloc[-2]) - 1) * 100
+            prev_roc = (float(filtered.iloc[-3]) / float(filtered.iloc[-4]) - 1) * 100
+            return curr_roc - prev_roc
+        except Exception:
+            return None
+
+    v = gdp_roc_change_6m_calc()
+    if v is not None:
+        indicators["gdp_roc_change_6m"] = v
+
+    # cpi_yoy_min_last_6m: minimo dei YoY% ultimi 6 mesi (sticky inflation signal)
+    def cpi_yoy_min_last_6m() -> Optional[float]:
+        s = series.get("cpi")
+        if s is None or s.empty:
+            return None
+        filtered = s[s.index <= cutoff]
+        if len(filtered) < 18:
+            return None
+        try:
+            yoy_values = []
+            for i in range(6):
+                idx = -1 - i
+                yoy = (float(filtered.iloc[idx]) / float(filtered.iloc[idx - 12]) - 1) * 100
+                yoy_values.append(yoy)
+            return min(yoy_values)
+        except Exception:
+            return None
+
+    v = cpi_yoy_min_last_6m()
+    if v is not None:
+        indicators["cpi_yoy_min_last_6m"] = v
+
     return indicators
 
 

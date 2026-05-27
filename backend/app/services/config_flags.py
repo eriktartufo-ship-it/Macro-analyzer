@@ -77,6 +77,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_DEFENSIVE_TRANSITION_MODE",
         "USE_FINANCIAL_STRESS_VETO",
         "USE_CONDITIONAL_ASSET_SCORING",
+        "USE_MOMENTUM_PILLARS",
     ]
     out = {}
     for name in known:
@@ -448,6 +449,28 @@ def use_defensive_transition_mode() -> bool:
     Default: False (back-compat).
     """
     return _read_flag("USE_DEFENSIVE_TRANSITION_MODE")
+
+
+def use_momentum_pillars() -> bool:
+    """T11 (2026-05-27 Council): se True, aggiunge pillar momentum-based al
+    classifier che catturano l'ACCELERAZIONE di CPI/Core PCE/GDP, non solo il
+    livello istantaneo.
+
+    Pillar aggiunti:
+    - `inflation_accelerating`: cpi_yoy_change_6m > 1.0% (peso 0.06 stagflation)
+    - `core_pce_accelerating`: core_pce_yoy_change_6m > 0.8% (peso 0.05 stagflation)
+    - `gdp_decelerating`: gdp_roc_change_6m < -0.5% (peso 0.04 stag, 0.05 defla)
+    - `inflation_persistent`: min(cpi_yoy_last_6m) > 2.5% (peso 0.04 stagflation)
+    - `dfm_growth_decelerating`: gdp_yoy_dfm_change_3m < -0.4% (peso 0.03 stag, 0.04 defla)
+
+    Hybrid level+momentum (Bridgewater all-weather 1996+, raydalio "delta primary").
+    Filosofia: level cattura stato stazionario, momentum cattura transizioni
+    (early warning regime shift). Tail events richiedono momentum.
+
+    Default: False (validation walk-forward pending). Vedi
+    `obsidian/Erik/02_Progetti/Macro_Analyzer/Macro_Analyzer_T11_Momentum_Pillars.md`.
+    """
+    return _read_flag("USE_MOMENTUM_PILLARS")
 
 
 def use_ml_regime_blend() -> bool:

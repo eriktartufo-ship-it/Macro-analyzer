@@ -20,11 +20,68 @@ from app.services.config_flags import (
     use_freshness_weighting,
     use_gdp_collapse_override,
     use_ml_regime_blend,
+    use_momentum_pillars,
     use_news_pillar,
 )
 from app.services.regime.freshness import effective_weight, freshness_for
 
 REGIMES = ["reflation", "stagflation", "deflation", "goldilocks"]
+
+
+# T11 (2026-05-27) Momentum pillars — opt-in via USE_MOMENTUM_PILLARS flag.
+# Quando attivo, _merge_momentum_pillars() applica:
+# - rebalance dei pesi level-based esistenti (per stare a total=1.0)
+# - aggiunge i 5 nuovi pillar momentum
+_MOMENTUM_PILLARS_ADD: dict[str, dict[str, dict]] = {
+    "stagflation": {
+        "inflation_accelerating": {"weight": 0.06, "description": "CPI YoY change 6m > 1%"},
+        "core_pce_accelerating": {"weight": 0.05, "description": "Core PCE YoY change 6m > 0.8%"},
+        "gdp_decelerating": {"weight": 0.04, "description": "GDP ROC change 6m < -0.5%"},
+        "inflation_persistent": {"weight": 0.04, "description": "min(CPI YoY last 6m) > 2.5%"},
+        "dfm_growth_decelerating": {"weight": 0.03, "description": "DFM nowcast change 3m < -0.4%"},
+    },
+    "deflation": {
+        "gdp_decelerating": {"weight": 0.05, "description": "GDP ROC change 6m < -0.5%"},
+        "dfm_growth_decelerating": {"weight": 0.04, "description": "DFM nowcast change 3m < -0.4%"},
+    },
+}
+
+# Rebalance delta da applicare quando flag ON (pesi vengono SOTTRATTI dai level pillar
+# esistenti). Total target stagflation=1.00 (era 1.07), deflation rebalanced.
+_MOMENTUM_PILLARS_REBALANCE: dict[str, dict[str, float]] = {
+    "stagflation": {
+        "inflation_high": -0.04,
+        "gdp_weak": -0.02,
+        "pmi_weak": -0.01,
+        "unemployment_rising": -0.01,
+        "dfm_growth_weak": -0.01,
+        "gold_oil_low": -0.01,
+        "insider_selling_strong": -0.01,
+    },
+    "deflation": {
+        "gdp_negative_or_decelerating": -0.04,
+        "indpro_contraction": -0.02,
+        "payrolls_slowdown": -0.03,
+    },
+}
+
+
+def _merge_momentum_pillars(base: dict) -> dict:
+    """T11: applica rebalance + aggiunta pillar momentum, ritorna nuovo dict.
+
+    NON modifica `base` (deep-ish copy a 2 livelli).
+    """
+    merged = {regime: {k: dict(v) for k, v in conds.items()} for regime, conds in base.items()}
+    # Rebalance esistenti (sottrai pesi)
+    for regime, deltas in _MOMENTUM_PILLARS_REBALANCE.items():
+        for cond_name, delta in deltas.items():
+            if cond_name in merged.get(regime, {}):
+                merged[regime][cond_name]["weight"] = max(0.0, merged[regime][cond_name]["weight"] + delta)
+    # Aggiungi momentum pillar
+    for regime, adds in _MOMENTUM_PILLARS_ADD.items():
+        for cond_name, cond_data in adds.items():
+            merged[regime][cond_name] = dict(cond_data)
+    return merged
 
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
 REGIME_CONDITIONS = {
@@ -263,6 +320,24 @@ def _evaluate_condition(
         return _sigmoid(claims_roc, center=4.0, scale=4.0)
     elif condition_name == "yield_curve_stress":
         return _sigmoid(-yield_spread, center=-0.3, scale=0.5)
+
+    # --- T11 MOMENTUM PILLARS (opt-in USE_MOMENTUM_PILLARS) ---
+    # Cattura ACCELERAZIONE oltre al livello istantaneo. Council 2026-05-27.
+    elif condition_name == "inflation_accelerating":
+        cpi_change = indicators.get("cpi_yoy_change_6m", 0.0)
+        return _sigmoid(cpi_change, center=1.0, scale=0.5)
+    elif condition_name == "core_pce_accelerating":
+        pce_change = indicators.get("core_pce_yoy_change_6m", 0.0)
+        return _sigmoid(pce_change, center=0.8, scale=0.4)
+    elif condition_name == "gdp_decelerating":
+        gdp_change = indicators.get("gdp_roc_change_6m", 0.0)
+        return _sigmoid(-gdp_change, center=0.5, scale=0.5)
+    elif condition_name == "inflation_persistent":
+        cpi_min = indicators.get("cpi_yoy_min_last_6m", cpi)
+        return _sigmoid(cpi_min, center=2.5, scale=0.5)
+    elif condition_name == "dfm_growth_decelerating":
+        dfm_change = indicators.get("gdp_yoy_dfm_change_3m", 0.0)
+        return _sigmoid(-dfm_change, center=0.4, scale=0.4)
 
     # --- DEFLATION conditions ---
     elif condition_name == "gdp_negative_or_decelerating":
@@ -509,11 +584,17 @@ def classify_regime(
     conditions_detail: dict[str, dict] = {}
     apply_freshness = use_freshness_weighting()
 
+    # T11: applica rebalance + aggiunta momentum pillar quando flag ON.
+    if use_momentum_pillars():
+        active_conditions = _merge_momentum_pillars(REGIME_CONDITIONS)
+    else:
+        active_conditions = REGIME_CONDITIONS
+
     for regime in REGIMES:
         regime_score = 0.0
         regime_conditions = {}
 
-        for cond_name, cond_config in REGIME_CONDITIONS[regime].items():
+        for cond_name, cond_config in active_conditions[regime].items():
             score = _evaluate_condition(cond_name, regime, indicators, adaptive_recipes=adaptive_recipes)
             base_w = cond_config["weight"]
             if apply_freshness:
