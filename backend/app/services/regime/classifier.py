@@ -699,6 +699,38 @@ def classify_regime(
     if cpi > 2.5:
         raw_scores["goldilocks"] *= max(0.25, 1.0 - (cpi - 2.5) * 0.30)
 
+    # Council 2026-05-27 — LIQUIDITY SURGE OVERRIDE (post TEST A 2020 disaster).
+    # Fix per V-shape recovery missing: massive QE/stampa valuta = leading
+    # indicator del recovery, NON i fondamentali macro.
+    # Trigger composite: M2 YoY > +10% AND WALCL ROC 3m > +12% AND real rates declining.
+    liquidity_surge_triggered = False
+    try:
+        from app.services.config_flags import use_liquidity_surge_override
+        if use_liquidity_surge_override():
+            m2_y = indicators.get("m2_yoy")
+            walcl_r3m = indicators.get("walcl_roc_3m")
+            real_rate_chg = indicators.get("real_rate_change_3m")
+            # Real rate "accommodative" criterio flexible:
+            # - declining (real_rate_change < 0) OR
+            # - already very low (real_rate_now < +1.0) — cattura 2020 deflation
+            #   crash dove CPI -drops piu di rate-cuts -> real rate sale a 0 from neg
+            ff_now = indicators.get("fed_funds_rate", 2.5)
+            cpi_now = indicators.get("cpi_yoy", 2.0)
+            real_rate_now = ff_now - cpi_now
+            real_rate_accommodative = (
+                (real_rate_chg is not None and real_rate_chg < 0)
+                or real_rate_now < 1.0
+            )
+            if (m2_y is not None and m2_y > 10.0
+                    and walcl_r3m is not None and walcl_r3m > 12.0
+                    and real_rate_accommodative):
+                liquidity_surge_triggered = True
+                # Boost reflation +40%, dampen deflation × 0.5 (NON cancellare)
+                raw_scores["reflation"] *= 1.40
+                raw_scores["deflation"] *= 0.5
+    except Exception:
+        pass
+
     # Fit score indipendenti [0, 1] per regime: somma pesata condizioni post-penalty
     # ma PRE-normalizzazione. Esprime "quanto lo stato corrente somiglia a questo regime"
     # in valore assoluto, senza competizione zero-sum.
@@ -774,6 +806,9 @@ def classify_regime(
     if gdp_collapse_triggered:
         out["gdp_collapse_triggered"] = True
         out["gdp_collapse_severity"] = round(gdp_collapse_severity, 4)
+
+    if liquidity_surge_triggered:
+        out["liquidity_surge_triggered"] = True
     if ml_metadata:
         out["ml_blend"] = ml_metadata
 

@@ -155,6 +155,8 @@ def classify_at(
 
     return {
         "regime": result.get("regime"),
+        "liquidity_surge_triggered": result.get("liquidity_surge_triggered", False),
+        "gdp_collapse_triggered": result.get("gdp_collapse_triggered", False),
         "probs": {
             "reflation": float(probs.get("reflation", 0.0)),
             "stagflation": float(probs.get("stagflation", 0.0)),

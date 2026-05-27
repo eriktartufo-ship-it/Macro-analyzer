@@ -48,6 +48,9 @@ _CLASSIFIER_SERIES = (
     "nfci",
     "breakeven_10y",
     "housing_starts",
+    # Council 2026-05-27 — Liquidity surge override (post TEST A 2020 disaster)
+    "m2",                # M2 money stock (mensile, FRED M2SL)
+    "fed_balance_sheet", # Fed WALCL (settimanale, FRED)
 )
 
 
@@ -255,6 +258,84 @@ def _enrich_with_momentum_derivatives(
     v = cpi_yoy_min_last_6m()
     if v is not None:
         indicators["cpi_yoy_min_last_6m"] = v
+
+    # Council 2026-05-27 — Liquidity surge derivatives (per `USE_LIQUIDITY_SURGE_OVERRIDE`)
+    # Cattura QE/stampa valuta (es. 2020 Fed +75% balance sheet in 3 mesi).
+    # User insight: il V-shape recovery è LEADING-INDICATED da liquidity print,
+    # NOT dai fondamentali macro tradizionali.
+    def walcl_roc_3m() -> Optional[float]:
+        s = None
+        for key in ("fed_balance_sheet", "walcl", "WALCL"):
+            cand = series.get(key)
+            if cand is not None and not cand.empty:
+                s = cand
+                break
+        if s is None:
+            return None
+        filtered = s[s.index <= cutoff]
+        if len(filtered) < 13:
+            return None
+        try:
+            curr = float(filtered.iloc[-1])
+            prev = float(filtered.iloc[-13])  # ~3 mesi indietro (settimanale × 13)
+            if prev <= 0:
+                return None
+            return (curr / prev - 1) * 100
+        except Exception:
+            return None
+
+    v = walcl_roc_3m()
+    if v is not None:
+        indicators["walcl_roc_3m"] = v
+
+    # M2 YoY: 12-month change
+    def m2_yoy() -> Optional[float]:
+        for key in ("m2", "m2_yoy"):
+            s = series.get(key)
+            if s is None or s.empty:
+                continue
+            filtered = s[s.index <= cutoff]
+            if len(filtered) < 13:
+                continue
+            try:
+                curr = float(filtered.iloc[-1])
+                prev = float(filtered.iloc[-13])
+                if prev <= 0:
+                    continue
+                return (curr / prev - 1) * 100
+            except Exception:
+                continue
+        return None
+
+    v = m2_yoy()
+    if v is not None:
+        indicators["m2_yoy"] = v
+
+    # Real rate trend 3m (declining if real rate now < real rate 3m ago)
+    def real_rate_decline_3m() -> Optional[float]:
+        ff_s = series.get("fed_funds")
+        cpi_s = series.get("cpi")
+        if ff_s is None or cpi_s is None or ff_s.empty or cpi_s.empty:
+            return None
+        ff_filt = ff_s[ff_s.index <= cutoff]
+        cpi_filt = cpi_s[cpi_s.index <= cutoff]
+        if len(ff_filt) < 4 or len(cpi_filt) < 13:
+            return None
+        try:
+            ff_now = float(ff_filt.iloc[-1])
+            cpi_yoy_now = (float(cpi_filt.iloc[-1]) / float(cpi_filt.iloc[-13]) - 1) * 100
+            real_rate_now = ff_now - cpi_yoy_now
+
+            ff_3m = float(ff_filt.iloc[-4]) if len(ff_filt) >= 4 else ff_now
+            cpi_yoy_3m_ago = (float(cpi_filt.iloc[-4]) / float(cpi_filt.iloc[-16]) - 1) * 100 if len(cpi_filt) >= 16 else cpi_yoy_now
+            real_rate_3m_ago = ff_3m - cpi_yoy_3m_ago
+            return real_rate_now - real_rate_3m_ago  # negativo = declining
+        except Exception:
+            return None
+
+    v = real_rate_decline_3m()
+    if v is not None:
+        indicators["real_rate_change_3m"] = v
 
 
 def backfill_regime_history_long(

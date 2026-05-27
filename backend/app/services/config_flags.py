@@ -104,7 +104,10 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_ML_REGIME_BLEND": True,            # T10b promoted
         "USE_UNCERTAINTY_GATE": True,           # Paper trading promoted 2026-05-27
         "USE_MOMENTUM_PILLARS": True,           # Paper trading 4-test promoted 2026-05-27
+        "USE_LIQUIDITY_SURGE_OVERRIDE": True,   # Council post-TEST A 2020 disaster 2026-05-27
     }
+    # Add new flags to known list below
+    pass  # marker
     known = [
         "USE_CALIBRATED_SCORING",
         "USE_DEDOLLAR_BONUS",
@@ -132,6 +135,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_CONDITIONAL_ASSET_SCORING",
         "USE_MOMENTUM_PILLARS",
         "USE_UNCERTAINTY_GATE",
+        "USE_LIQUIDITY_SURGE_OVERRIDE",
     ]
     out = {}
     for name in known:
@@ -503,6 +507,31 @@ def use_defensive_transition_mode() -> bool:
     Default: False (back-compat).
     """
     return _read_flag("USE_DEFENSIVE_TRANSITION_MODE")
+
+
+def use_liquidity_surge_override() -> bool:
+    """Council 2026-05-27: liquidity_surge regime override.
+
+    User insight: 'Il V-shape 2020 era predittibile dalla STAMPA Fed (QE)'.
+    Council unanime: aggiungere override layer che ri-pesa probabilita
+    "deflation" verso "reflation_forced" quando rileva massive liquidity injection.
+
+    Trigger composite (TUTTI 3 must fire):
+    - M2 YoY > +10% (Soros threshold, vs Buffett +15% più strict)
+    - WALCL ROC 3m > +12%
+    - Real rates declining 3m (real_rate_change_3m < 0)
+
+    Effetto quando fires:
+    - reflation_prob += 0.20 (boost)
+    - deflation_prob *= 0.6 (dampen, NON cancellare)
+    - normalize tutto
+
+    Coexists with USE_GDP_COLLAPSE_OVERRIDE (defense trigger) → questo è il
+    "all clear" early signal post-stampa.
+
+    Default: True (council priority CRITICAL per fix 2020 disaster).
+    """
+    return _read_flag("USE_LIQUIDITY_SURGE_OVERRIDE", default=True)
 
 
 def use_uncertainty_gate() -> bool:

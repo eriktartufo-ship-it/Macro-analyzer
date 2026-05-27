@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "n_sims": 88,
+    "n_sims": 86,
     "seed": 42,
     "rebalance_freq": "monthly",
     "transaction_cost_bps": 10.0,
@@ -8,16 +8,16 @@
     "momentum": false
   },
   "summary": {
-    "mean_return_12m": 0.12000606695381229,
-    "mean_vol": 0.10495509135391985,
-    "mean_alpha_60_40": 0.026234452989287425,
-    "mean_alpha_aw": 0.05129030115156783,
-    "mean_alpha_pp": 0.0464015953183547,
-    "win_rate_60_40": 0.5681818181818182,
-    "win_rate_aw": 0.7045454545454546,
-    "win_rate_pp": 0.7954545454545454,
+    "mean_return_12m": 0.1345173862182685,
+    "mean_vol": 0.10460304663088396,
+    "mean_alpha_60_40": 0.04091290926029569,
+    "mean_alpha_aw": 0.06580548378409244,
+    "mean_alpha_pp": 0.06083452510730737,
+    "win_rate_60_40": 0.5581395348837209,
+    "win_rate_aw": 0.813953488372093,
+    "win_rate_pp": 0.8372093023255814,
     "mean_rebalances": 12.0,
-    "mean_regime_changes": 2.5454545454545454,
-    "mean_turnover": 4.218181818181819
+    "mean_regime_changes": 2.488372093023256,
+    "mean_turnover": 4.415222868217054
   }
 }

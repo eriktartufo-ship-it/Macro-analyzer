@@ -93,10 +93,21 @@ def _classify_severity(alpha: float | None) -> str:
     return "winning"
 
 
-def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5, method: str = "risk_parity"):
-    """Top-N weights dato regime probabilities. Method: risk_parity, equal, score_weighted."""
+def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5,
+                          method: str = "risk_parity", confidence: float = 0.5):
+    """Top-N weights dato regime probabilities + sizing method.
+
+    Methods:
+    - risk_parity: inverse vol (Bridgewater All-Weather)
+    - equal: 1/N each
+    - score_weighted: peso ∝ score
+    - confidence_weighted: equal weight × scale_factor; scale = clip(conf × 1.5, 0.6, 1.0).
+      Cash buffer fills the rest (low conf → less deployed → cash hedge).
+    - vol_target_concentration: tilt top-3 (60%) quando conf > 0.6, equal-7 (40%)
+      quando conf < 0.4, smooth interpolation in mezzo.
+    """
     from app.services.scoring.engine import calculate_final_scores
-    from app.services.portfolio.position_sizing import risk_parity, equal_weight, score_weighted
+    from app.services.portfolio.position_sizing import risk_parity
 
     try:
         asset_scores = calculate_final_scores(probs)
@@ -104,12 +115,42 @@ def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5, method:
         return None
 
     sorted_scores = sorted(asset_scores.items(), key=lambda x: -x[1])[:top_n]
+    n = len(sorted_scores)
 
     if method == "equal":
-        return {a: 1.0 / len(sorted_scores) for a, _ in sorted_scores}
+        return {a: 1.0 / n for a, _ in sorted_scores}
+
     if method == "score_weighted":
         total = sum(s for _, s in sorted_scores) or 1.0
         return {a: s / total for a, s in sorted_scores}
+
+    if method == "confidence_weighted":
+        # Council sizing (d): scale exposure with confidence, cash buffer rest
+        scale = max(0.6, min(1.0, confidence * 1.5))
+        equal_w = scale / n
+        weights = {a: equal_w for a, _ in sorted_scores}
+        cash_remainder = 1.0 - scale
+        if cash_remainder > 0.001:
+            weights["cash_money_market"] = weights.get("cash_money_market", 0.0) + cash_remainder
+        return weights
+
+    if method == "vol_target_concentration":
+        # Council sizing (c): tilt top-3 vs top-N based on confidence
+        # conf > 0.6 → top-3 60% / next (n-3) 40%
+        # conf < 0.4 → equal n
+        # smooth interpolation
+        if n <= 3:
+            return {a: 1.0 / n for a, _ in sorted_scores}
+        tilt = max(0.0, min(1.0, (confidence - 0.4) / 0.2))  # 0 at conf 0.4, 1 at conf 0.6+
+        top3_pool = 0.40 + tilt * 0.20  # 40% top-3 at conf 0.4 → 60% at conf 0.6
+        rest_pool = 1.0 - top3_pool
+        weights = {}
+        for i, (asset, _) in enumerate(sorted_scores):
+            if i < 3:
+                weights[asset] = top3_pool / 3
+            else:
+                weights[asset] = rest_pool / (n - 3)
+        return weights
 
     # risk_parity (default)
     vols = {}
@@ -119,8 +160,8 @@ def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5, method:
             vols[asset] = float(hist.std(ddof=1)) * np.sqrt(12) if len(hist) >= 6 else 0.20
         else:
             vols[asset] = 0.20
-    alloc = risk_parity({a: s for a, s in sorted_scores}, vols, top_n=len(sorted_scores))
-    return alloc.weights or {a: 1.0 / len(sorted_scores) for a, _ in sorted_scores}
+    alloc = risk_parity({a: s for a, s in sorted_scores}, vols, top_n=n)
+    return alloc.weights or {a: 1.0 / n for a, _ in sorted_scores}
 
 
 def _portfolio_return_month(matrix, year, month, weights):
@@ -195,6 +236,7 @@ def run_paper_trade_dynamic(
         regime = cm["regime"]
         probs = cm["probs"]
         confidence = cm.get("confidence", 0.5) or 0.5
+        liquidity_surge = cm.get("liquidity_surge_triggered", False)
         trade.regime_trajectory.append((current, regime, confidence))
 
         if last_regime is not None and regime != last_regime:
@@ -204,12 +246,16 @@ def run_paper_trade_dynamic(
         # Compute new top-5 weights (con uncertainty gate)
         if is_rebalance_month:
             target_ts = pd.Timestamp(current.year, current.month, 1) + pd.offsets.MonthEnd(0)
-            new_weights = _compute_top5_weights(probs, real_matrix, target_ts, top_n=top_n, method=allocation_method)
+            new_weights = _compute_top5_weights(
+                probs, real_matrix, target_ts,
+                top_n=top_n, method=allocation_method, confidence=confidence,
+            )
             if new_weights is None:
                 new_weights = current_weights or dict(BENCHMARK_60_40)
 
-            # Uncertainty gate
-            if use_uncertainty_gate() and confidence < 0.30:
+            # Uncertainty gate — BYPASS se liquidity_surge attivo (council post-2020 fix).
+            # Liquidity surge = "all clear" signal, restore conviction sui top-7.
+            if use_uncertainty_gate() and confidence < 0.30 and not liquidity_surge:
                 new_weights = dict(BENCHMARK_60_40)
                 trade.uncertainty_gate_fires += 1
 
@@ -349,9 +395,14 @@ def main():
                         "2022 = 2021-12 to 2022-12. all_crisis = union.")
     p.add_argument("--top-n", type=int, default=5,
                    help="Council Test F: top-N asset (default 5).")
-    p.add_argument("--allocation-method", choices=["risk_parity", "equal", "score_weighted"],
+    p.add_argument("--allocation-method",
+                   choices=["risk_parity", "equal", "score_weighted",
+                            "confidence_weighted", "vol_target_concentration"],
                    default="risk_parity",
-                   help="Council Test E: allocation algorithm.")
+                   help="Council Test E + post-2020 sizing: "
+                        "risk_parity, equal, score_weighted, "
+                        "confidence_weighted (sizing d), "
+                        "vol_target_concentration (sizing c).")
     args = p.parse_args()
 
     os.environ["USE_MOMENTUM_PILLARS"] = "1" if args.momentum else "0"
