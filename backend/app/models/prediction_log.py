@@ -42,6 +42,11 @@ class PredictionLog(Base):
     # Allocation mode: "regime_based" | "defensive_transition"
     allocation_mode: Mapped[str] = mapped_column(String(30), nullable=False, default="regime_based")
 
+    # CRITICAL #2 council 2026-05-27: sealed model version FK a ModelSnapshot.
+    # Permette validazione true-OOS: ogni prediction è attribuibile a uno snapshot
+    # esatto del modello (flag state + classifier hash al momento della prediction).
+    model_version: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
     # Realized returns post-hoc (None se non ancora evaluato)
     realized_return_1m: Mapped[float | None] = mapped_column(Float, nullable=True)
     realized_return_3m: Mapped[float | None] = mapped_column(Float, nullable=True)

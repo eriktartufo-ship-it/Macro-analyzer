@@ -1473,6 +1473,98 @@ def trigger_refresh():
         raise HTTPException(status_code=500, detail=f"Errore refresh: {str(e)}")
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# CRITICAL #1+#2 council 2026-05-27: prediction log + model snapshot lock
+# Endpoint per frontend "Live Track Record" + audit OOS validation.
+# ─────────────────────────────────────────────────────────────────────────
+
+@router.get("/prediction-log/stats")
+def get_prediction_log_stats(
+    horizon: str = Query(default="3m", regex="^(1m|3m|6m)$"),
+    db: Session = Depends(get_db),
+):
+    """Aggregate stats P&L live model vs benchmark 60/40.
+
+    Horizon: '1m' | '3m' | '6m'. Mostra mean_alpha, hit_rate, n_evaluated.
+    Empty quando il tracking è appena iniziato (council: l'onestà è la feature).
+    """
+    from app.services.validation.prediction_logger import (
+        stats_by_regime, summary_stats,
+    )
+    summary = summary_stats(db, horizon=horizon)
+    by_regime = stats_by_regime(db, horizon=horizon)
+    return {
+        "horizon": horizon,
+        "summary": summary,
+        "by_regime": by_regime,
+    }
+
+
+@router.get("/prediction-log/recent")
+def list_recent_predictions(
+    limit: int = Query(default=30, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    """Lista predictions recenti (default 30 più nuove) con realized returns."""
+    from app.models import PredictionLog
+    rows = (
+        db.query(PredictionLog)
+        .order_by(PredictionLog.date_predicted.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "date_predicted": r.date_predicted.isoformat() if r.date_predicted else None,
+            "regime": r.regime,
+            "confidence": r.confidence,
+            "model_version": r.model_version,
+            "allocation_mode": r.allocation_mode,
+            "realized_return_1m": r.realized_return_1m,
+            "realized_return_3m": r.realized_return_3m,
+            "realized_return_6m": r.realized_return_6m,
+            "alpha_1m": r.alpha_1m,
+            "alpha_3m": r.alpha_3m,
+            "alpha_6m": r.alpha_6m,
+            "evaluated_at": r.evaluated_at.isoformat() if r.evaluated_at else None,
+        }
+        for r in rows
+    ]
+
+
+@router.get("/model/active")
+def get_active_model_version():
+    """Ritorna versione del modello ATTIVO + classifier hash + flag count."""
+    from app.services.validation.model_lock import (
+        compute_classifier_hash, get_active_version, list_snapshots,
+    )
+    return {
+        "active_version": get_active_version(),
+        "current_classifier_hash": compute_classifier_hash(),
+        "snapshots": list_snapshots(),
+    }
+
+
+@router.post("/model/lock")
+def lock_model_endpoint(
+    version: str = Query(..., min_length=3, max_length=64),
+    description: str | None = Query(default=None),
+):
+    """Lock manualmente un nuovo snapshot del modello.
+
+    Use case: dopo update flag importante o classifier change, lock una
+    nuova versione (es. "v1.1-sealed-2026-07-01") per separare le predictions
+    future dallo storico v1.0.
+    """
+    from app.services.validation.model_lock import lock_current_model
+    try:
+        info = lock_current_model(version=version, description=description)
+        return {"status": "ok", **info}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lock failed: {str(e)}")
+
+
 @router.post("/regime/backfill")
 def trigger_regime_backfill(days: int = Query(default=365, ge=1, le=3650)):
     """Ricostruisce lo storico classificazioni regime per gli ultimi N giorni."""

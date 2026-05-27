@@ -127,3 +127,40 @@ def coverage_report(matrix: pd.DataFrame) -> dict:
             for asset in matrix.columns
         },
     }
+
+
+def cumulative_returns_provider(matrix: pd.DataFrame):
+    """CRITICAL #1 council 2026-05-27: callable per evaluate_log().
+
+    Ritorna funzione (start_date, end_date) -> {asset: cumulative_return}
+    da usare in `prediction_logger.evaluate_log`. Cumulative compounded
+    da real returns mensili: (1 + r1)(1 + r2)... - 1.
+
+    Args:
+        matrix: output di build_real_returns_matrix.
+
+    Returns:
+        Callable da passare a evaluate_log come asset_returns_provider.
+    """
+    def provider(start_date, end_date) -> dict[str, float]:
+        from datetime import date as _date
+        if not isinstance(start_date, _date):
+            return {}
+        start_ts = pd.Timestamp(start_date.year, start_date.month, 1) + pd.offsets.MonthEnd(0)
+        end_ts = pd.Timestamp(end_date.year, end_date.month, 1) + pd.offsets.MonthEnd(0)
+
+        mask = (matrix.index >= start_ts) & (matrix.index <= end_ts)
+        sub = matrix.loc[mask]
+        if sub.empty:
+            return {}
+        # Compound cumulative per ogni asset
+        out: dict[str, float] = {}
+        for asset in sub.columns:
+            series = sub[asset].dropna()
+            if len(series) == 0:
+                continue
+            cumulative = (1.0 + series).prod() - 1.0
+            out[asset] = float(cumulative)
+        return out
+
+    return provider

@@ -152,11 +152,80 @@ def daily_refresh():
         except Exception as e:
             logger.warning(f"Prune rolling window fallito (non bloccante): {e}")
 
+        # 10. CRITICAL #1 council 2026-05-27: log prediction + evaluate pending.
+        # Senza questo step, il modello non sta vivendo. PredictionLog daily
+        # accumula track record live; evaluate_log calcola realized returns
+        # sulle predictions di 1/3/6 mesi fa.
+        try:
+            _log_and_evaluate_predictions(regime_result, scores, trajectory)
+        except Exception as e:
+            logger.warning(f"Prediction log + evaluate fallito (non bloccante): {e}")
+
         logger.info("Refresh giornaliero completato con successo")
 
     except Exception as e:
         logger.error(f"Errore durante il refresh giornaliero: {e}")
         raise
+
+
+def _log_and_evaluate_predictions(
+    regime_result: dict,
+    scores: dict[str, float],
+    trajectory: dict,
+) -> None:
+    """CRITICAL #1 council 2026-05-27: scheduler integration.
+
+    Step daily:
+    1. Log current prediction (top-5 weighted by score) -> PredictionLog
+    2. Evaluate pending logs (1m/3m/6m horizons) -> realized returns vs benchmark
+
+    Senza questo, il modello non sta accumulando track record live. Ogni
+    prediction è automatically attribuita allo snapshot freezato corrente
+    via `log_prediction()` (vedi prediction_logger.py).
+    """
+    from app.database import SessionLocal
+    from app.services.validation.prediction_logger import (
+        evaluate_log, log_prediction,
+    )
+    from app.services.backtest.real_returns_matrix import (
+        build_real_returns_matrix, cumulative_returns_provider,
+    )
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    # Top-5 weighted by score (normalize per somma)
+    sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:5]
+    total = sum(s for _, s in sorted_scores) or 1.0
+    top5_assets = [
+        {"asset": a, "score": round(s, 2), "weight": round(s / total, 4)}
+        for a, s in sorted_scores
+    ]
+
+    classify_output = {
+        "regime": regime_result["regime"],
+        "probabilities": regime_result["probabilities"],
+        "confidence": regime_result.get("confidence", 0.0),
+    }
+
+    with SessionLocal() as db:
+        try:
+            logged = log_prediction(db, classify_output, top5_assets)
+            logger.info(f"PredictionLog #{logged.id}: {logged.regime} ({logged.top5_count} assets)")
+        except Exception as e:
+            logger.warning(f"log_prediction failed: {e}")
+
+        # Evaluate pending: serve real returns matrix per (start, end) -> cumulative
+        try:
+            asset_keys = list(ASSET_REGIME_DATA.keys())
+            matrix = build_real_returns_matrix(asset_keys, use_cache=True)
+            if matrix.empty:
+                logger.warning("Real returns matrix empty, skip evaluate_log")
+                return
+            provider = cumulative_returns_provider(matrix)
+            updated = evaluate_log(db, provider)
+            if updated:
+                logger.info(f"PredictionLog evaluated {updated} records (realized returns 1m/3m/6m)")
+        except Exception as e:
+            logger.warning(f"evaluate_log failed: {e}")
 
 
 def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:

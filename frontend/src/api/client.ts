@@ -25,6 +25,9 @@ import type {
   MacroIndicatorsHistoryItem,
   NewsItem,
   PlayerHistoryItem,
+  PredictionLogStats,
+  PredictionLogRecent,
+  ActiveModelInfo,
   RegimeExplain,
   RegimeHistoryItem,
   Scoreboard,
@@ -125,6 +128,16 @@ export const api = {
   subRegime: () => request<SubRegimeResponse>("/regime/sub-regime", undefined, { retries: 0 }),
   regime2D: (blend = 0.5) =>
     request<Regime2DResponse>(`/regime/regime-2d?blend=${blend}`, undefined, { retries: 0 }),
+  // CRITICAL #1+#2 council 2026-05-27: live track record + model snapshot lock
+  predictionLogStats: (horizon: "1m" | "3m" | "6m" = "3m") =>
+    request<PredictionLogStats>(
+      `/prediction-log/stats?horizon=${horizon}`, undefined, { retries: 0 },
+    ),
+  predictionLogRecent: (limit = 30) =>
+    request<PredictionLogRecent[]>(
+      `/prediction-log/recent?limit=${limit}`, undefined, { retries: 0 },
+    ),
+  activeModel: () => request<ActiveModelInfo>("/model/active", undefined, { retries: 0 }),
   getConfigFlags: () => request<ConfigFlags>("/config/flags", undefined, { retries: 0 }),
   setConfigFlag: (name: string, value: boolean | null) =>
     request<{ ok: boolean; flags: ConfigFlags }>(

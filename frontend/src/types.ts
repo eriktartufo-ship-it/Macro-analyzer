@@ -601,3 +601,56 @@ export interface Regime2DResponse {
   source: "probs" | "indicators" | "blended" | "empty";
   blend: number;
 }
+
+// CRITICAL #1+#2 council 2026-05-27: live track record + model lock
+export interface PredictionLogSummary {
+  horizon: "1m" | "3m" | "6m";
+  n_evaluated: number;
+  mean_alpha: number | null;
+  median_alpha: number | null;
+  hit_rate: number | null;
+  mean_realized_return: number | null;
+}
+
+export interface PredictionLogRegimeStats {
+  n: number;
+  mean_alpha: number;
+  hit_rate: number;
+  worst_alpha: number;
+  best_alpha: number;
+}
+
+export interface PredictionLogStats {
+  horizon: "1m" | "3m" | "6m";
+  summary: PredictionLogSummary;
+  by_regime: Record<string, PredictionLogRegimeStats>;
+}
+
+export interface PredictionLogRecent {
+  id: number;
+  date_predicted: string | null;
+  regime: Regime;
+  confidence: number;
+  model_version: string | null;
+  allocation_mode: string;
+  realized_return_1m: number | null;
+  realized_return_3m: number | null;
+  realized_return_6m: number | null;
+  alpha_1m: number | null;
+  alpha_3m: number | null;
+  alpha_6m: number | null;
+  evaluated_at: string | null;
+}
+
+export interface ModelSnapshotInfo {
+  version: string;
+  locked_at: string | null;
+  classifier_hash: string;
+  description: string | null;
+}
+
+export interface ActiveModelInfo {
+  active_version: string;
+  current_classifier_hash: string;
+  snapshots: ModelSnapshotInfo[];
+}

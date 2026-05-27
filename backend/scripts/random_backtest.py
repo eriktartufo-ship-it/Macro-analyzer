@@ -174,6 +174,7 @@ def run_simulation(
     real_returns_matrix=None,
     walk_forward_cache=None,
     allocation_method: str = "equal",
+    transaction_cost_bps: float = 0.0,
 ) -> SimulationResult | None:
     """Simula partenza random per N anni.
 
@@ -200,6 +201,13 @@ def run_simulation(
     calm_gate_fires = 0
 
     benchmark_weights = {"us_equities_growth": 0.60, "us_bonds_long": 0.40}
+
+    # CRITICAL #3 council 2026-05-27: transaction costs.
+    # Costo realistic per rebalance: sum(|w_new - w_prev|) * cost_bps / 10000.
+    # Council target default 10bps/leg. Per benchmark 60/40 statico, costo zero
+    # (rebalance trascurabile mensile, semplificazione).
+    prev_model_weights: dict[str, float] = {}
+    cost_factor = transaction_cost_bps / 10000.0  # bps -> frazione
 
     current = start_date
     n_used = 0
@@ -303,6 +311,17 @@ def run_simulation(
         else:
             r_model = _simulate_monthly_return(top5_weights, regime, regime_data, rng)
             r_bench = _simulate_monthly_return(benchmark_weights, regime, regime_data, rng)
+
+        # CRITICAL #3: applica transaction cost al model (turnover-based).
+        # Cost = Σ |w_new - w_prev| × cost_factor. Bench statico (no cost).
+        if cost_factor > 0 and prev_model_weights:
+            all_assets = set(prev_model_weights) | set(top5_weights)
+            turnover = sum(
+                abs(top5_weights.get(a, 0.0) - prev_model_weights.get(a, 0.0))
+                for a in all_assets
+            )
+            r_model -= turnover * cost_factor
+        prev_model_weights = dict(top5_weights)
 
         model_monthly.append(r_model)
         bench_monthly.append(r_bench)
@@ -413,6 +432,11 @@ def main():
                    help="Q1.4 council: allocation method top-5. equal=20%% each, "
                         "risk_parity=inverse vol (Bridgewater All-Weather), "
                         "score_weighted=proportional to asset score.")
+    p.add_argument("--transaction-cost-bps", type=float, default=0.0,
+                   help="CRITICAL #3 council: cost per rebalance in bps "
+                        "(default 0=gross). Realistic 10-20bps per leg, sum su "
+                        "turnover assoluto del portfolio mensile. Council "
+                        "raccomanda 10bps minimo per honesty.")
     args = p.parse_args()
 
     print(f"=== RANDOM-START BACKTEST SIMULATOR ===")
@@ -476,6 +500,7 @@ def main():
             real_returns_matrix=real_matrix,
             walk_forward_cache=wf_cache,
             allocation_method=args.allocation,
+            transaction_cost_bps=args.transaction_cost_bps,
         )
         if res is None:
             print(f"  Sim {i+1}: SKIP (no data)")

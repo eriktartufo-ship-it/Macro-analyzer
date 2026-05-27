@@ -69,6 +69,13 @@ def log_prediction(
     if date_predicted is None:
         date_predicted = date.today()
 
+    # CRITICAL #2: ogni prediction attribuita a uno snapshot freezato del modello
+    try:
+        from app.services.validation.model_lock import get_active_version
+        model_version = get_active_version(db)
+    except Exception:
+        model_version = "unsealed"
+
     record = PredictionLog(
         date_predicted=date_predicted,
         regime=classify_output.get("regime", "unknown"),
@@ -76,6 +83,7 @@ def log_prediction(
         probabilities_json=json.dumps(classify_output.get("probabilities", {})),
         top5_json=json.dumps(top5_assets),
         allocation_mode=allocation_mode,
+        model_version=model_version,
     )
     db.add(record)
     db.commit()

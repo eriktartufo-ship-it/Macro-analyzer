@@ -42,17 +42,39 @@ async def lifespan(app: FastAPI):
     # gli overrides salvati (sopravvivenza docker compose restart).
     try:
         from app.database import Base, engine
-        from app.models import RuntimeFlagOverride  # noqa: F401 ensure registered
+        from app.models import ModelSnapshot, RuntimeFlagOverride  # noqa: F401
         from app.services.config_flags import load_runtime_flags_from_db
 
         Base.metadata.create_all(bind=engine, tables=[
             RuntimeFlagOverride.__table__,
+            ModelSnapshot.__table__,
         ])
         n = load_runtime_flags_from_db()
         if n > 0:
             logger.info(f"Loaded {n} runtime flag override(s) from DB")
     except Exception as e:
         logger.warning(f"Runtime flag persistence init skipped: {e}")
+
+    # CRITICAL #2 council 2026-05-27: lock initial model snapshot se non esiste.
+    # Versione sealed iniziale = "v1.0-sealed-YYYY-MM-DD". Successivi lock
+    # manuali via POST /api/v1/model/lock.
+    try:
+        from app.services.validation.model_lock import (
+            get_active_version, lock_current_model,
+        )
+        active = get_active_version()
+        if active == "unsealed":
+            from datetime import date as _date
+            version = f"v1.0-sealed-{_date.today().isoformat()}"
+            info = lock_current_model(
+                version=version,
+                description="Initial sealed snapshot — council CRITICAL #2 trigger.",
+            )
+            logger.info(f"Locked initial model snapshot: {info['version']}")
+        else:
+            logger.info(f"Active model version: {active}")
+    except Exception as e:
+        logger.warning(f"Model snapshot lock init skipped: {e}")
 
     start_scheduler()
     threading.Thread(target=_maybe_backfill_on_startup, daemon=True).start()
