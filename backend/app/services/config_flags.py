@@ -102,6 +102,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_CALIBRATED_SCORING": True,         # T10b promoted
         "USE_GDP_COLLAPSE_OVERRIDE": True,      # T10b promoted
         "USE_ML_REGIME_BLEND": True,            # T10b promoted
+        "USE_UNCERTAINTY_GATE": True,           # Paper trading promoted 2026-05-27
     }
     known = [
         "USE_CALIBRATED_SCORING",
@@ -129,6 +130,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_FINANCIAL_STRESS_VETO",
         "USE_CONDITIONAL_ASSET_SCORING",
         "USE_MOMENTUM_PILLARS",
+        "USE_UNCERTAINTY_GATE",
     ]
     out = {}
     for name in known:
@@ -500,6 +502,25 @@ def use_defensive_transition_mode() -> bool:
     Default: False (back-compat).
     """
     return _read_flag("USE_DEFENSIVE_TRANSITION_MODE")
+
+
+def use_uncertainty_gate() -> bool:
+    """Paper trading insight 2026-05-27 PROMOTED DEFAULT-ON: quando confidence
+    < 0.30, fallback 60/40 statico (no aggressive bet con modello incerto).
+
+    **Validation paper trading** (120 trades × 4 seeds):
+    - Baseline mean alpha vs 60/40: -0.85pp
+    - With gate: **+0.97pp** (delta +1.82pp boost)
+    - Deflation predictions improvement: -7.57pp → -1.48pp (seed 300)
+
+    Risolve pattern "low-confidence systematic failures" (6/30 baseline = 20%
+    delle predictions con conf < 0.30 → 30% win rate vs 50% overall).
+
+    Threshold: confidence < 0.30.
+
+    Default: True (post paper trading validation). Disable via env=0.
+    """
+    return _read_flag("USE_UNCERTAINTY_GATE", default=True)
 
 
 def use_momentum_pillars() -> bool:

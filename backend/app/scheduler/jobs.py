@@ -192,13 +192,34 @@ def _log_and_evaluate_predictions(
     )
     from app.services.scoring.engine import ASSET_REGIME_DATA
 
-    # Top-5 weighted by score (normalize per somma)
-    sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:5]
-    total = sum(s for _, s in sorted_scores) or 1.0
-    top5_assets = [
-        {"asset": a, "score": round(s, 2), "weight": round(s / total, 4)}
-        for a, s in sorted_scores
-    ]
+    # Top-5 weighted by score (normalize per somma).
+    # Paper trading insight 2026-05-27: uncertainty gate (default ON).
+    # Se confidence < 0.30 → top-5 sostituito con 60/40 (no aggressive bet).
+    confidence = regime_result.get("confidence", 0.0)
+    try:
+        from app.services.config_flags import use_uncertainty_gate
+        if use_uncertainty_gate() and confidence < 0.30:
+            top5_assets = [
+                {"asset": "us_equities_growth", "score": 60.0, "weight": 0.60},
+                {"asset": "us_bonds_long", "score": 40.0, "weight": 0.40},
+            ]
+            allocation_mode = "uncertainty_fallback_60_40"
+        else:
+            sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:5]
+            total = sum(s for _, s in sorted_scores) or 1.0
+            top5_assets = [
+                {"asset": a, "score": round(s, 2), "weight": round(s / total, 4)}
+                for a, s in sorted_scores
+            ]
+            allocation_mode = "regime_based"
+    except Exception:
+        sorted_scores = sorted(scores.items(), key=lambda x: -x[1])[:5]
+        total = sum(s for _, s in sorted_scores) or 1.0
+        top5_assets = [
+            {"asset": a, "score": round(s, 2), "weight": round(s / total, 4)}
+            for a, s in sorted_scores
+        ]
+        allocation_mode = "regime_based"
 
     classify_output = {
         "regime": regime_result["regime"],
@@ -208,8 +229,11 @@ def _log_and_evaluate_predictions(
 
     with SessionLocal() as db:
         try:
-            logged = log_prediction(db, classify_output, top5_assets)
-            logger.info(f"PredictionLog #{logged.id}: {logged.regime} ({logged.top5_count} assets)")
+            logged = log_prediction(db, classify_output, top5_assets, allocation_mode=allocation_mode)
+            logger.info(
+                f"PredictionLog #{logged.id}: {logged.regime} ({logged.top5_count} assets, "
+                f"mode={allocation_mode})"
+            )
         except Exception as e:
             logger.warning(f"log_prediction failed: {e}")
 
