@@ -53,6 +53,7 @@ class SimulationResult:
     calm_gate_fires: int = 0
     model_monthly_returns: list[float] = field(default_factory=list)
     benchmark_monthly_returns: list[float] = field(default_factory=list)
+    extra_benchmarks_monthly: dict[str, list[float]] = field(default_factory=dict)
 
 
 def _safe_float(v, default=0.0):
@@ -200,7 +201,23 @@ def run_simulation(
     error_months: dict[str, int] = {}
     calm_gate_fires = 0
 
+    # NEW council 2026-05-27 #2: Benchmark suite multipla per isolare edge reale.
+    # Manteniamo bench primario 60/40 per back-compat metriche existing, MA
+    # tracciamo anche All-Weather + Permanent + pure risk_parity per CI confronti.
     benchmark_weights = {"us_equities_growth": 0.60, "us_bonds_long": 0.40}
+    benchmarks_extra = {
+        # Bridgewater All-Weather conservative (raydalio's own)
+        "all_weather": {
+            "us_equities_growth": 0.30, "us_bonds_long": 0.40,
+            "us_bonds_short": 0.15, "gold": 0.075, "broad_commodities": 0.075,
+        },
+        # Permanent Portfolio (Browne)
+        "permanent": {
+            "us_equities_growth": 0.25, "us_bonds_long": 0.25,
+            "gold": 0.25, "cash_money_market": 0.25,
+        },
+    }
+    extra_monthly: dict[str, list[float]] = {k: [] for k in benchmarks_extra}
 
     # CRITICAL #3 council 2026-05-27: transaction costs.
     # Costo realistic per rebalance: sum(|w_new - w_prev|) * cost_bps / 10000.
@@ -301,6 +318,11 @@ def run_simulation(
             from app.services.backtest.real_returns_matrix import get_real_return
             r_model = get_real_return(real_returns_matrix, current.year, current.month, top5_weights)
             r_bench = get_real_return(real_returns_matrix, current.year, current.month, benchmark_weights)
+            # NEW #2: track extra benchmarks (best-effort, accetta None se asset missing)
+            for bn, bw in benchmarks_extra.items():
+                er = get_real_return(real_returns_matrix, current.year, current.month, bw)
+                if er is not None:
+                    extra_monthly[bn].append(er)
             if r_model is None or r_bench is None:
                 # Skip month — insufficient real data coverage
                 if current.month == 12:
@@ -383,6 +405,7 @@ def run_simulation(
         calm_gate_fires=calm_gate_fires,
         model_monthly_returns=model_monthly,
         benchmark_monthly_returns=bench_monthly,
+        extra_benchmarks_monthly=extra_monthly,
     )
 
 
@@ -565,6 +588,23 @@ def main():
         print(f"    Model significantly different from bench: {sig}")
     except Exception as e:
         print(f"  (Block-bootstrap CI failed: {e})")
+
+    # NEW #2 council: Benchmark suite confronto
+    print(f"\n=== BENCHMARK SUITE (Sortino vs Model {np.mean(model_sortinos):.3f}) ===")
+    extra_aggregated: dict[str, list[float]] = {}
+    for r in results:
+        for bn, monthly in (r.extra_benchmarks_monthly or {}).items():
+            extra_aggregated.setdefault(bn, []).extend(monthly)
+    for bn, monthly in extra_aggregated.items():
+        if len(monthly) < 12:
+            print(f"  {bn:<18} (insufficient data: {len(monthly)} months)")
+            continue
+        sortino = _compute_sortino(monthly)
+        try:
+            ci = block_bootstrap_sortino_ci(monthly, block_size=12, n_bootstrap=500, random_state=42)
+            print(f"  {bn:<18} Sortino={sortino:.3f}  CI [{ci.ci_lower:+.3f}, {ci.ci_upper:+.3f}]  N={len(monthly)}")
+        except Exception:
+            print(f"  {bn:<18} Sortino={sortino:.3f}")
     print(f"  Alpha consistency:     std={np.std(alphas)*100:.1f}pp (lower = more reliable)")
     print("  --- SUSPECT METRICS (CAGR/Sharpe inflated da circular returns) ---")
     print(f"  Model CAGR (suspect):  mean={np.mean(model_cagrs)*100:.2f}%, std={np.std(model_cagrs)*100:.2f}%")

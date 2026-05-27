@@ -1546,6 +1546,81 @@ def get_active_model_version():
     }
 
 
+@router.get("/prediction-log/post-mortem/{prediction_id}")
+def get_post_mortem(
+    prediction_id: int,
+    horizon: str = Query(default="3m", regex="^(1m|3m|6m)$"),
+    db: Session = Depends(get_db),
+):
+    """NEW council 2026-05-27: post-mortem analysis singola failure.
+
+    Reverse engineering: identifica root cause, findings interpretati,
+    suggestions per migliorare il modello.
+    """
+    from app.services.validation.reverse_engineering import post_mortem
+    pm = post_mortem(db, prediction_id, horizon=horizon)
+    if pm is None:
+        raise HTTPException(status_code=404, detail="Prediction non trovata o non valutata")
+    return {
+        "id": pm.prediction_id,
+        "date_predicted": pm.date_predicted.isoformat() if pm.date_predicted else None,
+        "regime": pm.regime,
+        "confidence": pm.confidence,
+        "horizon": pm.horizon,
+        "alpha": pm.alpha,
+        "severity": pm.severity,
+        "regime_was_boundary": pm.regime_was_boundary,
+        "confidence_was_low": pm.confidence_was_low,
+        "top5_assets": pm.top5_assets,
+        "findings": pm.findings,
+        "suggestions": pm.suggestions,
+    }
+
+
+@router.post("/ml/retrain")
+def trigger_ml_retrain():
+    """NEW council 2026-05-27 #5: trigger ML blend retrain.
+
+    Re-fitta RandomForest + GradientBoosting su HISTORICAL_EPISODES corrente.
+    Use case: dopo aver aggiunto nuovi episodi 2025-2026 (COVID-aftermath,
+    AI capex), retrain per riflettere distribution drift.
+
+    Output: metriche LOO CV + Brier + n_episodes addestrato.
+    """
+    from app.services.regime.historical_episodes import HISTORICAL_EPISODES
+    from app.services.regime.ml_classifier import train_classifier
+    try:
+        bundle = train_classifier(episodes=list(HISTORICAL_EPISODES))
+        return {
+            "status": "ok",
+            "n_episodes_train": len(HISTORICAL_EPISODES),
+            "n_features": len(bundle.feature_names) if hasattr(bundle, "feature_names") else None,
+            "loo_accuracy": getattr(bundle, "loo_accuracy", None),
+            "brier_mean": getattr(bundle, "brier_mean", None),
+            "model_classes": getattr(bundle, "classes", []),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ML retrain failed: {str(e)}")
+
+
+@router.get("/prediction-log/learnings")
+def get_learnings(
+    horizon: str = Query(default="3m", regex="^(1m|3m|6m)$"),
+    db: Session = Depends(get_db),
+):
+    """NEW council 2026-05-27: aggregate failure patterns + top actions.
+
+    Use case: quarterly review console. L'utente legge questa lista per
+    decidere quali patterns indagare manualmente per migliorare il modello.
+    """
+    from app.services.validation.reverse_engineering import (
+        generate_improvement_suggestions, post_mortem_recent_failures,
+    )
+    summary = generate_improvement_suggestions(db, horizon=horizon)
+    recent = post_mortem_recent_failures(db, horizon=horizon, limit=10)
+    return {"summary": summary, "recent_failures": recent}
+
+
 @router.post("/model/lock")
 def lock_model_endpoint(
     version: str = Query(..., min_length=3, max_length=64),

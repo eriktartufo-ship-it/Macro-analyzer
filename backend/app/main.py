@@ -50,6 +50,19 @@ async def lifespan(app: FastAPI):
             ModelSnapshot.__table__,
             PredictionLog.__table__,
         ])
+
+        # Lightweight migration: add column model_version se manca (DB esistenti pre-CRITICAL#2)
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE prediction_log "
+                    "ADD COLUMN IF NOT EXISTS model_version VARCHAR(64)"
+                ))
+                conn.commit()
+            except Exception:
+                pass  # already exists or not supported (SQLite)
+
         n = load_runtime_flags_from_db()
         if n > 0:
             logger.info(f"Loaded {n} runtime flag override(s) from DB")

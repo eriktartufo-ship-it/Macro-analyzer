@@ -15,6 +15,7 @@ import { InsiderActivityTile } from "./components/InsiderActivityTile";
 import { Tier9TransitionPanel } from "./components/Tier9TransitionPanel";
 import { Tier9ForecastPanel } from "./components/Tier9ForecastPanel";
 import { LiveTrackRecordPanel } from "./components/LiveTrackRecordPanel";
+import { FailureLearningsPanel } from "./components/FailureLearningsPanel";
 import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
 import { NewsPanel } from "./components/NewsPanel";
 import { DataPage } from "./components/DataPage";
@@ -157,6 +158,7 @@ export default function App() {
           <Tier9TransitionPanel />
           <Tier9ForecastPanel />
           <LiveTrackRecordPanel />
+          <FailureLearningsPanel />
           {explain && <AnalysisPanel explain={explain} />}
           {explain?.trajectory && (
             <ProjectedAssetsPanel
