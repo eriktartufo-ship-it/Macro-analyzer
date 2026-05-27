@@ -11,6 +11,14 @@ setup:
 dev:
 	cd backend && ../.venv/Scripts/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
+# Kill processi uvicorn (Windows port 8000 zombie cleanup)
+kill-dev:
+	powershell -Command "Get-CimInstance Win32_Process -Filter \"Name = 'python.exe'\" | Where-Object {$$_.CommandLine -like '*uvicorn*'} | ForEach-Object {Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue}; $$pids = Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique; foreach ($$p in $$pids) {try {Stop-Process -Id $$p -Force -ErrorAction Stop} catch {}}; 'done'"
+
+# Dev su port alternativa (workaround zombie)
+dev-alt:
+	cd backend && ../.venv/Scripts/uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+
 # Esegue test suite completa
 test:
 	cd backend && ../.venv/Scripts/python -m pytest -v --tb=short

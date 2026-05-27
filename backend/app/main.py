@@ -37,6 +37,23 @@ def _maybe_backfill_on_startup() -> None:
 async def lifespan(app: FastAPI):
     """Startup e shutdown events."""
     logger.info("Avvio Macro Analyzer API...")
+
+    # T11+: assicura che la table runtime_flag_overrides esista, poi carica
+    # gli overrides salvati (sopravvivenza docker compose restart).
+    try:
+        from app.database import Base, engine
+        from app.models import RuntimeFlagOverride  # noqa: F401 ensure registered
+        from app.services.config_flags import load_runtime_flags_from_db
+
+        Base.metadata.create_all(bind=engine, tables=[
+            RuntimeFlagOverride.__table__,
+        ])
+        n = load_runtime_flags_from_db()
+        if n > 0:
+            logger.info(f"Loaded {n} runtime flag override(s) from DB")
+    except Exception as e:
+        logger.warning(f"Runtime flag persistence init skipped: {e}")
+
     start_scheduler()
     threading.Thread(target=_maybe_backfill_on_startup, daemon=True).start()
     yield

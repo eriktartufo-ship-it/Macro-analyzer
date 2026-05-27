@@ -26,15 +26,66 @@ def _read_flag(env_name: str, default: bool = False) -> bool:
     return raw.lower() in _TRUTHY
 
 
-def set_runtime_flag(env_name: str, value: bool | None) -> None:
+def set_runtime_flag(env_name: str, value: bool | None, persist: bool = True) -> None:
     """Set/clear runtime override. None = clear (back to env var).
 
     Thread-safe enough per single-process FastAPI (GIL).
+
+    Args:
+        env_name: nome del flag.
+        value: True/False per attivare/disattivare, None per clear.
+        persist: se True (default), salva su DB `runtime_flag_overrides` per
+            sopravvivere a docker compose restart. Pass False per cambi
+            temporanei (es. test, batch).
     """
     if value is None:
         _RUNTIME_FLAGS.pop(env_name, None)
     else:
         _RUNTIME_FLAGS[env_name] = bool(value)
+
+    if persist:
+        try:
+            _persist_runtime_flag_to_db(env_name, value)
+        except Exception:
+            # Best-effort, non bloccare se DB non disponibile
+            pass
+
+
+def _persist_runtime_flag_to_db(env_name: str, value: bool | None) -> None:
+    """T11+: salva override in DB per sopravvivenza restart."""
+    from app.database import SessionLocal
+    from app.models import RuntimeFlagOverride
+
+    with SessionLocal() as session:
+        existing = session.query(RuntimeFlagOverride).filter_by(flag_name=env_name).first()
+        if value is None:
+            if existing is not None:
+                session.delete(existing)
+        else:
+            if existing is not None:
+                existing.value = bool(value)
+            else:
+                session.add(RuntimeFlagOverride(flag_name=env_name, value=bool(value)))
+        session.commit()
+
+
+def load_runtime_flags_from_db() -> int:
+    """T11+: ricarica runtime overrides dal DB allo startup app.
+
+    Chiamato da `app.main.lifespan`. Ritorna numero flag caricati.
+    Best-effort (se DB non pronto / table non esiste, ritorna 0 silenziosamente).
+    """
+    try:
+        from app.database import SessionLocal
+        from app.models import RuntimeFlagOverride
+
+        with SessionLocal() as session:
+            rows = session.query(RuntimeFlagOverride).all()
+            for row in rows:
+                _RUNTIME_FLAGS[row.flag_name] = row.value
+            return len(rows)
+    except Exception:
+        return 0
 
 
 def get_all_flags_state() -> dict[str, dict]:

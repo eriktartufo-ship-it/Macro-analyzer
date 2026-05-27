@@ -7,6 +7,7 @@ from app.models.macro_indicators import MacroIndicator
 from app.models.news_signals import NewsSignal
 from app.models.prediction_log import PredictionLog
 from app.models.regime_classifications import RegimeClassification
+from app.models.runtime_flag_overrides import RuntimeFlagOverride
 from app.models.secular_trends import SecularTrend
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "NewsSignal",
     "PredictionLog",
     "RegimeClassification",
+    "RuntimeFlagOverride",
     "SecularTrend",
 ]
