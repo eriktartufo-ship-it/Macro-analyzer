@@ -51,6 +51,8 @@ class SimulationResult:
     regime_distribution: dict[str, int] = field(default_factory=dict)
     error_months_by_regime: dict[str, int] = field(default_factory=dict)
     calm_gate_fires: int = 0
+    model_monthly_returns: list[float] = field(default_factory=list)
+    benchmark_monthly_returns: list[float] = field(default_factory=list)
 
 
 def _safe_float(v, default=0.0):
@@ -360,6 +362,8 @@ def run_simulation(
         regime_distribution=regime_dist,
         error_months_by_regime=error_months,
         calm_gate_fires=calm_gate_fires,
+        model_monthly_returns=model_monthly,
+        benchmark_monthly_returns=bench_monthly,
     )
 
 
@@ -400,10 +404,10 @@ def main():
     p.add_argument("--real-prices", action="store_true",
                    help="T9-TA: use yfinance + FRED CPI real returns instead of "
                         "ASSET_REGIME_DATA proxy. Fixes data leakage. Window auto -> 1990+.")
-    p.add_argument("--walk-forward", action="store_true",
+    p.add_argument("--walk-forward", action=argparse.BooleanOptionalAction, default=True,
                    help="T10b: classifica on-the-fly per ogni month-end (NO future "
-                        "leak) invece di leggere classifications DB pre-computed. "
-                        "Sblocca testabilita flag classifier-side.")
+                        "leak). Default ON post-T10c council. Disabilita con "
+                        "--no-walk-forward per leggere classifications DB pre-computed.")
     p.add_argument("--allocation", choices=["equal", "risk_parity", "score_weighted"],
                    default="equal",
                    help="Q1.4 council: allocation method top-5. equal=20%% each, "
@@ -515,6 +519,27 @@ def main():
     print(f"  Model Sortino:         mean={np.mean(model_sortinos):.3f}")
     print(f"  Benchmark Sortino:     mean={np.mean(bench_sortinos):.3f}")
     print(f"  Sortino delta (M-B):   {sortino_delta:+.3f} (T10 gate: >+0.05 to keep flag)")
+
+    # Q1.5 council: Block-bootstrap CI 95% sul Sortino aggregato (model + bench)
+    # da TUTTI i monthly returns cross-sims. Blocchi 12m preservano
+    # autocorrelazione mensile.
+    try:
+        from app.services.validation.bootstrap_ci import block_bootstrap_sortino_ci
+        all_model_monthly = [m for r in results for m in r.model_monthly_returns]
+        all_bench_monthly = [m for r in results for m in r.benchmark_monthly_returns]
+        ci_model = block_bootstrap_sortino_ci(
+            all_model_monthly, block_size=12, n_bootstrap=1000, random_state=42
+        )
+        ci_bench = block_bootstrap_sortino_ci(
+            all_bench_monthly, block_size=12, n_bootstrap=1000, random_state=42
+        )
+        print(f"  Block-bootstrap Sortino CI 95% (block=12m, n_boot=1000):")
+        print(f"    Model:     {ci_model.point_estimate:+.3f} [{ci_model.ci_lower:+.3f}, {ci_model.ci_upper:+.3f}]")
+        print(f"    Benchmark: {ci_bench.point_estimate:+.3f} [{ci_bench.ci_lower:+.3f}, {ci_bench.ci_upper:+.3f}]")
+        sig = ci_model.is_significant(ci_bench.point_estimate)
+        print(f"    Model significantly different from bench: {sig}")
+    except Exception as e:
+        print(f"  (Block-bootstrap CI failed: {e})")
     print(f"  Alpha consistency:     std={np.std(alphas)*100:.1f}pp (lower = more reliable)")
     print("  --- SUSPECT METRICS (CAGR/Sharpe inflated da circular returns) ---")
     print(f"  Model CAGR (suspect):  mean={np.mean(model_cagrs)*100:.2f}%, std={np.std(model_cagrs)*100:.2f}%")

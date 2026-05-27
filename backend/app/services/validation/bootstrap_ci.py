@@ -99,6 +99,105 @@ def bootstrap_metric(
     )
 
 
+def block_bootstrap_metric(
+    per_sample_values: Sequence[float],
+    aggregator: Callable[[Sequence[float]], float] = np.mean,
+    block_size: int = 12,
+    n_bootstrap: int = 1000,
+    confidence: float = 0.95,
+    random_state: int = 42,
+    metric_name: str = "metric",
+) -> BootstrapResult:
+    """Q1.5 council: Block-bootstrap CI per time series con autocorrelazione.
+
+    Standard bootstrap assume iid samples. Monthly time series violano questa
+    assunzione (autocorrelazione persistente). Block-bootstrap resample BLOCCHI
+    consecutivi di lunghezza `block_size`, preservando struttura within-block.
+
+    Args:
+        per_sample_values: serie temporale (es. monthly returns).
+        aggregator: funzione metrica (default np.mean; per Sortino usare
+            statistic come `lambda x: mean(x) / std(x[x<0]) * sqrt(12)`).
+        block_size: lunghezza blocchi consecutivi (default 12 mesi = 1 anno).
+        n_bootstrap: N resample (default 1000).
+        confidence: livello CI (default 0.95).
+        random_state: seed.
+        metric_name: etichetta.
+
+    Returns:
+        BootstrapResult con point estimate + CI block-bootstrap.
+
+    Reference:
+        Künsch (1989), "The Jackknife and the Bootstrap for General Stationary
+        Observations". Standard methodology per macroeconomic time series.
+    """
+    values = np.asarray(per_sample_values, dtype=np.float64)
+    n = len(values)
+    if n == 0 or n < block_size:
+        return BootstrapResult(
+            metric_name=metric_name, point_estimate=0.0,
+            ci_lower=0.0, ci_upper=0.0,
+            n_samples=n, n_bootstrap=n_bootstrap,
+        )
+
+    rng = np.random.default_rng(random_state)
+    n_blocks_needed = (n + block_size - 1) // block_size  # ceil
+    max_start = n - block_size
+    bootstrap_estimates = np.empty(n_bootstrap, dtype=np.float64)
+    for i in range(n_bootstrap):
+        block_starts = rng.integers(0, max_start + 1, size=n_blocks_needed)
+        resample = np.concatenate([values[s:s + block_size] for s in block_starts])[:n]
+        bootstrap_estimates[i] = aggregator(resample)
+
+    alpha = 1.0 - confidence
+    lower_pct = (alpha / 2.0) * 100.0
+    upper_pct = (1.0 - alpha / 2.0) * 100.0
+    ci_lower = float(np.percentile(bootstrap_estimates, lower_pct))
+    ci_upper = float(np.percentile(bootstrap_estimates, upper_pct))
+    point = float(aggregator(values))
+    return BootstrapResult(
+        metric_name=metric_name,
+        point_estimate=point,
+        ci_lower=ci_lower,
+        ci_upper=ci_upper,
+        n_samples=n,
+        n_bootstrap=n_bootstrap,
+    )
+
+
+def block_bootstrap_sortino_ci(
+    monthly_returns: Sequence[float],
+    block_size: int = 12,
+    n_bootstrap: int = 1000,
+    random_state: int = 42,
+) -> BootstrapResult:
+    """Helper: Sortino annualizzato + CI 95% via block-bootstrap.
+
+    Sortino = mean / downside_std * sqrt(12), dove downside_std considera solo
+    returns < 0. Block-bootstrap su 12 mesi → CI robusto a autocorrelazione.
+    """
+
+    def sortino(arr: Sequence[float]) -> float:
+        a = np.asarray(arr, dtype=np.float64)
+        downside = a[a < 0]
+        if len(downside) < 2:
+            return 0.0
+        dstd = downside.std(ddof=1)
+        if dstd < 1e-9:
+            return 0.0
+        return float(a.mean() / dstd * np.sqrt(12))
+
+    return block_bootstrap_metric(
+        monthly_returns,
+        aggregator=sortino,
+        block_size=block_size,
+        n_bootstrap=n_bootstrap,
+        confidence=0.95,
+        random_state=random_state,
+        metric_name="sortino_annualized",
+    )
+
+
 def bootstrap_classification_metrics(
     correct_flags: Sequence[bool],
     top_n_overlaps: Sequence[int],
