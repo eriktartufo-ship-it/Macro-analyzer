@@ -158,8 +158,6 @@ class TestRegressions:
             "USE_DISCRETIONARY_OVERRIDES",
             "USE_DEDOLLAR_BONUS",
             "USE_DFM_ASSET_BONUS",
-            "USE_RANK_PERCENTILE_SCORING",
-            "USE_DOWNSIDE_PROTECTION_BONUS",
         ):
             monkeypatch.delenv(flag, raising=False)
         # Forza reload calibration con flag OFF

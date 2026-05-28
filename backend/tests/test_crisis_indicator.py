@@ -157,7 +157,7 @@ class TestAssessCrisisRiskEndToEnd:
         for k in (
             "USE_DEDOLLAR_PILLAR", "USE_CRISIS_MODULATION", "USE_NEWS_PILLAR",
             "USE_DFM_ASSET_BONUS", "USE_ASSET_FEEDBACK",
-            "USE_ADAPTIVE_THRESHOLDS", "USE_CORRELATION_REGIME",
+            "USE_ADAPTIVE_THRESHOLDS",
             "USE_CROSS_ASSET_PILLARS",
             "USE_FRESHNESS_WEIGHTING",
         ):

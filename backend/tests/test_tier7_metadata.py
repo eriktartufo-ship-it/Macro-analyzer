@@ -26,8 +26,6 @@ def _isolate_flags(monkeypatch):
         "USE_DEDOLLAR_BONUS",
         "USE_DFM_ASSET_BONUS",
         "USE_DISCRETIONARY_OVERRIDES",
-        "USE_RANK_PERCENTILE_SCORING",
-        "USE_DOWNSIDE_PROTECTION_BONUS",
     ):
         monkeypatch.delenv(flag, raising=False)
     reload_calibration()
@@ -61,15 +59,14 @@ class TestMetadataShape:
 
     def test_flags_state_included(self, monkeypatch):
         probs = {"stagflation": 0.7, "deflation": 0.3, "reflation": 0.0, "goldilocks": 0.0}
-        monkeypatch.setenv("USE_DOWNSIDE_PROTECTION_BONUS", "1")
-        monkeypatch.setenv("USE_RANK_PERCENTILE_SCORING", "1")
         out = calculate_final_scores_with_metadata(probs)
-        assert out["downside_protection_active"] is True
-        assert out["rank_percentile_active"] is True
+        # downside_protection_active e rank_percentile_active permanenti False
+        # post-kill 2026-05-28 (flag rimossi dal code audit)
+        assert out["downside_protection_active"] is False
+        assert out["rank_percentile_active"] is False
 
     def test_downside_inactive_in_reflation(self, monkeypatch):
         probs = {"reflation": 1.0, "stagflation": 0.0, "deflation": 0.0, "goldilocks": 0.0}
-        monkeypatch.setenv("USE_DOWNSIDE_PROTECTION_BONUS", "1")
         out = calculate_final_scores_with_metadata(probs)
         assert out["downside_protection_active"] is False
 

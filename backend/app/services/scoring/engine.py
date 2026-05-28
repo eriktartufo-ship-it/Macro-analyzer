@@ -377,8 +377,6 @@ def calculate_final_scores(
         use_dedollar_bonus,
         use_dfm_asset_bonus,
         use_discretionary_overrides,
-        use_downside_protection_bonus,
-        use_rank_percentile_scoring,
     )
 
     if force_include_dedollar is None:
@@ -449,16 +447,12 @@ def calculate_final_scores(
 
     scores: dict[str, float] = {}
 
-    # T7.2 — Rank percentile within-regime: cattura il "winner relativo" anche
-    # se score assoluto basso (es. gold in deflation, cash in stagflation).
-    use_percentile = use_rank_percentile_scoring()
-    score_fn = _asset_regime_score_percentile if use_percentile else _asset_regime_score
+    # T7.2 rank_percentile rimosso 2026-05-28 (council KILL T10b: -0.421 Sortino).
+    use_percentile = False
+    score_fn = _asset_regime_score
 
-    # T7.3 — Downside-protection bonus: ai safe-asset (vol < 0.05) quando
-    # stress regimes (stag+defl) > 40%. Scaling lineare 40%→100% = 0→25 punti.
-    apply_downside_bonus = use_downside_protection_bonus()
-    stress_share = probabilities.get("stagflation", 0.0) + probabilities.get("deflation", 0.0)
-    downside_bonus_active = apply_downside_bonus and stress_share > 0.4
+    # T7.3 downside_protection rimosso 2026-05-28 (code audit: no validation).
+    downside_bonus_active = False
 
     for asset in ASSET_CLASSES:
         base_score = sum(
@@ -485,21 +479,7 @@ def calculate_final_scores(
         scores[asset] = max(0.0, min(100.0, round(final, 1)))
 
     # T9-AUDIT-FIX: Conditional asset scoring P(asset | regime, stress) — blend.
-    # Sostituisce parzialmente lo scoring percentile con tabella esplicita
-    # 12-bucket (regime × stress). Atteso top-5 overlap 2.11 → 2.6+.
-    from app.services.config_flags import use_conditional_asset_scoring
-    if use_conditional_asset_scoring() and indicators is not None:
-        try:
-            from app.services.scoring.asset_conditional import calculate_conditional_scores
-            cond_scores, _ = calculate_conditional_scores(
-                probabilities=probabilities,
-                indicators=indicators,
-                asset_classes=ASSET_CLASSES,
-                base_scores=scores,
-            )
-            scores = {k: round(v, 1) for k, v in cond_scores.items()}
-        except Exception:
-            pass
+    # use_conditional_asset_scoring rimosso 2026-05-28 (code audit: no validation)
 
     # T6.7 — apply asset overrides POST score computation (additive delta + clamp).
     _LAST_APPLIED_ASSET_OVERRIDES.clear()
@@ -546,11 +526,6 @@ def calculate_final_scores_with_metadata(
             "rank_percentile_active": bool,
         }
     """
-    from app.services.config_flags import (
-        use_downside_protection_bonus,
-        use_rank_percentile_scoring,
-    )
-
     scores = calculate_final_scores(
         probabilities=probabilities,
         secular_bonus=secular_bonus,
@@ -559,16 +534,10 @@ def calculate_final_scores_with_metadata(
         force_include_dedollar=force_include_dedollar,
         gdp_yoy_dfm=gdp_yoy_dfm,
     )
-    stress_share = (
-        probabilities.get("stagflation", 0.0)
-        + probabilities.get("deflation", 0.0)
-    )
     return {
         "scores": scores,
         "applied_regime_overrides": list(_LAST_APPLIED_OVERRIDES),
         "applied_asset_overrides": list(_LAST_APPLIED_ASSET_OVERRIDES),
-        "downside_protection_active": (
-            use_downside_protection_bonus() and stress_share > 0.5
-        ),
-        "rank_percentile_active": use_rank_percentile_scoring(),
+        "downside_protection_active": False,  # T7.3 killed 2026-05-28
+        "rank_percentile_active": False,  # T7.2 killed 2026-05-28 (council T10b)
     }

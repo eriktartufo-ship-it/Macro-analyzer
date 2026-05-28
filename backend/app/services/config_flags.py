@@ -117,22 +117,22 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_DFM_ASSET_BONUS",
         # "USE_ASSET_FEEDBACK" rimosso 2026-05-28 (dead code)
         "USE_ADAPTIVE_THRESHOLDS",
-        "USE_CORRELATION_REGIME",
+        # "USE_CORRELATION_REGIME" rimosso 2026-05-28
         "USE_CROSS_ASSET_PILLARS",
         "USE_LIVE_CALIBRATION",
         "USE_POSITION_SIZING_LAYER",
         "USE_VOL_TARGETING",
         "USE_DISCRETIONARY_OVERRIDES",
         "USE_FRESHNESS_WEIGHTING",
-        "USE_SUB_REGIMES",
-        "USE_REGIME_2D",
+        # "USE_SUB_REGIMES" rimosso 2026-05-28
+        # "USE_REGIME_2D" rimosso 2026-05-28 (dead)
         "USE_GDP_COLLAPSE_OVERRIDE",
-        "USE_RANK_PERCENTILE_SCORING",
-        "USE_DOWNSIDE_PROTECTION_BONUS",
+        # "USE_RANK_PERCENTILE_SCORING" rimosso 2026-05-28 (council KILL)
+        # "USE_DOWNSIDE_PROTECTION_BONUS" rimosso 2026-05-28
         "USE_ML_REGIME_BLEND",
         "USE_DEFENSIVE_TRANSITION_MODE",
         "USE_FINANCIAL_STRESS_VETO",
-        "USE_CONDITIONAL_ASSET_SCORING",
+        # "USE_CONDITIONAL_ASSET_SCORING" rimosso 2026-05-28
         "USE_MOMENTUM_PILLARS",
         "USE_UNCERTAINTY_GATE",
         "USE_LIQUIDITY_SURGE_OVERRIDE",
@@ -307,26 +307,7 @@ def use_cross_asset_pillars() -> bool:
     return _read_flag("USE_CROSS_ASSET_PILLARS")
 
 
-def use_correlation_regime() -> bool:
-    """Tier 6.5 CORRELATION REGIME: se True, classifica avg pairwise
-    correlation cross-asset rolling 60d come signal di crisis.
-
-    Filosofia: in crisi (2008-Q4, 2020-Q1, 2022-Sep) le correlazioni
-    cross-asset rompono e tutto va a +1 (flight to safety). Detect
-    "correlation breakdown" come confirming signal per crisis_indicator.
-
-    Regimi (basati su avg pairwise correlation):
-    - > 0.7 → "correlation_crisis" (everything correlated up)
-    - > 0.5 → "correlation_elevated"
-    - < 0.2 → "correlation_diversified" (normale)
-    - else  → "correlation_moderate"
-
-    Modulator opzionale per `crisis_indicator.assess_crisis_risk` via
-    nuovo trigger `correlation_breakdown` (peso doppio se fired).
-
-    Default: False (back-compat puro).
-    """
-    return _read_flag("USE_CORRELATION_REGIME")
+# use_correlation_regime() rimosso 2026-05-28 (code audit: module deleted)
 
 
 def use_adaptive_thresholds() -> bool:
@@ -379,40 +360,10 @@ def use_freshness_weighting() -> bool:
     return _read_flag("USE_FRESHNESS_WEIGHTING")
 
 
-def use_sub_regimes() -> bool:
-    """Tier 6.8 HIERARCHICAL SUB-REGIME: se True, classifica un sub-regime
-    intra-quadrante (es. reflation → early/mid/late_cycle).
-
-    Secondary classifier rule-light sopra il primario 4-quadranti.
-    Mapping:
-    - reflation: early_cycle / mid_cycle / late_cycle
-    - stagflation: oil_shock / debasement / wage_spiral
-    - deflation: financial_crisis / demand_shock / disinflation
-    - goldilocks: complacency / steady_state
-
-    NON sostituisce il regime primario, info layer aggiuntivo.
-
-    Default: False.
-    """
-    return _read_flag("USE_SUB_REGIMES")
+# use_sub_regimes() rimosso 2026-05-28 (code audit: module deleted)
 
 
-def use_regime_2d() -> bool:
-    """Tier 6.2 REGIME CONTINUO 2D: se True, espone regime come tupla
-    (growth_z, inflation_z) in coordinate continue invece di solo 4 quadranti.
-
-    Mapping:
-    - reflation = (+growth, +inflation)
-    - stagflation = (-growth, +inflation)
-    - deflation = (-growth, -inflation)
-    - goldilocks = (+growth, -inflation)
-
-    API: nuovo campo `regime_2d: {growth_z, inflation_z}` affiancato a
-    `probabilities` (back-compat: probabilities resta autoritative).
-
-    Default: False (back-compat puro).
-    """
-    return _read_flag("USE_REGIME_2D")
+# use_regime_2d() rimosso 2026-05-28 (code audit: module deleted, no frontend consumer)
 
 
 def use_gdp_collapse_override() -> bool:
@@ -441,33 +392,10 @@ def use_gdp_collapse_override() -> bool:
     return _read_flag("USE_GDP_COLLAPSE_OVERRIDE", default=True)
 
 
-def use_rank_percentile_scoring() -> bool:
-    """Tier 7.2 RANK PERCENTILE SCORING: se True, lo scoring asset usa
-    il rank percentile within-regime invece dello score assoluto.
-
-    Filosofia: in deflation tutti gli asset perdono, ma alcuni perdono MENO.
-    Il modello deve premiare il "winner relativo" anche se ha score assoluto
-    basso. Senza questo flag gold scora 47 in deflation e finisce fuori dal
-    podio anche se storicamente è top-3.
-
-    Implementazione: pre-compute `regime_percentiles[regime][asset]` all'import.
-    Sostituisce `asset_regime_score(asset, r)` con `percentile(asset, r) * 100`.
-
-    Default: False (back-compat).
-    """
-    return _read_flag("USE_RANK_PERCENTILE_SCORING")
+# use_rank_percentile_scoring() rimosso 2026-05-28 (council KILL T10b: -0.421 Sortino)
 
 
-def use_conditional_asset_scoring() -> bool:
-    """T9-AUDIT-FIX: Conditional asset scoring P(asset | regime, stress).
-
-    Sostituisce/integra `rank_percentile` con una mappa esplicita 12-bucket
-    (4 regimi × 3 stress_levels). Asset preferiti calibrati empiricamente dai
-    37 episodi storici labeled. Atteso top-5 overlap: 2.11 → 2.6+.
-
-    Default: False (back-compat).
-    """
-    return _read_flag("USE_CONDITIONAL_ASSET_SCORING")
+# use_conditional_asset_scoring() rimosso 2026-05-28 (code audit: no validation)
 
 
 def use_financial_stress_veto() -> bool:
@@ -604,20 +532,7 @@ def use_ml_regime_blend() -> bool:
     return _read_flag("USE_ML_REGIME_BLEND", default=True)
 
 
-def use_downside_protection_bonus() -> bool:
-    """Tier 7.3 DOWNSIDE PROTECTION BONUS: se True, aggiunge +15 punti score
-    a asset con `vol < 0.05 AND avg_return > -0.05` quando
-    `prob_stagflation + prob_deflation > 0.5`.
-
-    Cattura il "cash king" del 2022 e dei periodi di stress dove gli asset
-    safe a bassa vol (cash, short-term bonds) preservano il potere d'acquisto
-    relativamente meglio. Il scoring standard penalizza il real_return
-    negativo in assoluto; questo bonus introduce la dimensione relativa
-    "downside protection vs altri asset".
-
-    Default: False (back-compat).
-    """
-    return _read_flag("USE_DOWNSIDE_PROTECTION_BONUS")
+# use_downside_protection_bonus() rimosso 2026-05-28 (code audit: no validation)
 
 
 # `use_asset_feedback` rimosso 2026-05-28 (code audit): modulo dead, 21 test
