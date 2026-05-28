@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import { api } from "./api/client";
 import { useDedollarBonus } from "./hooks/useDedollarBonus";
 import type { CrisisHistory, CrisisRiskAssessment, CurrentRegime, Dedollarization, InsiderActivity, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
@@ -6,19 +6,22 @@ import { Header, type Page, type Theme } from "./components/Header";
 import { RegimeCard } from "./components/RegimeCard";
 import { ProbabilityBars } from "./components/ProbabilityBars";
 import { RegimeTimelineChart } from "./components/RegimeTimelineChart";
-import { AssetRankingTable } from "./components/AssetRankingTable";
-import { DedollarizationPage } from "./components/DedollarizationPage";
-import { AnalysisPanel } from "./components/AnalysisPanel";
-import { CrisisHistoryTimeline } from "./components/CrisisHistoryTimeline";
 import { CrisisRiskPanel } from "./components/CrisisRiskPanel";
-import { InsiderActivityTile } from "./components/InsiderActivityTile";
-import { Tier9TransitionPanel } from "./components/Tier9TransitionPanel";
-import { Tier9ForecastPanel } from "./components/Tier9ForecastPanel";
 import { LiveTrackRecordPanel } from "./components/LiveTrackRecordPanel";
-import { FailureLearningsPanel } from "./components/FailureLearningsPanel";
 import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
-import { NewsPanel } from "./components/NewsPanel";
-import { DataPage } from "./components/DataPage";
+import { LazyDetails } from "./components/LazyDetails";
+
+// Lazy-loaded — heavy / off-dashboard / collapsible
+const DedollarizationPage = lazy(() => import("./components/DedollarizationPage").then(m => ({ default: m.DedollarizationPage })));
+const AssetRankingTable = lazy(() => import("./components/AssetRankingTable").then(m => ({ default: m.AssetRankingTable })));
+const DataPage = lazy(() => import("./components/DataPage").then(m => ({ default: m.DataPage })));
+const NewsPanel = lazy(() => import("./components/NewsPanel").then(m => ({ default: m.NewsPanel })));
+const AnalysisPanel = lazy(() => import("./components/AnalysisPanel").then(m => ({ default: m.AnalysisPanel })));
+const CrisisHistoryTimeline = lazy(() => import("./components/CrisisHistoryTimeline").then(m => ({ default: m.CrisisHistoryTimeline })));
+const InsiderActivityTile = lazy(() => import("./components/InsiderActivityTile").then(m => ({ default: m.InsiderActivityTile })));
+const Tier9TransitionPanel = lazy(() => import("./components/Tier9TransitionPanel").then(m => ({ default: m.Tier9TransitionPanel })));
+const Tier9ForecastPanel = lazy(() => import("./components/Tier9ForecastPanel").then(m => ({ default: m.Tier9ForecastPanel })));
+const FailureLearningsPanel = lazy(() => import("./components/FailureLearningsPanel").then(m => ({ default: m.FailureLearningsPanel })));
 
 const THEME_KEY = "macro-theme";
 
@@ -71,31 +74,48 @@ export default function App() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [r, h, s, e, d, n, c, i, ch] = await Promise.all([
+
+    // PHASE 1 — critical above-the-fold (regime + scores + explain + crisis)
+    const [r, s, e, c] = await Promise.all([
       safe(api.currentRegime()),
-      safe(api.regimeHistory(365 * 5)),
       safe(api.scoreboard()),
       safe(api.regimeExplain()),
-      safe(api.dedollarization()),
-      safe(api.news()),
       safe(api.crisisRisk()),
-      safe(api.insiderActivity({ days: 7, maxFilingsPerDay: 30 })),
-      safe(api.crisisRiskHistory(365 * 30)),
     ]);
     setRegime(r);
-    setRegimeHistory(h ?? []);
     setScoreboard(s);
     setExplain(e);
-    setDedollar(d);
-    setNews(n ?? []);
     setCrisis(c);
-    setInsider(i);
-    setCrisisHistory(ch);
     if (!r && !s) {
       setError("Dati non ancora disponibili — attendi il primo refresh oppure premi Refresh data.");
     }
     setLoading(false);
+
+    // PHASE 2 — secondary (timeline + dedollar + news), no blocking UI
+    Promise.all([
+      safe(api.regimeHistory(365 * 5)),
+      safe(api.dedollarization()),
+      safe(api.news()),
+    ]).then(([h, d, n]) => {
+      setRegimeHistory(h ?? []);
+      setDedollar(d);
+      setNews(n ?? []);
+    });
   }, []);
+
+  // Lazy fetch — only when the collapsible details opens
+  const loadInsider = useCallback(async () => {
+    if (insider) return;
+    const i = await safe(api.insiderActivity({ days: 7, maxFilingsPerDay: 30 }));
+    setInsider(i);
+  }, [insider]);
+
+  const loadCrisisHistory = useCallback(async () => {
+    if (crisisHistory) return;
+    // 10 anni invece di 30: la timeline storica resta significativa, payload molto minore
+    const ch = await safe(api.crisisRiskHistory(365 * 10));
+    setCrisisHistory(ch);
+  }, [crisisHistory]);
 
   useEffect(() => {
     load();
@@ -115,6 +135,7 @@ export default function App() {
   };
 
   const ready = regime && scoreboard;
+  const fallback = <div className="loading">Caricamento…</div>;
 
   return (
     <div className="app">
@@ -145,7 +166,7 @@ export default function App() {
           {/* PROOF — Live track record (validation reale) */}
           <LiveTrackRecordPanel />
 
-          {/* TIMELINE — regime history visual */}
+          {/* TIMELINE — regime history visual (lazy: phase 2 data) */}
           {regimeHistory.length > 1 && (
             <RegimeTimelineChart
               history={regimeHistory}
@@ -166,42 +187,71 @@ export default function App() {
             />
           )}
 
-          {/* DETAILS — collapsibles per default (riduce visual noise + page load) */}
-          <details className="card">
-            <summary style={{ cursor: "pointer", fontWeight: 600 }}>
-              📊 Analytics & insights aggiuntive
-            </summary>
-            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* DETAILS — lazy mount + lazy fetch (riduce TTI + payload) */}
+          <LazyDetails summary="📊 Analytics & insights aggiuntive">
+            <Suspense fallback={fallback}>
               <Tier9TransitionPanel />
               <Tier9ForecastPanel />
               <FailureLearningsPanel />
               {explain && <AnalysisPanel explain={explain} />}
-              {crisisHistory && crisisHistory.n_points > 1 && (
-                <CrisisHistoryTimeline data={crisisHistory} />
-              )}
-              {insider && <InsiderActivityTile data={insider} />}
-            </div>
-          </details>
+              <CrisisHistoryOnOpen
+                onMount={loadCrisisHistory}
+                data={crisisHistory}
+              />
+              <InsiderOnOpen onMount={loadInsider} data={insider} />
+            </Suspense>
+          </LazyDetails>
         </>
       )}
 
-      {ready && page === "sentiment" && <NewsPanel news={news} />}
+      {ready && page === "sentiment" && (
+        <Suspense fallback={fallback}>
+          <NewsPanel news={news} />
+        </Suspense>
+      )}
 
       {ready && page === "dedollar" && dedollar && (
-        <DedollarizationPage
-          data={dedollar}
-          rawIndicators={explain?.dedollar_indicators}
-        />
+        <Suspense fallback={fallback}>
+          <DedollarizationPage
+            data={dedollar}
+            rawIndicators={explain?.dedollar_indicators}
+          />
+        </Suspense>
       )}
 
       {ready && page === "assets" && (
-        <AssetRankingTable
-          scores={scoreboard.scores}
-          projected={explain?.trajectory?.projected_scores}
-        />
+        <Suspense fallback={fallback}>
+          <AssetRankingTable
+            scores={scoreboard.scores}
+            projected={explain?.trajectory?.projected_scores}
+          />
+        </Suspense>
       )}
 
-      {ready && page === "data" && <DataPage />}
+      {ready && page === "data" && (
+        <Suspense fallback={fallback}>
+          <DataPage />
+        </Suspense>
+      )}
     </div>
   );
+}
+
+// Wrapper interni che triggera fetch al primo mount (= primo open del details)
+function CrisisHistoryOnOpen({ onMount, data }: { onMount: () => void; data: CrisisHistory | null }) {
+  useEffect(() => {
+    onMount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!data || data.n_points <= 1) return null;
+  return <CrisisHistoryTimeline data={data} />;
+}
+
+function InsiderOnOpen({ onMount, data }: { onMount: () => void; data: InsiderActivity | null }) {
+  useEffect(() => {
+    onMount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!data) return null;
+  return <InsiderActivityTile data={data} />;
 }
