@@ -95,6 +95,13 @@ ASSET_DEDOLLAR_SENSITIVITY: dict[str, float] = {
     "us_bonds_short": -2.0,
     "cash_money_market": -4.0,
     "us_bonds_long": -5.0,
+    # T11 — Sector ETF: sensitivity vs USD weakening
+    "sector_energy": 3.0,        # Oil priced in USD, weak USD = bullish
+    "sector_financials": -2.0,   # USD weakness pressures USD bank earnings
+    "sector_utilities": -1.0,    # Bond-like, hurt by inflation
+    "sector_technology": -1.5,   # Global revenue but USD strong = better FX
+    "sector_healthcare": 0.0,    # Neutral (global mix)
+    "sector_staples": 0.5,       # Slight positive (global brands, pricing power)
 }
 
 

@@ -94,6 +94,37 @@ ASSET_TICKERS: dict[str, dict[str, str | None]] = {
         "backfill_proxy": "BTC-USD",
         "description": "Crypto broad (ETH / BTC fallback)",
     },
+    # T11 — Sector ETF (1998-12-22 inception SPDR sector series)
+    "sector_energy": {
+        "ticker": "XLE",
+        "backfill_proxy": None,  # pre-1998: FF "Energy" industry proxy disponibile in factors module
+        "description": "Energy Select Sector SPDR",
+    },
+    "sector_financials": {
+        "ticker": "XLF",
+        "backfill_proxy": None,
+        "description": "Financial Select Sector SPDR",
+    },
+    "sector_utilities": {
+        "ticker": "XLU",
+        "backfill_proxy": None,
+        "description": "Utilities Select Sector SPDR",
+    },
+    "sector_technology": {
+        "ticker": "XLK",
+        "backfill_proxy": None,
+        "description": "Technology Select Sector SPDR",
+    },
+    "sector_healthcare": {
+        "ticker": "XLV",
+        "backfill_proxy": None,
+        "description": "Health Care Select Sector SPDR",
+    },
+    "sector_staples": {
+        "ticker": "XLP",
+        "backfill_proxy": None,
+        "description": "Consumer Staples Select Sector SPDR",
+    },
 }
 
 

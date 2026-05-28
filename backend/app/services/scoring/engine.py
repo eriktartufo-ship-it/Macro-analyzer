@@ -32,6 +32,13 @@ ASSET_CLASSES = [
     "cash_money_market",
     "bitcoin",
     "crypto_broad",
+    # T11 — Sector ETF expansion (Council 2026-05-28: alpha intra-regime)
+    "sector_energy",          # XLE — Energy Select Sector SPDR (1998+)
+    "sector_financials",      # XLF — Financials (1998+)
+    "sector_utilities",       # XLU — Utilities (1998+)
+    "sector_technology",      # XLK — Technology (1998+)
+    "sector_healthcare",      # XLV — Health Care (1998+)
+    "sector_staples",         # XLP — Consumer Staples (1998+)
 ]
 
 # Performance storiche REALI (inflation-adjusted) per asset class x regime.
@@ -178,6 +185,55 @@ ASSET_REGIME_DATA: dict[str, dict[str, dict[str, float]]] = {
         "stagflation":  {"hit_rate": 0.25, "avg_return": -0.50, "vol": 0.90, "sharpe": -0.56},
         "deflation":    {"hit_rate": 0.22, "avg_return": -0.45, "vol": 0.95, "sharpe": -0.47},
         "goldilocks":   {"hit_rate": 0.48, "avg_return": 0.12, "vol": 0.80, "sharpe": 0.18},
+    },
+    # ──────────────────────────────────────────────────────────────────────
+    # T11 SECTOR ETF — Calibrazione 1998-12-22 inception → 2024
+    # Reference: 2008 GFC sector returns (XLF -55%, XLK -42%, XLP -16%),
+    # 2020 Q1 COVID (XLU defensive +18% YTD pre-Mar, XLF -32%),
+    # 2022 stagflation (XLE +64% real best-of-class, XLK -28%),
+    # 1995-99 + 2013-19 goldilocks (XLK +25/+22% real best).
+    # ──────────────────────────────────────────────────────────────────────
+    "sector_energy": {
+        # XLE: cyclical commodity-exposed. Best stagflation winner.
+        "reflation":    {"hit_rate": 0.65, "avg_return": 0.18, "vol": 0.30, "sharpe": 0.60},
+        "stagflation":  {"hit_rate": 0.78, "avg_return": 0.30, "vol": 0.32, "sharpe": 0.94},
+        "deflation":    {"hit_rate": 0.18, "avg_return": -0.35, "vol": 0.42, "sharpe": -0.83},
+        "goldilocks":   {"hit_rate": 0.45, "avg_return": 0.04, "vol": 0.26, "sharpe": 0.15},
+    },
+    "sector_financials": {
+        # XLF: rate-sensitive NIM expansion in reflation, crash in 2008/2020.
+        "reflation":    {"hit_rate": 0.70, "avg_return": 0.15, "vol": 0.20, "sharpe": 0.75},
+        "stagflation":  {"hit_rate": 0.40, "avg_return": -0.05, "vol": 0.24, "sharpe": -0.21},
+        "deflation":    {"hit_rate": 0.18, "avg_return": -0.35, "vol": 0.32, "sharpe": -1.09},
+        "goldilocks":   {"hit_rate": 0.65, "avg_return": 0.12, "vol": 0.18, "sharpe": 0.67},
+    },
+    "sector_utilities": {
+        # XLU: bond-like, hurt by rising rates, defensive in deflation/goldilocks.
+        "reflation":    {"hit_rate": 0.40, "avg_return": 0.02, "vol": 0.13, "sharpe": 0.15},
+        "stagflation":  {"hit_rate": 0.40, "avg_return": -0.08, "vol": 0.16, "sharpe": -0.50},
+        "deflation":    {"hit_rate": 0.65, "avg_return": 0.08, "vol": 0.13, "sharpe": 0.62},
+        "goldilocks":   {"hit_rate": 0.62, "avg_return": 0.08, "vol": 0.11, "sharpe": 0.73},
+    },
+    "sector_technology": {
+        # XLK: cyclical growth. Best goldilocks, worst stagflation/deflation.
+        "reflation":    {"hit_rate": 0.75, "avg_return": 0.18, "vol": 0.20, "sharpe": 0.90},
+        "stagflation":  {"hit_rate": 0.20, "avg_return": -0.25, "vol": 0.28, "sharpe": -0.89},
+        "deflation":    {"hit_rate": 0.25, "avg_return": -0.32, "vol": 0.30, "sharpe": -1.07},
+        "goldilocks":   {"hit_rate": 0.85, "avg_return": 0.22, "vol": 0.16, "sharpe": 1.38},
+    },
+    "sector_healthcare": {
+        # XLV: defensive growth. Steady performer cross-regime.
+        "reflation":    {"hit_rate": 0.60, "avg_return": 0.09, "vol": 0.14, "sharpe": 0.64},
+        "stagflation":  {"hit_rate": 0.55, "avg_return": 0.02, "vol": 0.16, "sharpe": 0.12},
+        "deflation":    {"hit_rate": 0.50, "avg_return": -0.10, "vol": 0.18, "sharpe": -0.55},
+        "goldilocks":   {"hit_rate": 0.75, "avg_return": 0.13, "vol": 0.12, "sharpe": 1.08},
+    },
+    "sector_staples": {
+        # XLP: defensive value, pricing power, lag cyclicals.
+        "reflation":    {"hit_rate": 0.45, "avg_return": 0.05, "vol": 0.12, "sharpe": 0.42},
+        "stagflation":  {"hit_rate": 0.55, "avg_return": 0.02, "vol": 0.13, "sharpe": 0.15},
+        "deflation":    {"hit_rate": 0.65, "avg_return": 0.05, "vol": 0.13, "sharpe": 0.38},
+        "goldilocks":   {"hit_rate": 0.65, "avg_return": 0.09, "vol": 0.10, "sharpe": 0.90},
     },
 }
 
