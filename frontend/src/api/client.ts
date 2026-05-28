@@ -35,8 +35,7 @@ import type {
   TransitionMatrix,
   TransitionCheckResponse,
   MLForecastResponse,
-  SubRegimeResponse,
-  Regime2DResponse,
+  // Regime2DResponse + SubRegimeResponse rimossi 2026-05-28
 } from "../types";
 
 const BASE = "/api/v1";
@@ -125,9 +124,7 @@ export const api = {
       undefined,
       { retries: 0 },
     ),
-  subRegime: () => request<SubRegimeResponse>("/regime/sub-regime", undefined, { retries: 0 }),
-  regime2D: (blend = 0.5) =>
-    request<Regime2DResponse>(`/regime/regime-2d?blend=${blend}`, undefined, { retries: 0 }),
+  // subRegime + regime2D rimossi 2026-05-28 (code audit: no frontend consumer)
   // CRITICAL #1+#2 council 2026-05-27: live track record + model snapshot lock
   predictionLogStats: (horizon: "1m" | "3m" | "6m" = "3m") =>
     request<PredictionLogStats>(

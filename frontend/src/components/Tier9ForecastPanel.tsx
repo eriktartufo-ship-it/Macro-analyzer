@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../api/client";
 import type { MLForecastResponse } from "../types";
 
@@ -10,45 +10,41 @@ import type { MLForecastResponse } from "../types";
  */
 export function Tier9ForecastPanel() {
   const [data, setData] = useState<MLForecastResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [horizons] = useState("1,3,6,12");
 
-  useEffect(() => {
-    let alive = true;
+  // Performance fix 2026-05-28: on-demand load (era auto-fetch al mount,
+  // lento per transition matrix estimation interna)
+  const load = () => {
     setLoading(true);
+    setError(null);
     api
       .mlForecast(horizons, 5)
       .then((d) => {
-        if (alive) {
-          setData(d);
-          setError(null);
-        }
+        setData(d);
       })
-      .catch((e) => {
-        if (alive) setError(String(e));
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [horizons]);
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
+  };
 
-  if (loading) {
-    return <div className="card">Caricamento ML forecast...</div>;
-  }
-  if (error || !data) {
+  if (!data && !loading) {
     return (
       <div className="card">
-        <h3>ML Forecast</h3>
-        <p style={{ color: "var(--text-muted)" }}>
-          Endpoint /regime/ml-forecast non disponibile. Errore: {error}
+        <h3 style={{ margin: 0, marginBottom: 8 }}>Forecast 1-12 mesi (T9)</h3>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: 12 }}>
+          ML forecast con transition matrix empirica. On-demand per ridurre
+          page load latency.
         </p>
+        <button onClick={load} className="btn">Esegui forecast</button>
+        {error && <p style={{ color: "var(--deflation)", marginTop: 8 }}>Errore: {error}</p>}
       </div>
     );
   }
+  if (loading) {
+    return <div className="card">Computing ML forecast...</div>;
+  }
+  if (!data) return null;
 
   return (
     <div className="card">

@@ -2039,7 +2039,9 @@ def get_transition_check(db: Session = Depends(get_db)):
     Quando in transizione, Buffett/Taleb/raydalio dicono: meglio cash + bonds +
     gold che inseguire un regime ambiguo.
     """
-    from app.services.regime.classifier import classify_regime
+    # Performance fix 2026-05-28: usa DB cached regime invece di ri-classificare.
+    # classify_regime() ricalcola tutti i pillar + ML blend + override = lento.
+    # DB ha già le probs dell'ultima classification (scheduler giornaliero).
     from app.services.regime.transition_detector import (
         assess_transition,
         get_defensive_allocation,
@@ -2051,30 +2053,22 @@ def get_transition_check(db: Session = Depends(get_db)):
     if latest is None:
         raise HTTPException(status_code=404, detail="No regime classification found")
 
-    indicators_json = latest.conditions_met or {}
-    if isinstance(indicators_json, str):
-        try:
-            indicators_json = json.loads(indicators_json)
-        except (ValueError, TypeError):
-            indicators_json = {}
-    indicators = (
-        indicators_json.get("indicators", {})
-        if isinstance(indicators_json, dict)
-        else {}
-    )
+    probs = {
+        "reflation": float(latest.probability_reflation or 0),
+        "stagflation": float(latest.probability_stagflation or 0),
+        "deflation": float(latest.probability_deflation or 0),
+        "goldilocks": float(latest.probability_goldilocks or 0),
+    }
+    confidence = float(latest.confidence or 0.5)
 
-    out = classify_regime(indicators)
-    assessment = assess_transition(
-        probs=out["probabilities"],
-        confidence=out.get("confidence", 0.5),
-    )
+    assessment = assess_transition(probs=probs, confidence=confidence)
     defensive = get_defensive_allocation()
 
     return {
         "date": str(latest.date),
-        "current_regime": out["regime"],
-        "current_probs": {k: round(v, 4) for k, v in out["probabilities"].items()},
-        "confidence": out.get("confidence", 0.0),
+        "current_regime": latest.regime,
+        "current_probs": {k: round(v, 4) for k, v in probs.items()},
+        "confidence": confidence,
         "is_transition": assessment.is_transition,
         "triggers_fired": assessment.triggers_fired,
         "triggers_count": assessment.triggers_count,

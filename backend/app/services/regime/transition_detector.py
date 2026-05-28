@@ -149,35 +149,5 @@ def get_defensive_allocation() -> dict[str, float]:
     return dict(DEFENSIVE_ALLOCATION)
 
 
-def blend_with_defensive(
-    base_allocation: dict[str, float],
-    transition_strength: float = 1.0,
-) -> dict[str, float]:
-    """Blend allocazione base con defensive in proporzione `transition_strength`.
-
-    Args:
-        base_allocation: allocazione regime-based (top-N weights)
-        transition_strength: 0=no defensive, 1=full defensive
-
-    Returns:
-        Allocation blended, Σ=1.0.
-
-    Esempio:
-        base = {"us_equities_growth": 0.5, "gold": 0.3, "bitcoin": 0.2}
-        transition_strength = 0.7
-        → result = 0.3 × base + 0.7 × defensive
-    """
-    transition_strength = max(0.0, min(1.0, transition_strength))
-    defensive = get_defensive_allocation()
-    # Universe = unione assets
-    all_assets = set(base_allocation.keys()) | set(defensive.keys())
-    blended = {}
-    for asset in all_assets:
-        b = base_allocation.get(asset, 0.0)
-        d = defensive.get(asset, 0.0)
-        blended[asset] = (1.0 - transition_strength) * b + transition_strength * d
-    # Renormalize
-    total = sum(blended.values())
-    if total > 0:
-        blended = {k: v / total for k, v in blended.items()}
-    return blended
+# `blend_with_defensive` rimosso 2026-05-28 (code audit): orphan, solo test, zero
+# consumer in produzione. routes.py:2028 chiama get_defensive_allocation() raw.

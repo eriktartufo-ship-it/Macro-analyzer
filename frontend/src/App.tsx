@@ -133,6 +133,7 @@ export default function App() {
 
       {ready && page === "dashboard" && (
         <>
+          {/* HERO: regime corrente + probability — above the fold */}
           <div className="grid grid-2">
             <RegimeCard data={regime} trajectory={explain?.trajectory} />
             <ProbabilityBars
@@ -140,6 +141,11 @@ export default function App() {
               projected={explain?.trajectory?.projected_probabilities}
             />
           </div>
+
+          {/* PROOF — Live track record (validation reale) */}
+          <LiveTrackRecordPanel />
+
+          {/* TIMELINE — regime history visual */}
           {regimeHistory.length > 1 && (
             <RegimeTimelineChart
               history={regimeHistory}
@@ -150,22 +156,32 @@ export default function App() {
               }
             />
           )}
+
+          {/* CRISIS RISK + Asset projection — key actionable info */}
           {crisis && <CrisisRiskPanel data={crisis} />}
-          {crisisHistory && crisisHistory.n_points > 1 && (
-            <CrisisHistoryTimeline data={crisisHistory} />
-          )}
-          {insider && <InsiderActivityTile data={insider} />}
-          <Tier9TransitionPanel />
-          <Tier9ForecastPanel />
-          <LiveTrackRecordPanel />
-          <FailureLearningsPanel />
-          {explain && <AnalysisPanel explain={explain} />}
           {explain?.trajectory && (
             <ProjectedAssetsPanel
               trajectory={explain.trajectory}
               currentScores={scoreboard.scores}
             />
           )}
+
+          {/* DETAILS — collapsibles per default (riduce visual noise + page load) */}
+          <details className="card">
+            <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+              📊 Analytics & insights aggiuntive
+            </summary>
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+              <Tier9TransitionPanel />
+              <Tier9ForecastPanel />
+              <FailureLearningsPanel />
+              {explain && <AnalysisPanel explain={explain} />}
+              {crisisHistory && crisisHistory.n_points > 1 && (
+                <CrisisHistoryTimeline data={crisisHistory} />
+              )}
+              {insider && <InsiderActivityTile data={insider} />}
+            </div>
+          </details>
         </>
       )}
 

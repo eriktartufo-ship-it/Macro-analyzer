@@ -115,7 +115,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_CRISIS_MODULATION",
         "USE_NEWS_PILLAR",
         "USE_DFM_ASSET_BONUS",
-        "USE_ASSET_FEEDBACK",
+        # "USE_ASSET_FEEDBACK" rimosso 2026-05-28 (dead code)
         "USE_ADAPTIVE_THRESHOLDS",
         "USE_CORRELATION_REGIME",
         "USE_CROSS_ASSET_PILLARS",
@@ -620,19 +620,5 @@ def use_downside_protection_bonus() -> bool:
     return _read_flag("USE_DOWNSIDE_PROTECTION_BONUS")
 
 
-def use_asset_feedback() -> bool:
-    """Tier 5.6 LOOP CLOSURE (sperimentale): se True, applica Bayesian
-    update sul regime usando 6m asset returns come likelihood.
-
-    Filosofia: il mercato ha già "votato" sul regime dominante. Performance
-    recente di gold/bonds/equities su 6m rolling implica P(regime|returns)
-    via likelihood gaussiana da ASSET_REGIME_DATA (avg_return, vol).
-
-    RISCHIO LOOKAHEAD: asset returns recenti possono essere conseguenza
-    del regime (causalità inversa). Mitigato:
-    - Window 6m (NON 1m troppo rumoroso)
-    - Soft blend `alpha=0.05` → max ±5pp shift
-    - Validazione: lead-time NBER non deve peggiorare.
-    Default: False.
-    """
-    return _read_flag("USE_ASSET_FEEDBACK")
+# `use_asset_feedback` rimosso 2026-05-28 (code audit): modulo dead, 21 test
+# verdi su funzione mai chiamata in produzione. File asset_feedback.py deleted.

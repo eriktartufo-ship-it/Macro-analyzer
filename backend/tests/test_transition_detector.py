@@ -6,7 +6,7 @@ import pytest
 from app.services.regime.transition_detector import (
     DEFENSIVE_ALLOCATION,
     assess_transition,
-    blend_with_defensive,
+    # blend_with_defensive deleted 2026-05-28
     get_defensive_allocation,
     shannon_entropy,
 )
@@ -96,43 +96,7 @@ class TestDefensiveAllocation:
         assert "em_equities" not in defensive
 
 
-class TestBlendWithDefensive:
-    def test_strength_zero_returns_base(self):
-        base = {"us_equities_growth": 0.5, "gold": 0.3, "bitcoin": 0.2}
-        out = blend_with_defensive(base, transition_strength=0.0)
-        # Base preserved (renormalized)
-        assert out["us_equities_growth"] == pytest.approx(0.5, abs=1e-6)
-        assert "bitcoin" in out
-
-    def test_strength_one_returns_defensive(self):
-        base = {"us_equities_growth": 0.5, "gold": 0.3, "bitcoin": 0.2}
-        out = blend_with_defensive(base, transition_strength=1.0)
-        # Full defensive: bitcoin/growth a 0
-        assert out.get("bitcoin", 0) == 0
-        assert out.get("us_equities_growth", 0) == 0
-        assert out["cash_money_market"] > 0.3
-
-    def test_strength_half_blend(self):
-        base = {"us_equities_growth": 1.0}
-        out = blend_with_defensive(base, transition_strength=0.5)
-        # 50% growth + 50% defensive
-        assert out["us_equities_growth"] == pytest.approx(0.5, abs=0.01)
-        assert out["cash_money_market"] == pytest.approx(0.175, abs=0.01)  # 35% × 0.5
-
-    def test_blend_sum_to_one(self):
-        base = {"us_equities_growth": 0.6, "energy": 0.4}
-        for strength in [0.0, 0.25, 0.5, 0.75, 1.0]:
-            out = blend_with_defensive(base, transition_strength=strength)
-            assert abs(sum(out.values()) - 1.0) < 1e-6
-
-    def test_strength_clamped(self):
-        base = {"us_equities_growth": 1.0}
-        # Negative → 0
-        out = blend_with_defensive(base, transition_strength=-0.5)
-        assert out["us_equities_growth"] == pytest.approx(1.0, abs=1e-6)
-        # Over 1 → 1
-        out = blend_with_defensive(base, transition_strength=1.5)
-        assert out.get("us_equities_growth", 0) == 0
+# `TestBlendWithDefensive` rimosso 2026-05-28 (code audit: orphan).
 
 
 class TestScenarios:
