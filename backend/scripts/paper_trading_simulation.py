@@ -179,14 +179,31 @@ def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5,
 
 
 def _portfolio_return_month(matrix, year, month, weights):
-    """Real return mensile di un portfolio at (year, month)."""
+    """Real return mensile di un portfolio at (year, month).
+
+    T15: gestisce synthetic asset `tail_hedge_spy_put` via simulate_hedge_return
+    basato su SPY return del mese (proxy us_equities_growth).
+    """
+    from app.services.portfolio.tail_hedge import simulate_hedge_return
+
     target = pd.Timestamp(year=year, month=month, day=1) + pd.offsets.MonthEnd(0)
     if target not in matrix.index:
         return None
     row = matrix.loc[target]
+    # SPY proxy = us_equities_growth (per tail hedge synthetic payoff)
+    spy_return = None
+    if "us_equities_growth" in row.index and not pd.isna(row["us_equities_growth"]):
+        spy_return = float(row["us_equities_growth"])
+
     total = 0.0
     weight_sum = 0.0
     for asset, w in weights.items():
+        if asset == "tail_hedge_spy_put":
+            if spy_return is None:
+                continue
+            total += w * simulate_hedge_return(spy_return)
+            weight_sum += w
+            continue
         if asset in row.index and not pd.isna(row[asset]):
             total += w * float(row[asset])
             weight_sum += w
@@ -204,6 +221,7 @@ def run_paper_trade_dynamic(
     top_n: int = 5,
     allocation_method: str = "risk_parity",
     use_event_triggers: bool = False,
+    use_tail_hedge: bool = False,
 ) -> PaperTrade | None:
     """Sim 12m con allocazione DINAMICA (rebalance mensile o trimestrale).
 
@@ -212,11 +230,18 @@ def run_paper_trade_dynamic(
     Args:
         use_event_triggers: T14 council action #4. Se True, force rebalance OFF-CALENDAR
             quando trigger fires (VIX panic, M2 surge, curve uninvert, FOMC dovish).
+        use_tail_hedge: T15 council action #3. Se True, alloca 0.5-2% del portfolio
+            a synthetic tail hedge quando Crisis Risk Indicator score > 0.60.
     """
     from app.services.config_flags import use_uncertainty_gate
     from app.services.regime.event_triggers import (
         EventTriggerDetector, TriggerSnapshot, any_trigger_fired,
     )
+    from app.services.portfolio.tail_hedge import (
+        should_activate_hedge, compute_hedge_weight,
+        apply_hedge_to_allocation, simulate_hedge_return,
+    )
+    from app.services.regime.crisis_indicator import assess_crisis_risk
 
     trade = PaperTrade(
         start_date=start_date,
@@ -305,6 +330,20 @@ def run_paper_trade_dynamic(
             if use_uncertainty_gate() and confidence < 0.30 and not liquidity_surge:
                 new_weights = dict(BENCHMARK_60_40)
                 trade.uncertainty_gate_fires += 1
+
+            # T15 Tail hedge: if Crisis Risk > 0.60, alloca % del portfolio a hedge
+            if use_tail_hedge:
+                indicators = cm.get("indicators", {}) or {}
+                try:
+                    crisis_assessment = assess_crisis_risk(
+                        indicators, dedollar_combined=None, date=str(current),
+                    )
+                    crisis_score = float(crisis_assessment.risk_score)
+                except Exception:
+                    crisis_score = 0.0
+                if should_activate_hedge(crisis_score):
+                    hw = compute_hedge_weight(crisis_score)
+                    new_weights = apply_hedge_to_allocation(new_weights, hw)
 
             # Turnover from old weights
             if current_weights:
@@ -446,6 +485,9 @@ def main():
                    help="T14 council #4: force rebalance off-calendar quando "
                         "trigger fires (VIX>30, M2 surge, curve uninvert, "
                         "FOMC dovish).")
+    p.add_argument("--use-tail-hedge", action="store_true",
+                   help="T15 council #3: alloca 0.5-2pp portfolio a synthetic "
+                        "tail hedge (OTM SPY put 6m) quando Crisis Risk > 0.60.")
     p.add_argument("--allocation-method",
                    choices=["risk_parity", "equal", "score_weighted",
                             "confidence_weighted", "vol_target_concentration",
@@ -531,6 +573,7 @@ def main():
             top_n=args.top_n,
             allocation_method=args.allocation_method,
             use_event_triggers=args.use_event_triggers,
+            use_tail_hedge=args.use_tail_hedge,
         )
         if trade is None or trade.realized_return_12m is None:
             print(f"  Sim {i+1}: SKIP")
