@@ -108,6 +108,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_FORWARD_INFLATION_PILLAR": True,   # T13 Council 2026-05-31: MICH/sticky/T5YIFR
         "USE_LABOR_CREDIT_PILLAR": True,        # T17 Council 2026-05-31 sessione 23: wage/quits/hours/HY spread
         "USE_CYCLICAL_PILLAR": True,            # T18 Council 2026-05-31 sessione 25: heavy truck/permits/credit/durable
+        "USE_NOWCAST_PILLAR": False,            # T19 council expected +1pp but validation -0.22pp drag, demoted opt-in
     }
     # Add new flags to known list below
     pass  # marker
@@ -142,6 +143,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_FORWARD_INFLATION_PILLAR",
         "USE_LABOR_CREDIT_PILLAR",
         "USE_CYCLICAL_PILLAR",
+        "USE_NOWCAST_PILLAR",
     ]
     out = {}
     for name in known:
@@ -510,6 +512,34 @@ def use_momentum_pillars() -> bool:
     Default: True (post paper trading validation). Disable via env=0.
     """
     return _read_flag("USE_MOMENTUM_PILLARS", default=True)
+
+
+def use_nowcast_pillar() -> bool:
+    """T19 (2026-05-31 Council sessione 26): nowcast pillar (Atlanta GDPNow).
+
+    Council brutal feedback sessione 26: highest expected alpha (+0.8-1.5pp).
+    Real-time GDP estimate aggiornato weekly, lead 1-3 mesi su BEA print.
+
+    Pattern:
+    - GDPNow > 3% = strong growth nowcast (reflation early signal)
+    - GDPNow < 1% = weak growth nowcast (deflation early)
+    - GDPNow deviation > 1.5pp da consensus = "surprise" trigger
+
+    Pillar aggiunti:
+    - `gdpnow_strong` (reflation 0.04): GDPNow > 3%
+    - `gdpnow_weak` (deflation 0.04): GDPNow < 1%
+    - `gdpnow_moderate` (goldilocks 0.03): GDPNow 1.5-3%
+
+    Default: **False** (post-validation sessione 26: drag -0.22pp vs OFF).
+    Council expected +0.8-1.5pp ma realtà n=100 sims 2014-2023: -0.22pp.
+    Rebalance pesi -0.02 sui gdp pillars correlati ha penalizzato senza
+    compensazione adequata.
+
+    Lezione: features predittive NON automatic alpha boosters. Solo T11
+    momentum + T17 labor/credit + T18 cyclical hanno dimostrato edge.
+    Atlanta GDPNow disponibile dal 2014 (FRED GDPNOW).
+    """
+    return _read_flag("USE_NOWCAST_PILLAR", default=False)
 
 
 def use_cyclical_pillar() -> bool:

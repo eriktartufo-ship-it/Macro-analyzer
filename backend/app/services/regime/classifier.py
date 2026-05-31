@@ -25,6 +25,7 @@ from app.services.config_flags import (
     use_ml_regime_blend,
     use_momentum_pillars,
     use_news_pillar,
+    use_nowcast_pillar,
 )
 from app.services.regime.freshness import effective_weight, freshness_for
 
@@ -249,6 +250,51 @@ def _merge_cyclical_pillars(base: dict) -> dict:
             merged[regime][cond_name] = dict(cond_data)
     return merged
 
+
+# T19 (2026-05-31 Council sessione 26) NOWCAST pillar — high-frequency macro.
+# Atlanta GDPNow real-time estimate, lead 1-3 mesi su BEA print.
+# Council rated highest expected alpha (+0.8-1.5pp).
+_NOWCAST_PILLAR_ADD: dict[str, dict[str, dict]] = {
+    "reflation": {
+        "gdpnow_strong": {"weight": 0.04, "description": "Atlanta GDPNow > 3% (real-time growth strong)"},
+    },
+    "deflation": {
+        "gdpnow_weak": {"weight": 0.04, "description": "Atlanta GDPNow < 1% (real-time growth weak)"},
+    },
+    "goldilocks": {
+        "gdpnow_moderate": {"weight": 0.03, "description": "Atlanta GDPNow 1.5-3% (healthy moderate growth)"},
+    },
+}
+
+_NOWCAST_PILLAR_REBALANCE: dict[str, dict[str, float]] = {
+    "reflation": {
+        "gdp_strong": -0.02,  # GDPNow è leading version di gdp official
+        "dfm_growth_strong": -0.02,
+    },
+    "deflation": {
+        "gdp_negative_or_decelerating": -0.02,
+        "dfm_growth_decelerating": -0.02,
+    },
+    "goldilocks": {
+        "gdp_moderate": -0.03,
+    },
+}
+
+
+def _merge_nowcast_pillars(base: dict) -> dict:
+    """T19: applica rebalance + aggiunta nowcast pillar (Atlanta GDPNow)."""
+    merged = {regime: {k: dict(v) for k, v in conds.items()} for regime, conds in base.items()}
+    for regime, deltas in _NOWCAST_PILLAR_REBALANCE.items():
+        for cond_name, delta in deltas.items():
+            if cond_name in merged.get(regime, {}):
+                merged[regime][cond_name]["weight"] = max(
+                    0.0, merged[regime][cond_name]["weight"] + delta
+                )
+    for regime, adds in _NOWCAST_PILLAR_ADD.items():
+        for cond_name, cond_data in adds.items():
+            merged[regime][cond_name] = dict(cond_data)
+    return merged
+
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
 REGIME_CONDITIONS = {
     "reflation": {
@@ -429,6 +475,9 @@ def _evaluate_condition(
     consumer_credit_yoy = indicators.get("consumer_credit_yoy", 4.0)
     # Durable goods orders YoY: default 0% (neutral).
     durable_yoy = indicators.get("durable_goods_orders_yoy", 0.0)
+    # T19 Atlanta GDPNow (real-time GDP estimate, current quarter, SAAR%).
+    # Default 2.0% = trend long-run growth USA.
+    gdp_nowcast = indicators.get("gdp_nowcast_atlanta", 2.0)
     yield_3m = indicators.get("yield_curve_10y3m", 1.0)  # 10y-3m spread
     housing_roc = indicators.get("housing_starts_roc_12m", 0.0)  # housing YoY
     # ACM Term Premium 10Y (Tier 1.3 roadmap): neutral default 0.3% (storica media).
@@ -602,6 +651,18 @@ def _evaluate_condition(
     elif condition_name == "consumer_credit_expansion":
         # Consumer credit YoY > +5% = healthy household demand
         return _sigmoid(consumer_credit_yoy, center=5.0, scale=1.5)
+
+    # --- T19 NOWCAST PILLAR (USE_NOWCAST_PILLAR) ---
+    # Council 2026-05-31 sessione 26: highest-frequency macro signal.
+    elif condition_name == "gdpnow_strong":
+        # Atlanta GDPNow > 3% = real-time growth strong (reflation early)
+        return _sigmoid(gdp_nowcast, center=3.0, scale=0.7)
+    elif condition_name == "gdpnow_weak":
+        # Atlanta GDPNow < 1% = real-time growth weak (deflation early)
+        return _sigmoid(-gdp_nowcast, center=-1.0, scale=0.7)
+    elif condition_name == "gdpnow_moderate":
+        # Atlanta GDPNow 1.5-3% = healthy moderate growth (goldilocks)
+        return _bell(gdp_nowcast, center=2.25, width=0.75)
 
     # --- DEFLATION conditions ---
     elif condition_name == "gdp_negative_or_decelerating":
@@ -871,6 +932,11 @@ def classify_regime(
     # Final compositional layer (truck/permits/durable/consumer credit).
     if use_cyclical_pillar():
         active_conditions = _merge_cyclical_pillars(active_conditions)
+
+    # T19 (2026-05-31 sessione 26): nowcast pillar (Atlanta GDPNow real-time).
+    # Highest-frequency macro signal nel modello.
+    if use_nowcast_pillar():
+        active_conditions = _merge_nowcast_pillars(active_conditions)
 
     for regime in REGIMES:
         regime_score = 0.0

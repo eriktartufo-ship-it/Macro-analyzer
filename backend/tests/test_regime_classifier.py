@@ -261,6 +261,8 @@ class TestRegimeClassifier:
             "hy_credit_spread": 9.0,         # HY OAS 9% = crisis 2008-style
             "wage_growth_atlanta": 2.0,      # wage crashing (defl)
             "jolts_quits_rate": 1.5,         # workers paura, no quits
+            # T19 Atlanta GDPNow nowcast (deflation severa: real-time growth crash)
+            "gdp_nowcast_atlanta": -2.0,    # GDPNow -2% = recession in corso
         }
         result = classify_regime(indicators)
 

@@ -223,6 +223,7 @@ def run_paper_trade_dynamic(
     use_event_triggers: bool = False,
     use_tail_hedge: bool = False,
     hedge_proxy: str = "otm_put",
+    use_trigger_rebalance: bool = False,
 ) -> PaperTrade | None:
     """Sim 12m con allocazione DINAMICA (rebalance mensile o trimestrale).
 
@@ -243,6 +244,7 @@ def run_paper_trade_dynamic(
         apply_hedge_to_allocation, simulate_hedge_return,
     )
     from app.services.regime.crisis_indicator import assess_crisis_risk
+    from app.services.backtest.rebalance_triggers import any_trigger_fired_simple as trigger_check
 
     trade = PaperTrade(
         start_date=start_date,
@@ -265,6 +267,11 @@ def run_paper_trade_dynamic(
     trigger_detector = EventTriggerDetector() if use_event_triggers else None
     prev_trigger_snapshot: TriggerSnapshot | None = None
     event_rebalance_fires = 0
+
+    # T19 council action #1 trigger-based rebalance state
+    prev_classified_probs: dict[str, float] | None = None
+    prev_indicators_snap: dict[str, float] | None = None
+    trigger_rebalance_fires = 0
 
     for month_idx in range(12):
         # Rebalance check (calendar baseline)
@@ -315,6 +322,18 @@ def run_paper_trade_dynamic(
                 is_rebalance_month = True
                 event_rebalance_fires += 1
             prev_trigger_snapshot = curr_snapshot
+
+        # T19 Council action #1 — trigger-based rebalance (different from T14).
+        # Check regime probability shift, VIX jump, NFCI z-score, HY OAS jump.
+        # Più stringente di T14 + utilizza regime probabilities direttamente.
+        if use_trigger_rebalance:
+            indicators_curr = cm.get("indicators", {}) or {}
+            if trigger_check(probs, prev_classified_probs, indicators_curr, prev_indicators_snap):
+                if not is_calendar_rebalance:
+                    is_rebalance_month = True
+                    trigger_rebalance_fires += 1
+            prev_classified_probs = dict(probs)
+            prev_indicators_snap = dict(indicators_curr)
 
         # Compute new top-5 weights (con uncertainty gate)
         if is_rebalance_month:
@@ -486,6 +505,10 @@ def main():
                    help="T14 council #4: force rebalance off-calendar quando "
                         "trigger fires (VIX>30, M2 surge, curve uninvert, "
                         "FOMC dovish).")
+    p.add_argument("--use-trigger-rebalance", action="store_true",
+                   help="T19 council #1 sessione 26: trigger-based rebalance "
+                        "(regime_prob_shift>0.20 OR VIX jump 50pct OR NFCI z>1 "
+                        "OR HY OAS jump 30pct). Quarterly default + override.")
     p.add_argument("--use-tail-hedge", action="store_true",
                    help="T15 council #3: alloca 0.5-2pp portfolio a synthetic "
                         "tail hedge (OTM SPY put 6m) quando Crisis Risk > 0.60.")
@@ -579,6 +602,7 @@ def main():
             use_event_triggers=args.use_event_triggers,
             use_tail_hedge=args.use_tail_hedge,
             hedge_proxy=args.hedge_proxy,
+            use_trigger_rebalance=args.use_trigger_rebalance,
         )
         if trade is None or trade.realized_return_12m is None:
             print(f"  Sim {i+1}: SKIP")

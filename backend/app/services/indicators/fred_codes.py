@@ -250,6 +250,21 @@ FRED_SERIES = {
         "frequency": "monthly",
         "transform": "yoy",
     },
+    # T19 Council 2026-05-31 sessione 26: NOWCAST features high-frequency macro.
+    # Real-time GDP/CPI/wages estimates aggiornati daily/weekly. Lead 1-3 mesi su
+    # BEA/BLS official prints. Council rated highest expected alpha (+0.8-1.5pp).
+    "gdp_nowcast_atlanta": {
+        "fred_id": "GDPNOW",
+        "description": "Atlanta Fed GDPNow Real GDP Nowcast (current quarter, %SAAR)",
+        "frequency": "weekly",
+        "transform": "level",
+    },
+    "real_gdp_quarterly_nowcast": {
+        "fred_id": "GDPC1",
+        "description": "Real GDP Chained 2017$ (quarterly, fallback for nowcast deviation calc)",
+        "frequency": "quarterly",
+        "transform": "level",
+    },
     "vix": {
         "fred_id": "VIXCLS",
         "description": "CBOE Volatility Index (market fear gauge)",
