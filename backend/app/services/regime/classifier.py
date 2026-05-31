@@ -20,6 +20,7 @@ from app.services.config_flags import (
     use_forward_inflation_pillar,
     use_freshness_weighting,
     use_gdp_collapse_override,
+    use_labor_credit_pillar,
     use_ml_regime_blend,
     use_momentum_pillars,
     use_news_pillar,
@@ -131,6 +132,63 @@ def _merge_forward_inflation_pillars(base: dict) -> dict:
                     0.0, merged[regime][cond_name]["weight"] + delta
                 )
     for regime, adds in _FORWARD_INFLATION_PILLAR_ADD.items():
+        for cond_name, cond_data in adds.items():
+            merged[regime][cond_name] = dict(cond_data)
+    return merged
+
+
+# T17 (2026-05-31 Council sessione 23) Labor + Credit pillars — attaccare alpha
+# alla radice del classifier (council edge sono tutti DD reducer marginali).
+# Aggiunge features predittive: wage growth, JOLTS quits, hours worked, HY spread.
+_LABOR_CREDIT_PILLAR_ADD: dict[str, dict[str, dict]] = {
+    "stagflation": {
+        "wage_growth_high": {"weight": 0.04, "description": "Atlanta wage tracker > 4.5% (wage-price spiral)"},
+    },
+    "reflation": {
+        "quits_rate_elevated": {"weight": 0.03, "description": "JOLTS quits > 2.5% (labor tight, wage power)"},
+        "hy_credit_tight": {"weight": 0.03, "description": "HY OAS < 3% (risk-on credit conditions)"},
+    },
+    "deflation": {
+        "hours_worked_declining": {"weight": 0.03, "description": "Avg weekly hours YoY < 0 (early labor weakening)"},
+        "hy_credit_stress": {"weight": 0.04, "description": "HY OAS > 5% (credit conditions crisis)"},
+    },
+    "goldilocks": {
+        "quits_rate_elevated": {"weight": 0.03, "description": "JOLTS quits > 2.5% (healthy job market)"},
+        "hy_credit_tight": {"weight": 0.03, "description": "HY OAS < 3% (risk-on credit conditions)"},
+    },
+}
+
+_LABOR_CREDIT_PILLAR_REBALANCE: dict[str, dict[str, float]] = {
+    "stagflation": {
+        # Sticky inflation + wage push: wage_growth è core driver
+        "inflation_high": -0.02,
+        "core_pce_high": -0.02,
+    },
+    "reflation": {
+        "credit_spread_tight": -0.03,  # Sostituito con hy_credit_tight (più granulare)
+        "policy_accommodative": -0.03,
+    },
+    "deflation": {
+        "claims_rising": -0.03,  # Hours worked è earlier signal di claims
+        "credit_spread_wide": -0.04,  # Sostituito con hy_credit_stress
+    },
+    "goldilocks": {
+        "credit_spread_tight": -0.03,
+        "claims_low": -0.03,  # Quits è earlier/stronger signal di low claims
+    },
+}
+
+
+def _merge_labor_credit_pillars(base: dict) -> dict:
+    """T17: applica rebalance + aggiunta pillar labor + credit."""
+    merged = {regime: {k: dict(v) for k, v in conds.items()} for regime, conds in base.items()}
+    for regime, deltas in _LABOR_CREDIT_PILLAR_REBALANCE.items():
+        for cond_name, delta in deltas.items():
+            if cond_name in merged.get(regime, {}):
+                merged[regime][cond_name]["weight"] = max(
+                    0.0, merged[regime][cond_name]["weight"] + delta
+                )
+    for regime, adds in _LABOR_CREDIT_PILLAR_ADD.items():
         for cond_name, cond_data in adds.items():
             merged[regime][cond_name] = dict(cond_data)
     return merged
@@ -297,6 +355,15 @@ def _evaluate_condition(
     umich_inflation = indicators.get("umich_inflation_1y", 2.5)
     # Atlanta Fed sticky CPI (12m %change, hardest to break): default 2.5% (Fed target+buffer).
     sticky_cpi = indicators.get("sticky_cpi_yoy", 2.5)
+    # T17 Labor + Credit features (council sessione 23 2026-05-31):
+    # Atlanta wage tracker (3m MA, overall): default 3.0% (neutral 2024+).
+    wage_growth = indicators.get("wage_growth_atlanta", 3.0)
+    # JOLTS Quits Rate (% labor force): default 2.5% (Fed target ~ healthy).
+    quits_rate = indicators.get("jolts_quits_rate", 2.5)
+    # Avg weekly hours YoY change: default 0.0% (stable).
+    avg_hours_roc = indicators.get("avg_weekly_hours_yoy", 0.0)
+    # High-yield credit spread (BofA OAS, %): default 4.0% (long-run avg).
+    hy_spread = indicators.get("hy_credit_spread", 4.0)
     yield_3m = indicators.get("yield_curve_10y3m", 1.0)  # 10y-3m spread
     housing_roc = indicators.get("housing_starts_roc_12m", 0.0)  # housing YoY
     # ACM Term Premium 10Y (Tier 1.3 roadmap): neutral default 0.3% (storica media).
@@ -428,6 +495,24 @@ def _evaluate_condition(
     elif condition_name == "sticky_inflation_anchored":
         # Sticky CPI 2.0-2.7% = sticky component at target (goldilocks)
         return _bell(sticky_cpi, center=2.35, width=0.4)
+
+    # --- T17 LABOR + CREDIT PILLARS (USE_LABOR_CREDIT_PILLAR) ---
+    # Council 2026-05-31 sessione 23: attaccare alpha alla radice del classifier.
+    elif condition_name == "wage_growth_high":
+        # Atlanta wage tracker > 4.5% = wage-price spiral signal (1980-style)
+        return _sigmoid(wage_growth, center=4.5, scale=0.5)
+    elif condition_name == "quits_rate_elevated":
+        # JOLTS quits > 2.5% = labor market tight, workers confident leave
+        return _sigmoid(quits_rate, center=2.5, scale=0.3)
+    elif condition_name == "hours_worked_declining":
+        # Avg hours YoY < 0 = early labor signal (precedes claims spike)
+        return _sigmoid(-avg_hours_roc, center=0.0, scale=0.3)
+    elif condition_name == "hy_credit_stress":
+        # HY OAS > 5% = credit conditions crisis (2008/2020-style)
+        return _sigmoid(hy_spread, center=5.0, scale=1.0)
+    elif condition_name == "hy_credit_tight":
+        # HY OAS < 3% = risk-on credit, no stress
+        return _sigmoid(-hy_spread, center=-3.0, scale=0.5)
 
     # --- DEFLATION conditions ---
     elif condition_name == "gdp_negative_or_decelerating":
@@ -687,6 +772,11 @@ def classify_regime(
     # Compone con T11 momentum: prima rebalance momentum, poi forward.
     if use_forward_inflation_pillar():
         active_conditions = _merge_forward_inflation_pillars(active_conditions)
+
+    # T17 (2026-05-31 sessione 23): labor + credit pillar.
+    # Composizione finale dopo T11 momentum + T13 forward inflation.
+    if use_labor_credit_pillar():
+        active_conditions = _merge_labor_credit_pillars(active_conditions)
 
     for regime in REGIMES:
         regime_score = 0.0

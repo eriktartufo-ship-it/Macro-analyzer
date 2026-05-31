@@ -53,6 +53,40 @@ const LEGACY_FLAGS: { name: string; label: string; description: string }[] = [
   },
 ];
 
+// T11-T17 (council 2026-05-28/31): features classifier accuracy + sizing + hedging
+const COUNCIL_FLAGS: { name: string; label: string; tier: string; description: string }[] = [
+  {
+    name: "USE_MOMENTUM_PILLARS",
+    label: "Momentum pillars",
+    tier: "T11",
+    description: "Pillar inflation_accelerating / core_pce_accelerating / gdp_decelerating. Default ON.",
+  },
+  {
+    name: "USE_LIQUIDITY_SURGE_OVERRIDE",
+    label: "Liquidity surge override",
+    tier: "T11",
+    description: "Force reflation se M2>+10% + WALCL ROC 3m>+12% + real rate accomm. (anti-inflation gate). Default ON.",
+  },
+  {
+    name: "USE_UNCERTAINTY_GATE",
+    label: "Uncertainty gate",
+    tier: "T11",
+    description: "Skip rebalance se conf < 0.30 (bypass su liquidity surge). Default ON.",
+  },
+  {
+    name: "USE_FORWARD_INFLATION_PILLAR",
+    label: "Forward inflation pillar",
+    tier: "T13",
+    description: "Pillar MICH/sticky CPI/T5YIFR fix structural inflation blindness. Default ON.",
+  },
+  {
+    name: "USE_LABOR_CREDIT_PILLAR",
+    label: "Labor + credit pillar",
+    tier: "T17",
+    description: "Pillar wage growth/JOLTS quits/avg hours/HY OAS spread (alpha alla radice). Default ON.",
+  },
+];
+
 export function FeatureFlagsPanel({ open, onClose }: Props) {
   const [flags, setFlags] = useState<ConfigFlags | null>(null);
   const [loading, setLoading] = useState(false);
@@ -141,7 +175,7 @@ export function FeatureFlagsPanel({ open, onClose }: Props) {
             marginBottom: 12,
           }}
         >
-          <h2 style={{ margin: 0 }}>Feature Flags (Tier 5 LOOP CLOSURE)</h2>
+          <h2 style={{ margin: 0 }}>Feature Flags</h2>
           <button
             onClick={onClose}
             style={{
@@ -162,6 +196,20 @@ export function FeatureFlagsPanel({ open, onClose }: Props) {
 
         {flags && (
           <>
+            <SectionTitle>Council T11-T17 (accuracy + sizing + hedging)</SectionTitle>
+            {COUNCIL_FLAGS.map((f) => (
+              <FlagRow
+                key={f.name}
+                name={f.name}
+                label={f.label}
+                tier={f.tier}
+                description={f.description}
+                state={flags[f.name]}
+                onToggle={toggle}
+                onClear={clear}
+              />
+            ))}
+
             <SectionTitle>Tier 5 LOOP CLOSURE</SectionTitle>
             {T5_FLAGS.map((f) => (
               <FlagRow

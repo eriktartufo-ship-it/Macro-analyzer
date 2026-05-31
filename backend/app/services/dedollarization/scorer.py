@@ -102,6 +102,10 @@ ASSET_DEDOLLAR_SENSITIVITY: dict[str, float] = {
     "sector_technology": -1.5,   # Global revenue but USD strong = better FX
     "sector_healthcare": 0.0,    # Neutral (global mix)
     "sector_staples": 0.5,       # Slight positive (global brands, pricing power)
+    # T16 — Factor ETFs sensitivity vs USD weakening
+    "factor_momentum": -0.5,     # Mild negative (momentum often tracks USD strength)
+    "factor_quality": 0.0,       # Neutral (quality global mix)
+    "factor_value": 1.0,         # Mild positive (cyclicals benefit weak USD)
 }
 
 

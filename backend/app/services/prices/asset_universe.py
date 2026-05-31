@@ -125,6 +125,22 @@ ASSET_TICKERS: dict[str, dict[str, str | None]] = {
         "backfill_proxy": None,
         "description": "Consumer Staples Select Sector SPDR",
     },
+    # T16 — Factor ETFs (iShares MSCI USA series, 2013+ inception)
+    "factor_momentum": {
+        "ticker": "MTUM",
+        "backfill_proxy": None,  # pre-2013: FF MOM factor proxy in factors module
+        "description": "iShares MSCI USA Momentum Factor",
+    },
+    "factor_quality": {
+        "ticker": "QUAL",
+        "backfill_proxy": None,
+        "description": "iShares MSCI USA Quality Factor",
+    },
+    "factor_value": {
+        "ticker": "VLUE",
+        "backfill_proxy": None,
+        "description": "iShares MSCI USA Value Factor",
+    },
 }
 
 

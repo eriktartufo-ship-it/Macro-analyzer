@@ -106,6 +106,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_MOMENTUM_PILLARS": True,           # Paper trading 4-test promoted 2026-05-27
         "USE_LIQUIDITY_SURGE_OVERRIDE": True,   # Council post-TEST A 2020 disaster 2026-05-27
         "USE_FORWARD_INFLATION_PILLAR": True,   # T13 Council 2026-05-31: MICH/sticky/T5YIFR
+        "USE_LABOR_CREDIT_PILLAR": True,        # T17 Council 2026-05-31 sessione 23: wage/quits/hours/HY spread
     }
     # Add new flags to known list below
     pass  # marker
@@ -138,6 +139,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_UNCERTAINTY_GATE",
         "USE_LIQUIDITY_SURGE_OVERRIDE",
         "USE_FORWARD_INFLATION_PILLAR",
+        "USE_LABOR_CREDIT_PILLAR",
     ]
     out = {}
     for name in known:
@@ -506,6 +508,28 @@ def use_momentum_pillars() -> bool:
     Default: True (post paper trading validation). Disable via env=0.
     """
     return _read_flag("USE_MOMENTUM_PILLARS", default=True)
+
+
+def use_labor_credit_pillar() -> bool:
+    """T17 (2026-05-31 Council sessione 23): se True, aggiunge pillar al classifier
+    basati su LABOR MARKET TIGHTNESS + CREDIT CONDITIONS per migliorare accuracy.
+
+    Razionale: i 5 council edge (Kelly, Tail Hedge, Events, Forward Inflation,
+    Sector ETF) sono tutti DD reducer marginali, nessun vero alpha booster.
+    Attaccare alpha alla radice = più feature predittive nel classifier.
+
+    Pillar aggiunti (T17):
+    - `wage_growth_high` (stagflation 0.04): Atlanta wage tracker > 4.5%
+    - `quits_rate_elevated` (reflation/goldilocks 0.03): JOLTS quits > 2.5%
+    - `hours_worked_declining` (deflation 0.03): AWHAETP YoY < 0 (early labor)
+    - `hy_credit_stress` (deflation 0.04): HY OAS > 5% (credit conditions)
+    - `hy_credit_tight` (reflation/goldilocks 0.03): HY OAS < 3% (risk-on credit)
+
+    Rebalance: piccoli (-0.02) sui pillars esistenti correlati.
+
+    Default: True (council T17 raccomandation).
+    """
+    return _read_flag("USE_LABOR_CREDIT_PILLAR", default=True)
 
 
 def use_forward_inflation_pillar() -> bool:

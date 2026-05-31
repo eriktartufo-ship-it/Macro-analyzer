@@ -196,6 +196,32 @@ FRED_SERIES = {
         "frequency": "monthly",
         "transform": "level",
     },
+    # T17 Council 2026-05-31 sessione 23: classifier accuracy features.
+    # Attaccare la radice dell'alpha (council edge sono solo DD reducer).
+    "wage_growth_atlanta": {
+        "fred_id": "FRBATLWGTUMHWGO",
+        "description": "Atlanta Fed Wage Growth Tracker (median 3m MA, overall)",
+        "frequency": "monthly",
+        "transform": "level",  # already YoY percentile
+    },
+    "jolts_quits_rate": {
+        "fred_id": "JTSQUR",
+        "description": "JOLTS Quits Rate (% labor force, labor market tightness)",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "avg_weekly_hours": {
+        "fred_id": "AWHAETP",
+        "description": "Avg Weekly Hours (private nonfarm payrolls, early labor signal)",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "hy_credit_spread": {
+        "fred_id": "BAMLH0A0HYM2",
+        "description": "ICE BofA US High Yield Index OAS spread (credit conditions)",
+        "frequency": "daily",
+        "transform": "level",
+    },
     "vix": {
         "fred_id": "VIXCLS",
         "description": "CBOE Volatility Index (market fear gauge)",

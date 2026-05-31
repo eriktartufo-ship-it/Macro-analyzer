@@ -39,6 +39,10 @@ ASSET_CLASSES = [
     "sector_technology",      # XLK — Technology (1998+)
     "sector_healthcare",      # XLV — Health Care (1998+)
     "sector_staples",         # XLP — Consumer Staples (1998+)
+    # T16 — Factor ETF expansion (Council 2026-05-31 sessione 23): tactical overlay
+    "factor_momentum",        # MTUM — iShares MSCI USA Momentum Factor (2013+)
+    "factor_quality",         # QUAL — iShares MSCI USA Quality Factor (2013+)
+    "factor_value",           # VLUE — iShares MSCI USA Value Factor (2013+)
 ]
 
 # Performance storiche REALI (inflation-adjusted) per asset class x regime.
@@ -234,6 +238,36 @@ ASSET_REGIME_DATA: dict[str, dict[str, dict[str, float]]] = {
         "stagflation":  {"hit_rate": 0.55, "avg_return": 0.02, "vol": 0.13, "sharpe": 0.15},
         "deflation":    {"hit_rate": 0.65, "avg_return": 0.05, "vol": 0.13, "sharpe": 0.38},
         "goldilocks":   {"hit_rate": 0.65, "avg_return": 0.09, "vol": 0.10, "sharpe": 0.90},
+    },
+    # ──────────────────────────────────────────────────────────────────────
+    # T16 FACTOR ETF — Calibrazione 2013+ inception → 2024
+    # MTUM (Momentum), QUAL (Quality), VLUE (Value): MSCI USA factor series.
+    # Reference: 2013-19 goldilocks (MTUM +14% real best), 2022 momentum crash
+    # (MTUM -16%), 2020 Q1 quality defensive (+10pp vs SPX), value rally
+    # 2021 reopening (VLUE +25% vs MTUM +10%).
+    # ──────────────────────────────────────────────────────────────────────
+    "factor_momentum": {
+        # MTUM: trending winners ride waves, vulnerable a regime shifts.
+        # 2018 momentum crash, 2020 March: -25% in 3 weeks, 2022: -16% YTD.
+        "reflation":    {"hit_rate": 0.75, "avg_return": 0.20, "vol": 0.20, "sharpe": 1.00},
+        "stagflation":  {"hit_rate": 0.55, "avg_return": 0.10, "vol": 0.25, "sharpe": 0.40},
+        "deflation":    {"hit_rate": 0.25, "avg_return": -0.25, "vol": 0.30, "sharpe": -0.83},
+        "goldilocks":   {"hit_rate": 0.80, "avg_return": 0.22, "vol": 0.18, "sharpe": 1.22},
+    },
+    "factor_quality": {
+        # QUAL: high ROE + low debt + earnings stability. Defensive compound.
+        "reflation":    {"hit_rate": 0.65, "avg_return": 0.13, "vol": 0.18, "sharpe": 0.72},
+        "stagflation":  {"hit_rate": 0.55, "avg_return": 0.05, "vol": 0.20, "sharpe": 0.25},
+        "deflation":    {"hit_rate": 0.50, "avg_return": -0.10, "vol": 0.22, "sharpe": -0.45},
+        "goldilocks":   {"hit_rate": 0.78, "avg_return": 0.17, "vol": 0.15, "sharpe": 1.13},
+    },
+    "factor_value": {
+        # VLUE: P/B + earnings yield + price-to-cash. Cyclical recovery winner.
+        # 2021 reopening: +28% real best of factors. 2020 Q1: -42% (value trap).
+        "reflation":    {"hit_rate": 0.78, "avg_return": 0.18, "vol": 0.21, "sharpe": 0.86},
+        "stagflation":  {"hit_rate": 0.55, "avg_return": 0.05, "vol": 0.22, "sharpe": 0.23},
+        "deflation":    {"hit_rate": 0.30, "avg_return": -0.20, "vol": 0.28, "sharpe": -0.71},
+        "goldilocks":   {"hit_rate": 0.62, "avg_return": 0.10, "vol": 0.14, "sharpe": 0.71},
     },
 }
 

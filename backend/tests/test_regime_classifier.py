@@ -256,6 +256,11 @@ class TestRegimeClassifier:
             "umich_inflation_1y": 1.5,
             "sticky_cpi_yoy": 1.8,
             "breakeven_5y5y": 1.0,
+            # T17 labor + credit (deflation: hours crollati + HY blowout)
+            "avg_weekly_hours_yoy": -2.5,    # forte declino ore lavorate
+            "hy_credit_spread": 9.0,         # HY OAS 9% = crisis 2008-style
+            "wage_growth_atlanta": 2.0,      # wage crashing (defl)
+            "jolts_quits_rate": 1.5,         # workers paura, no quits
         }
         result = classify_regime(indicators)
 
