@@ -1197,6 +1197,73 @@ def get_scoreboard(
     )
 
 
+@router.get("/macro-llm-analysis")
+def get_macro_llm_analysis(
+    force_refresh: bool = Query(default=False, description="Bypass cache 24h"),
+    db: Session = Depends(get_db),
+):
+    """LLM macro analysis: regime + indicators → Gemini structured analysis.
+
+    Cache disco TTL 24h per evitare Gemini call ad ogni reload (cost + latency).
+    Cache invalidata su regime change (file key = `date_regime.json`).
+
+    Returns:
+        {headline, regime_thesis, key_drivers, risks, opportunities,
+         time_horizon, confidence_qualitative, regime, classification_date,
+         cached_at, provider, cache_hit}
+        OR HTTP 503 se Gemini API key missing e nessuna cache disponibile.
+    """
+    from app.services.llm.macro_analyzer import get_macro_analysis
+
+    latest = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .first()
+    )
+    if not latest:
+        raise HTTPException(status_code=404, detail="Nessuna classificazione in DB")
+
+    # Indicators + fit scores dal JSON payload
+    payload = json.loads(latest.conditions_met) if latest.conditions_met else {}
+    indicators = payload.get("indicators", {}) or {}
+    fit_scores = payload.get("fit_scores", {}) or {}
+
+    # Scoreboard corrente da DailySignal
+    signals = (
+        db.query(DailySignal)
+        .filter(DailySignal.date == latest.date)
+        .order_by(DailySignal.final_score.desc())
+        .all()
+    )
+    scoreboard = {s.asset_class: s.final_score for s in signals}
+
+    probabilities = {
+        "reflation": float(latest.probability_reflation or 0),
+        "stagflation": float(latest.probability_stagflation or 0),
+        "deflation": float(latest.probability_deflation or 0),
+        "goldilocks": float(latest.probability_goldilocks or 0),
+    }
+
+    result = get_macro_analysis(
+        regime=latest.regime,
+        probabilities=probabilities,
+        confidence=float(latest.confidence or 0.5),
+        indicators=indicators,
+        scoreboard=scoreboard,
+        classification_date=str(latest.date),
+        fit_scores=fit_scores,
+        force_refresh=force_refresh,
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM analysis unavailable (Gemini API key missing or call failed)",
+        )
+
+    return result
+
+
 @router.get("/fomc/report", response_model=FOMCReportResponse)
 def get_fomc_report(
     limit: int = Query(default=6, ge=1, le=12),

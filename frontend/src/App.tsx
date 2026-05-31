@@ -8,6 +8,7 @@ import { ProbabilityBars } from "./components/ProbabilityBars";
 import { RegimeTimelineChart } from "./components/RegimeTimelineChart";
 import { CrisisRiskPanel } from "./components/CrisisRiskPanel";
 import { LiveTrackRecordPanel } from "./components/LiveTrackRecordPanel";
+import { MacroLlmAnalysisPanel } from "./components/MacroLlmAnalysisPanel";
 import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
 import { LazyDetails } from "./components/LazyDetails";
 
@@ -163,6 +164,9 @@ export default function App() {
             />
           </div>
 
+          {/* AI ANALYSIS — Gemini macro analysis (cached 24h, fisso) */}
+          <MacroLlmAnalysisPanel />
+
           {/* PROOF — Live track record (validation reale) */}
           <LiveTrackRecordPanel />
 
@@ -221,10 +225,7 @@ export default function App() {
 
       {ready && page === "assets" && (
         <Suspense fallback={fallback}>
-          <AssetRankingTable
-            scores={scoreboard.scores}
-            projected={explain?.trajectory?.projected_scores}
-          />
+          <AssetRankingTable scores={scoreboard.scores} />
         </Suspense>
       )}
 

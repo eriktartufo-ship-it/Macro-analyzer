@@ -45,6 +45,22 @@ export interface PlayerScore {
   signals: PlayerSignal[];
 }
 
+export interface MacroLlmAnalysis {
+  headline: string;
+  regime_thesis: string;
+  key_drivers: string[];
+  risks: string[];
+  opportunities: string[];
+  time_horizon: string;
+  confidence_qualitative: "low" | "medium" | "high" | string;
+  regime: string;
+  classification_date: string;
+  cached_at: string;
+  provider: string;
+  cache_hit: boolean;
+  stale?: boolean;
+}
+
 export interface Dedollarization {
   date: string;
   score: number;

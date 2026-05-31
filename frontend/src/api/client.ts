@@ -16,6 +16,7 @@ import type {
   FOMCReport,
   HMMPrediction,
   LeadTimeReport,
+  MacroLlmAnalysis,
   MonteCarloForecast,
   ScenarioPreset,
   ScenarioResult,
@@ -98,6 +99,8 @@ export const api = {
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),
+  macroLlmAnalysis: (forceRefresh = false) =>
+    request<MacroLlmAnalysis>(`/macro-llm-analysis${forceRefresh ? "?force_refresh=true" : ""}`),
   dedollarization: () => request<Dedollarization>("/dedollarization"),
   dedollarizationHistory: (days = 365) =>
     request<DedollarHistoryItem[]>(`/dedollarization/history?days=${days}`),
