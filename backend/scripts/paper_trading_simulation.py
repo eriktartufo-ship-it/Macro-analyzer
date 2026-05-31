@@ -152,7 +152,8 @@ def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5,
                 weights[asset] = rest_pool / (n - 3)
         return weights
 
-    # risk_parity (default)
+    # Calcola vols rolling 12m per tutti gli asset top-N (usato da risk_parity,
+    # confidence_kelly e kelly_fractional)
     vols = {}
     for asset, _ in sorted_scores:
         if asset in real_matrix.columns:
@@ -160,6 +161,19 @@ def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5,
             vols[asset] = float(hist.std(ddof=1)) * np.sqrt(12) if len(hist) >= 6 else 0.20
         else:
             vols[asset] = 0.20
+
+    if method == "confidence_kelly":
+        # T12 Council action #2: confidence-gated Kelly fractional con caps.
+        # conf < 0.6: equal-weight (safe), 0.6-0.8 smooth blend, >0.8 full Kelly.
+        # Caps 3-25% per evitare single-name risk.
+        from app.services.portfolio.position_sizing import confidence_kelly as ck
+        alloc = ck(
+            {a: s for a, s in sorted_scores}, vols,
+            confidence=confidence, top_n=n,
+        )
+        return alloc.weights or {a: 1.0 / n for a, _ in sorted_scores}
+
+    # risk_parity (default)
     alloc = risk_parity({a: s for a, s in sorted_scores}, vols, top_n=n)
     return alloc.weights or {a: 1.0 / n for a, _ in sorted_scores}
 
@@ -397,12 +411,14 @@ def main():
                    help="Council Test F: top-N asset (default 5).")
     p.add_argument("--allocation-method",
                    choices=["risk_parity", "equal", "score_weighted",
-                            "confidence_weighted", "vol_target_concentration"],
+                            "confidence_weighted", "vol_target_concentration",
+                            "confidence_kelly"],
                    default="risk_parity",
-                   help="Council Test E + post-2020 sizing: "
+                   help="Council sizing options: "
                         "risk_parity, equal, score_weighted, "
                         "confidence_weighted (sizing d), "
-                        "vol_target_concentration (sizing c).")
+                        "vol_target_concentration (sizing c), "
+                        "confidence_kelly (T12 council #2: Kelly + caps + gating).")
     args = p.parse_args()
 
     os.environ["USE_MOMENTUM_PILLARS"] = "1" if args.momentum else "0"

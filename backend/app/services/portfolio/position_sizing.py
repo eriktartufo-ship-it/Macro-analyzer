@@ -210,6 +210,191 @@ def kelly_fractional(
     )
 
 
+def _apply_caps(
+    weights: dict[str, float],
+    cap_max: float,
+    cap_min: float,
+) -> dict[str, float]:
+    """Applica cap [cap_min, cap_max] via waterfill (no re-normalize naive).
+
+    Algoritmo waterfill (converge guaranteed):
+    1. Edge: se cap_min*N > 1 → impossibile, fallback equal-weight.
+    2. Edge: se cap_max*N < 1 → impossibile, fallback cap_max ovunque + drop.
+    3. Itera (max 20):
+       a. Identifica asset "high" (>cap_max), "low" (<cap_min), "free" (in range).
+       b. Set high = cap_max, low = cap_min. "Excess" = (sum_high_pre - cap_max*n_high)
+          + (cap_min*n_low - sum_low_pre).
+       c. Distribuisci excess agli asset "free" proporzionalmente al loro weight.
+       d. Se nessun nuovo violation → done.
+
+    Args:
+        weights: dict {asset: weight}, sum=1 atteso.
+        cap_max: max weight per singolo asset (es. 0.25).
+        cap_min: min weight per singolo asset selected (es. 0.03).
+
+    Returns:
+        dict weights con cap applicati, sum=1.
+    """
+    if not weights:
+        return {}
+    n = len(weights)
+    # Edge case 1: floor*N > 1 → impossibile, equal-weight forzato
+    if cap_min * n > 1.0:
+        return {a: 1.0 / n for a in weights}
+    # Edge case 2: cap_max*N < 1 → impossibile coprire 100%, clip top a cap_max
+    # e accetta sum < 1 (= cash buffer implicit). Distribuisci proporzionalmente.
+    if cap_max * n < 1.0:
+        total = sum(weights.values()) or 1.0
+        scaled = {a: (w / total) * (cap_max * n) for a, w in weights.items()}
+        return {a: min(cap_max, w) for a, w in scaled.items()}
+
+    out = {a: max(0.0, w) for a, w in weights.items()}
+    total = sum(out.values()) or 1.0
+    out = {a: w / total for a, w in out.items()}
+
+    # Iterative waterfill: pin violators a caps, redistribuisci budget rimanente
+    # ai free assets proporzionalmente. Converge in O(N) iter perché ogni iter
+    # pinna almeno 1 asset, e n_free decresce monotonamente.
+    for _ in range(n + 2):
+        too_high = [a for a, w in out.items() if w > cap_max + 1e-9]
+        too_low = [a for a, w in out.items() if w < cap_min - 1e-9]
+        if not too_high and not too_low:
+            return out
+
+        pinned = {a: cap_max for a in too_high}
+        pinned.update({a: cap_min for a in too_low})
+
+        free_assets = [a for a in out if a not in pinned]
+        free_budget = 1.0 - sum(pinned.values())
+
+        if not free_assets:
+            return pinned  # tutto pinned, accetta sum eventualmente != 1
+
+        if free_budget <= 0:
+            # Budget esaurito: forza free a 0 (clip al floor cap_min)
+            for a in free_assets:
+                pinned[a] = cap_min
+            return pinned
+
+        free_sum_current = sum(out[a] for a in free_assets) or 1e-9
+        new_out = dict(pinned)
+        for a in free_assets:
+            new_out[a] = (out[a] / free_sum_current) * free_budget
+        out = new_out
+
+    return out
+
+
+def confidence_kelly(
+    scores: dict[str, float],
+    vols: dict[str, float],
+    confidence: float,
+    top_n: int = 7,
+    cap_max: float = 0.25,
+    cap_min: float = 0.03,
+    conf_low: float = 0.60,
+    conf_high: float = 0.80,
+    fraction: float = 0.50,
+    score_baseline: float = 50.0,
+    min_vol: float = 0.01,
+) -> PortfolioAllocation:
+    """T12 Council action #2 — Kelly fractional risk-weighted con confidence gating.
+
+    Logica regime-aware sizing:
+    - confidence < conf_low (0.60): full equal-weight (safe fallback)
+    - conf_low ≤ confidence ≤ conf_high: smooth blend λ=(conf-low)/(high-low)
+      → weights = (1-λ)·equal + λ·kelly
+    - confidence > conf_high (0.80): full Kelly con caps
+
+    Caps applicati post-blend:
+    - cap_max (default 25%): no asset > 1/4 portfolio (single-name risk)
+    - cap_min (default 3%): asset selezionato deve avere meaningful weight
+
+    Council 2026-05-28 rationale: equal-weight top-N è troppo neutro quando
+    il modello ha alta convinzione. Kelly fractional concentra capital sui
+    top-edge assets ma con risk-budget cap che evita bancarotta.
+
+    Args:
+        scores: dict {asset: score 0-100}.
+        vols: dict {asset: annualized vol}.
+        confidence: regime confidence [0, 1].
+        top_n: numero asset.
+        cap_max: max weight singolo (default 25%).
+        cap_min: floor weight (default 3%).
+        conf_low: soglia sotto cui usa solo equal.
+        conf_high: soglia sopra cui usa solo Kelly.
+        fraction: Kelly fractional multiplier (default 0.50 = half-Kelly,
+                  più aggressivo del 0.25 default di kelly_fractional).
+        score_baseline: edge zero (default 50).
+
+    Returns:
+        PortfolioAllocation con blend equal + Kelly + caps applicati.
+    """
+    top = _sort_top_n(scores, top_n)
+    excluded = [a for a in scores if a not in {t[0] for t in top}]
+    if not top:
+        return PortfolioAllocation(
+            method="confidence_kelly", top_n=top_n,
+            weights={}, total_weight=0.0,
+            excluded_assets=excluded,
+            description="Nessun asset disponibile",
+        )
+
+    # Componente equal-weight (baseline)
+    equal_w = equal_weight(scores, top_n=top_n).weights
+    # Componente Kelly (full risk-weighted)
+    kelly_w = kelly_fractional(
+        scores, vols, top_n=top_n,
+        fraction=fraction, score_baseline=score_baseline, min_vol=min_vol,
+    ).weights
+
+    # Blend lambda: 0 sotto conf_low, 1 sopra conf_high, lineare in mezzo
+    if confidence <= conf_low:
+        lam = 0.0
+    elif confidence >= conf_high:
+        lam = 1.0
+    else:
+        lam = (confidence - conf_low) / (conf_high - conf_low)
+
+    # Blend (mantieni TUTTI i top-N asset: anche se Kelly assegna 0 ad alcuni,
+    # equal-weight component li tiene nel portfolio. Caps post-blend garantirà
+    # cap_min per ognuno).
+    blended = {}
+    top_assets = {a for a, _ in top}  # universo top-N selezionato
+    for a in top_assets:
+        e_w = equal_w.get(a, 0.0)
+        k_w = kelly_w.get(a, 0.0)
+        blended[a] = (1.0 - lam) * e_w + lam * k_w
+
+    # Re-normalize pre-cap (Kelly può aver dropped, equal compensa parzialmente)
+    total = sum(blended.values())
+    if total <= 0:
+        return equal_weight(scores, top_n=top_n)
+    blended = {a: w / total for a, w in blended.items()}
+
+    # Apply caps (max 25%, floor 3%) + re-normalize
+    capped = _apply_caps(blended, cap_max=cap_max, cap_min=cap_min)
+
+    return PortfolioAllocation(
+        method="confidence_kelly",
+        top_n=top_n,
+        weights=capped,
+        total_weight=sum(capped.values()),
+        excluded_assets=excluded,
+        metadata={
+            "confidence": confidence,
+            "blend_lambda": lam,
+            "cap_max": cap_max,
+            "cap_min": cap_min,
+            "fraction": fraction,
+        },
+        description=(
+            f"Confidence-Kelly top-{len(capped)} (conf={confidence:.2f}, "
+            f"λ={lam:.2f}, caps {cap_min*100:.0f}-{cap_max*100:.0f}%)"
+        ),
+    )
+
+
 def compute_allocation(
     method: str,
     scores: dict[str, float],
@@ -235,13 +420,31 @@ def compute_allocation(
             fraction=kwargs.get("fraction", 0.25),
             score_baseline=kwargs.get("score_baseline", 50.0),
         )
+    if method == "confidence_kelly":
+        if vols is None:
+            raise ValueError("confidence_kelly richiede `vols` dict")
+        if "confidence" not in kwargs:
+            raise ValueError("confidence_kelly richiede `confidence` (0-1)")
+        return confidence_kelly(
+            scores, vols, confidence=kwargs["confidence"], top_n=top_n,
+            cap_max=kwargs.get("cap_max", 0.25),
+            cap_min=kwargs.get("cap_min", 0.03),
+            conf_low=kwargs.get("conf_low", 0.60),
+            conf_high=kwargs.get("conf_high", 0.80),
+            fraction=kwargs.get("fraction", 0.50),
+            score_baseline=kwargs.get("score_baseline", 50.0),
+        )
     raise ValueError(f"Method '{method}' non supportato. "
-                     f"Disponibili: equal_weight, score_weighted, risk_parity, kelly_fractional")
+                     f"Disponibili: equal_weight, score_weighted, risk_parity, "
+                     f"kelly_fractional, confidence_kelly")
 
 
 def list_methods() -> list[str]:
     """Lista algoritmi disponibili."""
-    return ["equal_weight", "score_weighted", "risk_parity", "kelly_fractional"]
+    return [
+        "equal_weight", "score_weighted", "risk_parity",
+        "kelly_fractional", "confidence_kelly",
+    ]
 
 
 # ============================================================================

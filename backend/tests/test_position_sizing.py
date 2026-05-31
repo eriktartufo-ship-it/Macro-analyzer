@@ -12,7 +12,9 @@ import pytest
 
 from app.services.portfolio.position_sizing import (
     PortfolioAllocation,
+    _apply_caps,
     compute_allocation,
+    confidence_kelly,
     equal_weight,
     kelly_fractional,
     list_methods,
@@ -197,9 +199,12 @@ class TestComputeAllocationDispatch:
 
 
 class TestListMethods:
-    def test_lists_all_four_methods(self):
+    def test_lists_all_methods(self):
         out = list_methods()
-        assert set(out) == {"equal_weight", "score_weighted", "risk_parity", "kelly_fractional"}
+        assert set(out) == {
+            "equal_weight", "score_weighted", "risk_parity",
+            "kelly_fractional", "confidence_kelly",
+        }
 
 
 class TestInvariants:
@@ -364,3 +369,139 @@ class TestApplyVolTargeting:
         # Realized = 0.20, target = 0.10 → scale = 0.5
         assert out.scale_factor == pytest.approx(0.5, abs=0.01)
         assert out.cash_buffer == pytest.approx(0.5, abs=0.01)
+
+
+# ============================================================================
+# T12 Council action #2 — Confidence-Kelly tests
+# ============================================================================
+
+
+class TestApplyCaps:
+    def test_cap_max_clips_top_weight(self):
+        """Weight 0.50 deve essere clippato a cap_max=0.25."""
+        out = _apply_caps({"a": 0.50, "b": 0.30, "c": 0.20}, cap_max=0.25, cap_min=0.0)
+        assert out["a"] <= 0.25 + 1e-6
+
+    def test_cap_min_floors_small_weight(self):
+        """Weight 0.01 deve essere alzato a cap_min=0.05."""
+        out = _apply_caps({"a": 0.50, "b": 0.49, "c": 0.01}, cap_max=1.0, cap_min=0.05)
+        assert out["c"] >= 0.05 - 1e-6
+
+    def test_sum_to_one_after_caps(self):
+        # 5 asset, cap_max=0.25 → 5*0.25=1.25 fattibile sum=1
+        out = _apply_caps(
+            {"a": 0.6, "b": 0.2, "c": 0.1, "d": 0.05, "e": 0.05},
+            cap_max=0.25, cap_min=0.03,
+        )
+        assert sum(out.values()) == pytest.approx(1.0, abs=1e-6)
+
+    def test_unfeasible_cap_max_returns_capped_sum(self):
+        # cap_max=0.25 * 3 asset = 0.75 < 1 → sum < 1 atteso (cash buffer)
+        out = _apply_caps({"a": 0.6, "b": 0.3, "c": 0.1}, cap_max=0.25, cap_min=0.0)
+        # Massimo singolo deve rispettare cap_max
+        assert max(out.values()) <= 0.25 + 1e-6
+
+    def test_floor_overflow_falls_back_equal(self):
+        """cap_min × N > 1 → fallback equal-weight."""
+        out = _apply_caps({"a": 0.5, "b": 0.5}, cap_max=1.0, cap_min=0.6)
+        assert out == {"a": 0.5, "b": 0.5}
+
+    def test_empty_returns_empty(self):
+        assert _apply_caps({}, cap_max=0.25, cap_min=0.03) == {}
+
+
+class TestConfidenceKelly:
+    def test_low_conf_returns_equal_weight(self):
+        """conf < 0.6 → identical a equal_weight."""
+        out = confidence_kelly(
+            _scores_sample(), _vols_sample(), confidence=0.40, top_n=5,
+        )
+        # Tutti i weights uguali ~0.20
+        assert all(abs(w - 0.20) < 0.02 for w in out.weights.values())
+
+    def test_high_conf_concentrates_top(self):
+        """conf > 0.8 → Kelly puro (top asset peso > equal-weight)."""
+        scores = {"a": 90.0, "b": 70.0, "c": 60.0, "d": 55.0, "e": 52.0}
+        vols = {"a": 0.15, "b": 0.20, "c": 0.20, "d": 0.20, "e": 0.20}
+        out = confidence_kelly(scores, vols, confidence=0.90, top_n=5)
+        # Top asset deve avere weight > 0.20 (equal-weight baseline)
+        # MA <= cap_max 0.25
+        assert out.weights["a"] > 0.20
+        assert out.weights["a"] <= 0.25 + 1e-6
+
+    def test_cap_max_25_respected(self):
+        """Nessun asset > 25% anche con conf alta + score dominante."""
+        scores = {"a": 99.0, "b": 50.0, "c": 50.0, "d": 50.0, "e": 50.0}
+        vols = {"a": 0.10, "b": 0.30, "c": 0.30, "d": 0.30, "e": 0.30}
+        out = confidence_kelly(scores, vols, confidence=1.0, top_n=5)
+        assert max(out.weights.values()) <= 0.25 + 1e-6
+
+    def test_cap_min_3_respected_for_selected(self):
+        """Asset selezionati hanno weight >= 3%."""
+        scores = {"a": 99.0, "b": 70.0, "c": 65.0, "d": 60.0, "e": 55.0}
+        vols = {"a": 0.10, "b": 0.50, "c": 0.50, "d": 0.50, "e": 0.50}
+        out = confidence_kelly(scores, vols, confidence=0.90, top_n=5)
+        for w in out.weights.values():
+            assert w >= 0.03 - 1e-6
+
+    def test_smooth_blend_at_conf_0_7(self):
+        """conf = 0.7 (mezzo range 0.6-0.8) → blend ~50/50 equal+Kelly.
+
+        Usa 5 asset (n*cap_max = 1.25 fattibile per sum=1). Verifica
+        Kelly tilt: top scorers ottengono peso maggiore (con cap a 25%).
+        """
+        scores = {"a": 80.0, "b": 70.0, "c": 60.0, "d": 55.0, "e": 52.0}
+        vols = {"a": 0.15, "b": 0.20, "c": 0.25, "d": 0.25, "e": 0.25}
+        out = confidence_kelly(scores, vols, confidence=0.70, top_n=5)
+        assert sum(out.weights.values()) == pytest.approx(1.0, abs=1e-6)
+        # a + b devono essere alla cap_max=0.25 (forti); c/d/e <0.20 (deboli)
+        assert out.weights["a"] >= out.weights["c"]
+        assert out.weights["b"] >= out.weights["c"]
+        assert out.weights["c"] >= out.weights["e"]
+
+    def test_metadata_includes_confidence_and_lambda(self):
+        out = confidence_kelly(
+            _scores_sample(), _vols_sample(), confidence=0.75, top_n=5,
+        )
+        assert "confidence" in out.metadata
+        assert "blend_lambda" in out.metadata
+        assert out.metadata["confidence"] == 0.75
+        # conf 0.75 nel range [0.6, 0.8] → lambda = (0.75-0.6)/0.2 = 0.75
+        assert out.metadata["blend_lambda"] == pytest.approx(0.75)
+
+    def test_sum_to_one(self):
+        out = confidence_kelly(
+            _scores_sample(), _vols_sample(), confidence=0.65, top_n=7,
+        )
+        assert sum(out.weights.values()) == pytest.approx(1.0, abs=1e-6)
+
+    def test_empty_scores_returns_empty(self):
+        out = confidence_kelly({}, {}, confidence=0.8, top_n=5)
+        assert out.weights == {}
+
+
+class TestComputeAllocationDispatchKelly:
+    def test_dispatch_confidence_kelly(self):
+        out = compute_allocation(
+            "confidence_kelly", _scores_sample(),
+            vols=_vols_sample(), top_n=5, confidence=0.75,
+        )
+        assert out.method == "confidence_kelly"
+        assert sum(out.weights.values()) == pytest.approx(1.0)
+
+    def test_confidence_kelly_requires_confidence_kwarg(self):
+        with pytest.raises(ValueError, match="confidence"):
+            compute_allocation(
+                "confidence_kelly", _scores_sample(),
+                vols=_vols_sample(), top_n=5,  # missing confidence
+            )
+
+    def test_confidence_kelly_requires_vols(self):
+        with pytest.raises(ValueError, match="vols"):
+            compute_allocation(
+                "confidence_kelly", _scores_sample(),
+                top_n=5, confidence=0.7,
+            )
+
+    def test_list_methods_includes_confidence_kelly(self):
+        assert "confidence_kelly" in list_methods()
