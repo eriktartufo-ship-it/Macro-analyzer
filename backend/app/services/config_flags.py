@@ -105,6 +105,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_UNCERTAINTY_GATE": True,           # Paper trading promoted 2026-05-27
         "USE_MOMENTUM_PILLARS": True,           # Paper trading 4-test promoted 2026-05-27
         "USE_LIQUIDITY_SURGE_OVERRIDE": True,   # Council post-TEST A 2020 disaster 2026-05-27
+        "USE_FORWARD_INFLATION_PILLAR": True,   # T13 Council 2026-05-31: MICH/sticky/T5YIFR
     }
     # Add new flags to known list below
     pass  # marker
@@ -136,6 +137,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_MOMENTUM_PILLARS",
         "USE_UNCERTAINTY_GATE",
         "USE_LIQUIDITY_SURGE_OVERRIDE",
+        "USE_FORWARD_INFLATION_PILLAR",
     ]
     out = {}
     for name in known:
@@ -504,6 +506,35 @@ def use_momentum_pillars() -> bool:
     Default: True (post paper trading validation). Disable via env=0.
     """
     return _read_flag("USE_MOMENTUM_PILLARS", default=True)
+
+
+def use_forward_inflation_pillar() -> bool:
+    """T13 (2026-05-31 Council post bug T12): se True, aggiunge pillar al classifier
+    basati su FORWARD-LOOKING inflation features per fixare la "inflation blindness"
+    diagnosticata dopo il bug deflation-vs-stagflation 2026-05-31.
+
+    Razionale: il classifier vedeva solo CPI/Core PCE level + momentum.
+    Mancava feature SET forward-looking che market/consumer pricing già scontano:
+    - T5YIFR (5y5y forward): Fed's preferred inflation anchor (>2.5% = break)
+    - MICH (UMich 1y consumer): sentiment-driven inflation expectation
+    - Sticky-Price CPI (Atlanta Fed): hardest inflation component to break
+
+    Pillar aggiunti:
+    - `umich_inflation_high` (stagflation 0.04): MICH > 3.5%
+    - `sticky_inflation_high` (stagflation 0.04): sticky_cpi_yoy > 4%
+    - `breakeven_5y5y_high` (stagflation 0.03): T5YIFR > 2.5%
+    - `umich_inflation_low` (deflation 0.03): MICH < 2.0%
+    - `umich_inflation_anchored` (goldilocks 0.03): MICH 2.0-2.5%
+    - `sticky_inflation_anchored` (goldilocks 0.03): sticky_cpi 2.0-2.7%
+
+    Pillar rebalance (sottrai pesi dai level pillar per coerenza Σ=1):
+    - Stagflation: inflation_high -0.04, core_pce_high -0.04, breakeven_high -0.03
+    - Deflation: breakeven_collapse -0.03
+    - Goldilocks: breakeven_stable -0.03, core_pce_contained -0.03
+
+    Default: True (council T13 raccomandation post fix T12).
+    """
+    return _read_flag("USE_FORWARD_INFLATION_PILLAR", default=True)
 
 
 def use_ml_regime_blend() -> bool:

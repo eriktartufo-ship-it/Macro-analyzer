@@ -17,6 +17,7 @@ from app.services.config_flags import (
     use_adaptive_thresholds,
     use_cross_asset_pillars,
     use_dedollar_pillar,
+    use_forward_inflation_pillar,
     use_freshness_weighting,
     use_gdp_collapse_override,
     use_ml_regime_blend,
@@ -79,6 +80,57 @@ def _merge_momentum_pillars(base: dict) -> dict:
                 merged[regime][cond_name]["weight"] = max(0.0, merged[regime][cond_name]["weight"] + delta)
     # Aggiungi momentum pillar
     for regime, adds in _MOMENTUM_PILLARS_ADD.items():
+        for cond_name, cond_data in adds.items():
+            merged[regime][cond_name] = dict(cond_data)
+    return merged
+
+
+# T13 (2026-05-31 Council) Forward-looking inflation pillars — fix structural
+# "inflation blindness" diagnosticata post bug T12. Discrimina inflation regimes
+# usando ANCHE expected/market-priced inflation, non solo CPI level/momentum.
+_FORWARD_INFLATION_PILLAR_ADD: dict[str, dict[str, dict]] = {
+    "stagflation": {
+        "umich_inflation_high": {"weight": 0.04, "description": "UMich 1y inflation expectation > 3.5%"},
+        "sticky_inflation_high": {"weight": 0.04, "description": "Atlanta Fed sticky CPI > 4% (hardest to break)"},
+        "breakeven_5y5y_high": {"weight": 0.03, "description": "5y5y forward inflation > 2.5% (Fed anchor break)"},
+    },
+    "deflation": {
+        "umich_inflation_low": {"weight": 0.03, "description": "UMich 1y < 2% (consumer expects disinflation)"},
+    },
+    "goldilocks": {
+        "umich_inflation_anchored": {"weight": 0.03, "description": "UMich 1y in 2.0-2.5% (anchored at target)"},
+        "sticky_inflation_anchored": {"weight": 0.03, "description": "Sticky CPI in 2.0-2.7% (anchored sticky)"},
+    },
+}
+
+_FORWARD_INFLATION_PILLAR_REBALANCE: dict[str, dict[str, float]] = {
+    "stagflation": {
+        # Riduci pesi level inflation per fare spazio ai forward (Σ=1 target)
+        "inflation_high": -0.03,
+        "core_pce_high": -0.03,
+        "breakeven_high": -0.02,
+    },
+    "deflation": {
+        # Riduzione minima per non destabilizzare scenari deflation severa
+        "breakeven_collapse": -0.02,
+    },
+    "goldilocks": {
+        "breakeven_stable": -0.02,
+        "core_pce_contained": -0.02,
+    },
+}
+
+
+def _merge_forward_inflation_pillars(base: dict) -> dict:
+    """T13: applica rebalance + aggiunta pillar forward-looking inflation."""
+    merged = {regime: {k: dict(v) for k, v in conds.items()} for regime, conds in base.items()}
+    for regime, deltas in _FORWARD_INFLATION_PILLAR_REBALANCE.items():
+        for cond_name, delta in deltas.items():
+            if cond_name in merged.get(regime, {}):
+                merged[regime][cond_name]["weight"] = max(
+                    0.0, merged[regime][cond_name]["weight"] + delta
+                )
+    for regime, adds in _FORWARD_INFLATION_PILLAR_ADD.items():
         for cond_name, cond_data in adds.items():
             merged[regime][cond_name] = dict(cond_data)
     return merged
@@ -238,6 +290,13 @@ def _evaluate_condition(
     vix = indicators.get("vix", 18.0)  # fear gauge, storicamente 12-20 calm
     nfci = indicators.get("nfci", 0.0)  # Chicago Fed FCI, 0 = neutral, + = tight
     breakeven = indicators.get("breakeven_10y", 2.0)  # inflation expectations
+    # T13 Forward-looking inflation features (council 2026-05-31 post bug T12).
+    # 5y5y forward (Fed's preferred long-anchor): default 2.0% = at target.
+    breakeven_5y5y = indicators.get("breakeven_5y5y", 2.0)
+    # UMich 1y consumer expectation (sentiment-driven, monthly): default 2.5% (Fed target+buffer).
+    umich_inflation = indicators.get("umich_inflation_1y", 2.5)
+    # Atlanta Fed sticky CPI (12m %change, hardest to break): default 2.5% (Fed target+buffer).
+    sticky_cpi = indicators.get("sticky_cpi_yoy", 2.5)
     yield_3m = indicators.get("yield_curve_10y3m", 1.0)  # 10y-3m spread
     housing_roc = indicators.get("housing_starts_roc_12m", 0.0)  # housing YoY
     # ACM Term Premium 10Y (Tier 1.3 roadmap): neutral default 0.3% (storica media).
@@ -347,6 +406,28 @@ def _evaluate_condition(
     elif condition_name == "dfm_growth_decelerating":
         dfm_change = indicators.get("gdp_yoy_dfm_change_3m", 0.0)
         return _sigmoid(-dfm_change, center=0.4, scale=0.4)
+
+    # --- T13 FORWARD-LOOKING INFLATION PILLARS (USE_FORWARD_INFLATION_PILLAR) ---
+    # Cattura inflation expectations (market + consumer + sticky) per fix bug
+    # "inflation blindness" diagnosticato 2026-05-31. Council T13.
+    elif condition_name == "umich_inflation_high":
+        # MICH > 3.5% = consumer expects hot inflation (1981-style)
+        return _sigmoid(umich_inflation, center=3.5, scale=0.5)
+    elif condition_name == "sticky_inflation_high":
+        # Sticky CPI > 4% = inflation sticky component embedded
+        return _sigmoid(sticky_cpi, center=4.0, scale=0.5)
+    elif condition_name == "breakeven_5y5y_high":
+        # T5YIFR > 2.5% = Fed anchor break (long-term inflation not anchored)
+        return _sigmoid(breakeven_5y5y, center=2.5, scale=0.3)
+    elif condition_name == "umich_inflation_low":
+        # MICH < 2.0% = consumer doesn't expect inflation (deflation signal)
+        return _sigmoid(-umich_inflation, center=-2.0, scale=0.4)
+    elif condition_name == "umich_inflation_anchored":
+        # MICH 2.0-2.5% = anchored at target (goldilocks)
+        return _bell(umich_inflation, center=2.25, width=0.3)
+    elif condition_name == "sticky_inflation_anchored":
+        # Sticky CPI 2.0-2.7% = sticky component at target (goldilocks)
+        return _bell(sticky_cpi, center=2.35, width=0.4)
 
     # --- DEFLATION conditions ---
     elif condition_name == "gdp_negative_or_decelerating":
@@ -601,6 +682,11 @@ def classify_regime(
         active_conditions = _merge_momentum_pillars(REGIME_CONDITIONS)
     else:
         active_conditions = REGIME_CONDITIONS
+
+    # T13 (2026-05-31): forward-looking inflation pillar (MICH/sticky/T5YIFR).
+    # Compone con T11 momentum: prima rebalance momentum, poi forward.
+    if use_forward_inflation_pillar():
+        active_conditions = _merge_forward_inflation_pillars(active_conditions)
 
     for regime in REGIMES:
         regime_score = 0.0

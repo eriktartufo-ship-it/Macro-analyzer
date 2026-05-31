@@ -182,6 +182,20 @@ FRED_SERIES = {
         "frequency": "daily",
         "transform": "level",
     },
+    # T13 Council 2026-05-31: forward-looking inflation features to fix
+    # classifier "inflation blindness" (livello vs expectation discrepancy)
+    "umich_inflation_1y": {
+        "fred_id": "MICH",
+        "description": "Univ. of Michigan: Inflation Expectation (1y, consumer survey)",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "sticky_cpi_yoy": {
+        "fred_id": "CORESTICKM158SFRBATL",
+        "description": "Atlanta Fed Sticky-Price CPI (12m change, sticky inflation)",
+        "frequency": "monthly",
+        "transform": "level",
+    },
     "vix": {
         "fred_id": "VIXCLS",
         "description": "CBOE Volatility Index (market fear gauge)",

@@ -252,6 +252,10 @@ class TestRegimeClassifier:
             "nfci": 0.8,
             "breakeven_10y": 0.8,
             "housing_starts_roc_12m": -25.0,
+            # T13 forward inflation (deflation severa: consumer + sticky low)
+            "umich_inflation_1y": 1.5,
+            "sticky_cpi_yoy": 1.8,
+            "breakeven_5y5y": 1.0,
         }
         result = classify_regime(indicators)
 
