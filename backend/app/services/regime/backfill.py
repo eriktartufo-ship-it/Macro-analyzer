@@ -51,6 +51,15 @@ _CLASSIFIER_SERIES = (
     # Council 2026-05-27 — Liquidity surge override (post TEST A 2020 disaster)
     "m2",                # M2 money stock (mensile, FRED M2SL)
     "fed_balance_sheet", # Fed WALCL (settimanale, FRED)
+    # T13 forward-looking inflation features (council 2026-05-31)
+    "umich_inflation_1y",  # MICH (mensile, dal 1978)
+    "sticky_cpi_yoy",      # Atlanta sticky CPI (mensile, dal 1968)
+    "breakeven_5y5y",      # T5YIFR (giornaliero, dal 2003)
+    # T17 Labor + Credit features (council 2026-05-31 sessione 23)
+    "wage_growth_atlanta", # Atlanta wage tracker (mensile, dal 1997)
+    "jolts_quits_rate",    # JOLTS quits (mensile, dal 2000)
+    "avg_weekly_hours",    # AWHAETP (mensile, dal 2006)
+    "hy_credit_spread",    # BofA HY OAS (giornaliero, dal 1997)
 )
 
 
@@ -171,6 +180,32 @@ def _build_indicators_as_of(
     v = roc("housing_starts", 12)
     if v is not None:
         indicators["housing_starts_roc_12m"] = v
+
+    # T13 forward inflation features (level read)
+    v = last_before("umich_inflation_1y")
+    if v is not None:
+        indicators["umich_inflation_1y"] = v
+    v = last_before("sticky_cpi_yoy")
+    if v is not None:
+        indicators["sticky_cpi_yoy"] = v
+    v = last_before("breakeven_5y5y")
+    if v is not None:
+        indicators["breakeven_5y5y"] = v
+
+    # T17 Labor + Credit features
+    v = last_before("wage_growth_atlanta")
+    if v is not None:
+        indicators["wage_growth_atlanta"] = v
+    v = last_before("jolts_quits_rate")
+    if v is not None:
+        indicators["jolts_quits_rate"] = v
+    # avg_weekly_hours YoY (12 monthly periods)
+    v = roc("avg_weekly_hours", 12)
+    if v is not None:
+        indicators["avg_weekly_hours_yoy"] = v
+    v = last_before("hy_credit_spread")
+    if v is not None:
+        indicators["hy_credit_spread"] = v
 
     # T11 (2026-05-27): momentum derivatives per pillar acceleration-based.
     _enrich_with_momentum_derivatives(indicators, series, cutoff)
