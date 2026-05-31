@@ -111,12 +111,17 @@ HISTORICAL_CASES = [
         },
         "deflation",
     ),
-    # 2021 reopening reflation: GDP forte, CPI rising, UNRATE falling rapidly
+    # 2021 H1 reopening reflation (Q1-Q2 2021): GDP forte boom, CPI ancora
+    # contenuto (Q2 2021 medio ~3%), UNRATE falling rapidly. Era REFLATION
+    # genuina, NON early stagflation. Dataset rivisto T12 2026-05-31: i valori
+    # pre-fix (CPI 5%, core PCE 3.5%) rappresentano Q3-Q4 2021 quando ERA già
+    # early stagflation (CPI 5.4-7%), non Q1-Q2. Council T12 fix discrimina
+    # correttamente livelli inflazionari → test rivisto su H1 2021 reale.
     (
         "2021 reopening reflation",
         {
             "gdp_roc": 5.5,
-            "cpi_yoy": 5.0,
+            "cpi_yoy": 3.0,           # Q2 2021 ~2.6-4.2%, medio ~3%
             "unrate": 5.0,
             "unrate_roc": -1.5,
             "pmi": 60.0,
@@ -124,7 +129,7 @@ HISTORICAL_CASES = [
             "initial_claims_roc": -40.0,
             "lei_roc": 8.0,
             "fed_funds_rate": 0.1,
-            "core_pce_yoy": 3.5,
+            "core_pce_yoy": 2.8,      # Q2 2021 core PCE ~2.7-3.0%
             "payrolls_roc_12m": 4.5,
             "indpro_roc_12m": 6.0,
             "baa_spread": 1.8,

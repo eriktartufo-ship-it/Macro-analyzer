@@ -304,7 +304,12 @@ def _evaluate_condition(
 
     # --- STAGFLATION conditions ---
     elif condition_name == "inflation_high":
-        c, s = _resolve_sigmoid_params(condition_name, 4.0, 1.5, adaptive_recipes, sign=+1)
+        # T12 BUGFIX 2026-05-31 (council + bughunter): center 4.0 troppo alto.
+        # Con CPI=3.95% restituiva 0.49 (border, contributo debole) mentre
+        # 3.95% E' inflazione stagflattiva textbook. Center 3.2 risolve il bug
+        # "classificato deflation con CPI rising 3 mesi consecutivi" (utente
+        # Erik 2026-05-31). Scale 1.0: più sharp anche da 2.5% in su.
+        c, s = _resolve_sigmoid_params(condition_name, 3.2, 1.0, adaptive_recipes, sign=+1)
         return _sigmoid(cpi, center=c, scale=s)
     elif condition_name == "gdp_weak":
         return _sigmoid(-gdp, center=-1.0, scale=1.0)
@@ -324,11 +329,15 @@ def _evaluate_condition(
     # --- T11 MOMENTUM PILLARS (opt-in USE_MOMENTUM_PILLARS) ---
     # Cattura ACCELERAZIONE oltre al livello istantaneo. Council 2026-05-27.
     elif condition_name == "inflation_accelerating":
+        # T12 BUGFIX 2026-05-31: center 1.0 troppo alto. CPI rise +0.92pp in
+        # 6m era già "accelerating textbook" ma sigmoid restituiva 0.46.
+        # Center 0.5 = +0.5pp in 6m è soglia significativa accelerazione.
         cpi_change = indicators.get("cpi_yoy_change_6m", 0.0)
-        return _sigmoid(cpi_change, center=1.0, scale=0.5)
+        return _sigmoid(cpi_change, center=0.5, scale=0.4)
     elif condition_name == "core_pce_accelerating":
+        # T12 BUGFIX 2026-05-31: center 0.8 → 0.4 stessa logica.
         pce_change = indicators.get("core_pce_yoy_change_6m", 0.0)
-        return _sigmoid(pce_change, center=0.8, scale=0.4)
+        return _sigmoid(pce_change, center=0.4, scale=0.3)
     elif condition_name == "gdp_decelerating":
         gdp_change = indicators.get("gdp_roc_change_6m", 0.0)
         return _sigmoid(-gdp_change, center=0.5, scale=0.5)
@@ -389,7 +398,10 @@ def _evaluate_condition(
     elif condition_name == "indpro_contraction":
         return _sigmoid(-indpro_roc, center=0.0, scale=1.2)
     elif condition_name == "core_pce_high":
-        return _sigmoid(core_pce, center=3.5, scale=0.8)
+        # T12 BUGFIX 2026-05-31: center 3.5 → 3.0. Core PCE > 3% è già
+        # "sticky inflation" sopra Fed target+buffer → forte segnale stagflation.
+        # Live core_pce 3.29% dava 0.43 (border), ora restituisce ~0.65.
+        return _sigmoid(core_pce, center=3.0, scale=0.7)
     elif condition_name == "core_pce_contained":
         return _sigmoid(-core_pce, center=-2.3, scale=0.6)
     elif condition_name == "credit_spread_tight":
@@ -694,40 +706,69 @@ def classify_regime(
     # regime con inflazione al 4%".
     if cpi > 3.5:
         raw_scores["reflation"] *= max(0.20, 1.0 - (cpi - 3.5) * 0.90)
-    # Goldilocks richiede inflation bassa — soglia 2.5% (Fed target+buffer), prima era 3.5
-    # (troppo permissivo: 3.5% non e' goldilocks per nessuna definizione moderna).
+    # Goldilocks richiede inflation bassa — soglia 2.5% (Fed target+buffer).
+    # T12 BUGFIX 2026-05-31 (council + bughunter): slope 0.30 → 0.60 troppo
+    # permissivo, a CPI 3.95% goldilocks veniva ridotto solo del 43%.
+    # Floor 0.25 → 0.15 per evitare residual goldilocks in piena stagflation.
     if cpi > 2.5:
-        raw_scores["goldilocks"] *= max(0.25, 1.0 - (cpi - 2.5) * 0.30)
+        raw_scores["goldilocks"] *= max(0.15, 1.0 - (cpi - 2.5) * 0.60)
+
+    # T12 BUGFIX 2026-05-31: deflation penalty con CPI > 3.0% (NEW).
+    # Deflation E' anti-thesis di inflation. Live API mostra deflation 38.7%
+    # con CPI 3.95% — economicamente assurdo. Penalty AGGRESSIVA sopra 3.0%.
+    # CPI 3.5 → ×0.675, CPI 4.0 → ×0.35, CPI 4.5 → floor 0.20.
+    # SKIP solo se gdp_collapse SEVERITY ALTA (>0.80, vero 2008-style crash):
+    # GDP < -1.5% + vix > 30 + breakeven crollato. Per severity moderate (0.55-0.80)
+    # il classifier T12 vince comunque sulla penalty CPI rising.
+    if cpi > 3.0 and gdp_collapse_severity < 0.80:
+        raw_scores["deflation"] *= max(0.20, 1.0 - (cpi - 3.0) * 0.65)
+
+    # T12 STAGFLATION TEXTBOOK BONUS 2026-05-31: scenario inequivocabile.
+    # CPI > 3.5% AND GDP ROC < 1.5% = signature stagflation (1973-style).
+    # Boost ×1.30 evita che reflation/deflation vincano in border cases dove
+    # i pillar accumulano molti piccoli positivi cross-regime. Council T12.
+    # SKIP solo se gdp_collapse SEVERITY ALTA (>0.80): 2008-style overrides
+    # questo bonus, ma per gdp_roc weak ma non collapse si applica.
+    if cpi > 3.5 and gdp < 1.5 and gdp_collapse_severity < 0.80:
+        raw_scores["stagflation"] *= 1.30
+        # Reflation NON è plausibile con CPI > 3.5% AND GDP < 1.5%
+        raw_scores["reflation"] *= 0.75
 
     # Council 2026-05-27 — LIQUIDITY SURGE OVERRIDE (post TEST A 2020 disaster).
     # Fix per V-shape recovery missing: massive QE/stampa valuta = leading
     # indicator del recovery, NON i fondamentali macro.
     # Trigger composite: M2 YoY > +10% AND WALCL ROC 3m > +12% AND real rates declining.
+    # T12 GATE 2026-05-31 (council): anti-inflation circuit breaker. Override
+    # OFF se CPI accelerating > +0.5pp in 6m OR CPI > 3.5% (= stagflation reale).
     liquidity_surge_triggered = False
     try:
         from app.services.config_flags import use_liquidity_surge_override
         if use_liquidity_surge_override():
-            m2_y = indicators.get("m2_yoy")
-            walcl_r3m = indicators.get("walcl_roc_3m")
-            real_rate_chg = indicators.get("real_rate_change_3m")
-            # Real rate "accommodative" criterio flexible:
-            # - declining (real_rate_change < 0) OR
-            # - already very low (real_rate_now < +1.0) — cattura 2020 deflation
-            #   crash dove CPI -drops piu di rate-cuts -> real rate sale a 0 from neg
-            ff_now = indicators.get("fed_funds_rate", 2.5)
-            cpi_now = indicators.get("cpi_yoy", 2.0)
-            real_rate_now = ff_now - cpi_now
-            real_rate_accommodative = (
-                (real_rate_chg is not None and real_rate_chg < 0)
-                or real_rate_now < 1.0
-            )
-            if (m2_y is not None and m2_y > 10.0
-                    and walcl_r3m is not None and walcl_r3m > 12.0
-                    and real_rate_accommodative):
-                liquidity_surge_triggered = True
-                # Boost reflation +40%, dampen deflation × 0.5 (NON cancellare)
-                raw_scores["reflation"] *= 1.40
-                raw_scores["deflation"] *= 0.5
+            # Circuit breaker T12: blocca override in scenario stagflattivo
+            cpi_chg_6m = indicators.get("cpi_yoy_change_6m", 0.0)
+            anti_inflation_block = (cpi > 3.5) or (cpi_chg_6m > 0.5)
+            if not anti_inflation_block:
+                m2_y = indicators.get("m2_yoy")
+                walcl_r3m = indicators.get("walcl_roc_3m")
+                real_rate_chg = indicators.get("real_rate_change_3m")
+                # Real rate "accommodative" criterio flexible:
+                # - declining (real_rate_change < 0) OR
+                # - already very low (real_rate_now < +1.0) — cattura 2020 deflation
+                #   crash dove CPI -drops piu di rate-cuts -> real rate sale a 0 from neg
+                ff_now = indicators.get("fed_funds_rate", 2.5)
+                cpi_now = indicators.get("cpi_yoy", 2.0)
+                real_rate_now = ff_now - cpi_now
+                real_rate_accommodative = (
+                    (real_rate_chg is not None and real_rate_chg < 0)
+                    or real_rate_now < 1.0
+                )
+                if (m2_y is not None and m2_y > 10.0
+                        and walcl_r3m is not None and walcl_r3m > 12.0
+                        and real_rate_accommodative):
+                    liquidity_surge_triggered = True
+                    # Boost reflation +40%, dampen deflation × 0.5 (NON cancellare)
+                    raw_scores["reflation"] *= 1.40
+                    raw_scores["deflation"] *= 0.5
     except Exception:
         pass
 
