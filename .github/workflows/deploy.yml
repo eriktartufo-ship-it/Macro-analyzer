@@ -77,22 +77,18 @@ jobs:
 
   deploy:
     needs: build-and-push
-    runs-on: ubuntu-latest
+    # Self-hosted runner sul VPS (sostituito 2026-05-31 il SSH-action che falliva
+    # per Hostinger firewall block sui range Azure dei runner GitHub-hosted).
+    # Zero ingress SSH nuovo: il runner si auto-presenta a GitHub via outbound HTTPS.
+    runs-on: [self-hosted, linux, vps-macro]
     steps:
-      - name: SSH to VPS — pull & restart
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.VPS_SSH_HOST }}
-          username: ${{ secrets.VPS_SSH_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_SSH_PORT || 22 }}
-          script_stop: true
-          script: |
-            set -euo pipefail
-            cd /opt/macro
-            docker compose pull
-            docker compose up -d
-            docker image prune -f
+      - name: Pull latest images & restart compose
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          docker compose pull
+          docker compose up -d
+          docker image prune -f
 
       - name: Smoke test (HTTPS endpoint)
         run: |
