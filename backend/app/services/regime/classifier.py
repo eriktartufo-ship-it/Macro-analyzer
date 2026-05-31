@@ -16,6 +16,7 @@ from typing import Any
 from app.services.config_flags import (
     use_adaptive_thresholds,
     use_cross_asset_pillars,
+    use_cyclical_pillar,
     use_dedollar_pillar,
     use_forward_inflation_pillar,
     use_freshness_weighting,
@@ -193,6 +194,61 @@ def _merge_labor_credit_pillars(base: dict) -> dict:
             merged[regime][cond_name] = dict(cond_data)
     return merged
 
+
+# T18 (2026-05-31 Council sessione 25) Cyclical leading pillars — early macro
+# shifts detection (heavy truck, building permits, durable orders, consumer credit).
+# Tesi: T17 ha validato che features predittive producono alpha. Estendere la
+# tesi con cyclical leading indicators che precedono regime shifts di 3-12 mesi.
+_CYCLICAL_PILLAR_ADD: dict[str, dict[str, dict]] = {
+    "reflation": {
+        "truck_freight_strong": {"weight": 0.04, "description": "Heavy truck sales YoY > +5% (freight demand robust)"},
+        "permits_expansion": {"weight": 0.03, "description": "Building permits YoY > +5% (housing cycle expansion)"},
+        "durable_orders_expansion": {"weight": 0.03, "description": "Durable goods orders YoY > +5% (business investment)"},
+        "consumer_credit_expansion": {"weight": 0.02, "description": "Consumer credit YoY > +5% (household leverage)"},
+    },
+    "deflation": {
+        "truck_freight_collapse": {"weight": 0.04, "description": "Heavy truck sales YoY < -10% (freight collapse, recession leading)"},
+        "permits_collapse": {"weight": 0.03, "description": "Building permits YoY < -20% (housing crash)"},
+        "durable_orders_contraction": {"weight": 0.03, "description": "Durable goods YoY < -5% (capex collapse)"},
+    },
+    "goldilocks": {
+        "permits_expansion": {"weight": 0.03, "description": "Building permits YoY > +5% (healthy housing cycle)"},
+        "consumer_credit_expansion": {"weight": 0.02, "description": "Consumer credit YoY > +5% (healthy household demand)"},
+    },
+}
+
+_CYCLICAL_PILLAR_REBALANCE: dict[str, dict[str, float]] = {
+    "reflation": {
+        "indpro_growth": -0.02,  # Indpro è coincident, T18 cyclical è leading
+        "payrolls_growth": -0.02,
+        "housing_expansion": -0.03,  # Permit è leading version di housing
+    },
+    "deflation": {
+        "indpro_contraction": -0.02,  # Truck/permits sono earlier signal
+        "payrolls_slowdown": -0.02,
+        "credit_stress": -0.02,
+    },
+    "goldilocks": {
+        "lei_positive": -0.02,
+        "claims_low": -0.03,
+    },
+}
+
+
+def _merge_cyclical_pillars(base: dict) -> dict:
+    """T18: applica rebalance + aggiunta pillar cyclical leading."""
+    merged = {regime: {k: dict(v) for k, v in conds.items()} for regime, conds in base.items()}
+    for regime, deltas in _CYCLICAL_PILLAR_REBALANCE.items():
+        for cond_name, delta in deltas.items():
+            if cond_name in merged.get(regime, {}):
+                merged[regime][cond_name]["weight"] = max(
+                    0.0, merged[regime][cond_name]["weight"] + delta
+                )
+    for regime, adds in _CYCLICAL_PILLAR_ADD.items():
+        for cond_name, cond_data in adds.items():
+            merged[regime][cond_name] = dict(cond_data)
+    return merged
+
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
 REGIME_CONDITIONS = {
     "reflation": {
@@ -364,6 +420,15 @@ def _evaluate_condition(
     avg_hours_roc = indicators.get("avg_weekly_hours_yoy", 0.0)
     # High-yield credit spread (BofA OAS, %): default 4.0% (long-run avg).
     hy_spread = indicators.get("hy_credit_spread", 4.0)
+    # T18 Cyclical leading indicators (council sessione 25 2026-05-31):
+    # Heavy truck sales YoY: default 0% (no growth, neutral).
+    heavy_truck_yoy = indicators.get("heavy_truck_sales_yoy", 0.0)
+    # Building permits YoY: default 0% (neutral).
+    permits_yoy = indicators.get("building_permits_yoy", 0.0)
+    # Consumer credit YoY: default 4% (long-run avg).
+    consumer_credit_yoy = indicators.get("consumer_credit_yoy", 4.0)
+    # Durable goods orders YoY: default 0% (neutral).
+    durable_yoy = indicators.get("durable_goods_orders_yoy", 0.0)
     yield_3m = indicators.get("yield_curve_10y3m", 1.0)  # 10y-3m spread
     housing_roc = indicators.get("housing_starts_roc_12m", 0.0)  # housing YoY
     # ACM Term Premium 10Y (Tier 1.3 roadmap): neutral default 0.3% (storica media).
@@ -513,6 +578,30 @@ def _evaluate_condition(
     elif condition_name == "hy_credit_tight":
         # HY OAS < 3% = risk-on credit, no stress
         return _sigmoid(-hy_spread, center=-3.0, scale=0.5)
+
+    # --- T18 CYCLICAL LEADING PILLARS (USE_CYCLICAL_PILLAR) ---
+    # Council 2026-05-31 sessione 25: cyclical leading indicators.
+    elif condition_name == "truck_freight_strong":
+        # Heavy truck YoY > +5% = freight demand robust (reflation early signal)
+        return _sigmoid(heavy_truck_yoy, center=5.0, scale=2.5)
+    elif condition_name == "truck_freight_collapse":
+        # Heavy truck YoY < -10% = freight collapse (recession leading 6-12m)
+        return _sigmoid(-heavy_truck_yoy, center=10.0, scale=3.0)
+    elif condition_name == "permits_expansion":
+        # Permits YoY > +5% = housing cycle expanding (early reflation/goldilocks)
+        return _sigmoid(permits_yoy, center=5.0, scale=2.5)
+    elif condition_name == "permits_collapse":
+        # Permits YoY < -20% = housing crash (early deflation signal)
+        return _sigmoid(-permits_yoy, center=20.0, scale=5.0)
+    elif condition_name == "durable_orders_expansion":
+        # Durable goods YoY > +5% = business investment up (reflation early)
+        return _sigmoid(durable_yoy, center=5.0, scale=2.5)
+    elif condition_name == "durable_orders_contraction":
+        # Durable goods YoY < -5% = capex collapse (deflation early)
+        return _sigmoid(-durable_yoy, center=5.0, scale=2.5)
+    elif condition_name == "consumer_credit_expansion":
+        # Consumer credit YoY > +5% = healthy household demand
+        return _sigmoid(consumer_credit_yoy, center=5.0, scale=1.5)
 
     # --- DEFLATION conditions ---
     elif condition_name == "gdp_negative_or_decelerating":
@@ -777,6 +866,11 @@ def classify_regime(
     # Composizione finale dopo T11 momentum + T13 forward inflation.
     if use_labor_credit_pillar():
         active_conditions = _merge_labor_credit_pillars(active_conditions)
+
+    # T18 (2026-05-31 sessione 25): cyclical leading pillar.
+    # Final compositional layer (truck/permits/durable/consumer credit).
+    if use_cyclical_pillar():
+        active_conditions = _merge_cyclical_pillars(active_conditions)
 
     for regime in REGIMES:
         regime_score = 0.0

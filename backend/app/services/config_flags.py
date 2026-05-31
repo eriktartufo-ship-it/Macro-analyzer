@@ -107,6 +107,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_LIQUIDITY_SURGE_OVERRIDE": True,   # Council post-TEST A 2020 disaster 2026-05-27
         "USE_FORWARD_INFLATION_PILLAR": True,   # T13 Council 2026-05-31: MICH/sticky/T5YIFR
         "USE_LABOR_CREDIT_PILLAR": True,        # T17 Council 2026-05-31 sessione 23: wage/quits/hours/HY spread
+        "USE_CYCLICAL_PILLAR": True,            # T18 Council 2026-05-31 sessione 25: heavy truck/permits/credit/durable
     }
     # Add new flags to known list below
     pass  # marker
@@ -140,6 +141,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_LIQUIDITY_SURGE_OVERRIDE",
         "USE_FORWARD_INFLATION_PILLAR",
         "USE_LABOR_CREDIT_PILLAR",
+        "USE_CYCLICAL_PILLAR",
     ]
     out = {}
     for name in known:
@@ -508,6 +510,34 @@ def use_momentum_pillars() -> bool:
     Default: True (post paper trading validation). Disable via env=0.
     """
     return _read_flag("USE_MOMENTUM_PILLARS", default=True)
+
+
+def use_cyclical_pillar() -> bool:
+    """T18 (2026-05-31 Council sessione 25): cyclical leading indicators.
+
+    Tesi: T17 ha dimostrato che features predittive del classifier producono
+    alpha edge REAL (+0.15pp consistent). Stessa logica: aggiungere indicatori
+    cyclical-leading che precedono macro shifts.
+
+    Indicatori aggiunti (early cyclical signals):
+    - heavy_truck_sales (HTRUCKSSAAR): freight demand collapse leading
+      recession 6-12m. Storia: heavy truck -20% YoY = recession 80% accuracy.
+    - building_permits (PERMIT): housing cycle leading indicator (3-6m lead).
+    - consumer_credit (TOTALSL): household balance sheet expansion/contraction.
+    - durable_goods_orders (DGORDER): business investment leading capex.
+
+    Pillar aggiunti:
+    - `truck_freight_strong` (reflation 0.04): heavy_truck_sales YoY > +5%
+    - `truck_freight_collapse` (deflation 0.04): heavy_truck YoY < -10%
+    - `permits_expansion` (reflation/goldilocks 0.03): permits YoY > +5%
+    - `permits_collapse` (deflation 0.03): permits YoY < -20%
+    - `durable_orders_expansion` (reflation 0.03): YoY > +5%
+    - `durable_orders_contraction` (deflation 0.03): YoY < -5%
+    - `consumer_credit_expansion` (reflation/goldilocks 0.02): YoY > +5%
+
+    Default: True. Rebalance leggero (-0.02) sui pillars correlati.
+    """
+    return _read_flag("USE_CYCLICAL_PILLAR", default=True)
 
 
 def use_labor_credit_pillar() -> bool:

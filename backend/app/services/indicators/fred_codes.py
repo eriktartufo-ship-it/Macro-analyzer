@@ -222,6 +222,34 @@ FRED_SERIES = {
         "frequency": "daily",
         "transform": "level",
     },
+    # T18 Council 2026-05-31 sessione 25: cyclical leading indicators.
+    # Aggressive features predittive che precedono macro shifts (heavy truck = freight
+    # demand collapse leading recession, building permits = housing cycle, consumer
+    # credit = household balance sheet, durable goods = business investment).
+    "heavy_truck_sales": {
+        "fred_id": "HTRUCKSSAAR",
+        "description": "Heavy Truck Sales SAAR (early cyclical: freight demand)",
+        "frequency": "monthly",
+        "transform": "yoy",
+    },
+    "building_permits": {
+        "fred_id": "PERMIT",
+        "description": "New Private Housing Units Authorized by Building Permits",
+        "frequency": "monthly",
+        "transform": "yoy",
+    },
+    "consumer_credit": {
+        "fred_id": "TOTALSL",
+        "description": "Total Consumer Credit Outstanding (household balance sheet)",
+        "frequency": "monthly",
+        "transform": "yoy",
+    },
+    "durable_goods_orders": {
+        "fred_id": "DGORDER",
+        "description": "Manufacturers' New Orders: Durable Goods (business investment)",
+        "frequency": "monthly",
+        "transform": "yoy",
+    },
     "vix": {
         "fred_id": "VIXCLS",
         "description": "CBOE Volatility Index (market fear gauge)",

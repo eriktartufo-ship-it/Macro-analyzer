@@ -60,6 +60,11 @@ _CLASSIFIER_SERIES = (
     "jolts_quits_rate",    # JOLTS quits (mensile, dal 2000)
     "avg_weekly_hours",    # AWHAETP (mensile, dal 2006)
     "hy_credit_spread",    # BofA HY OAS (giornaliero, dal 1997)
+    # T18 Cyclical leading features (council 2026-05-31 sessione 25)
+    "heavy_truck_sales",   # HTRUCKSSAAR (mensile, dal 1967)
+    "building_permits",    # PERMIT (mensile, dal 1960)
+    "consumer_credit",     # TOTALSL (mensile, dal 1943)
+    "durable_goods_orders", # DGORDER (mensile, dal 1992)
 )
 
 
@@ -206,6 +211,20 @@ def _build_indicators_as_of(
     v = last_before("hy_credit_spread")
     if v is not None:
         indicators["hy_credit_spread"] = v
+
+    # T18 Cyclical leading features (YoY transforms)
+    v = roc("heavy_truck_sales", 12)
+    if v is not None:
+        indicators["heavy_truck_sales_yoy"] = v
+    v = roc("building_permits", 12)
+    if v is not None:
+        indicators["building_permits_yoy"] = v
+    v = roc("consumer_credit", 12)
+    if v is not None:
+        indicators["consumer_credit_yoy"] = v
+    v = roc("durable_goods_orders", 12)
+    if v is not None:
+        indicators["durable_goods_orders_yoy"] = v
 
     # T11 (2026-05-27): momentum derivatives per pillar acceleration-based.
     _enrich_with_momentum_derivatives(indicators, series, cutoff)
