@@ -164,6 +164,8 @@ def classify_at(
             "goldilocks": float(probs.get("goldilocks", 0.0)),
         },
         "confidence": float(result.get("confidence", 0.5) or 0.5),
+        # T14 — expose raw indicators per event-triggered rebalance detector
+        "indicators": indicators,
     }
 
 

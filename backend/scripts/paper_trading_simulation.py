@@ -203,12 +203,20 @@ def run_paper_trade_dynamic(
     transaction_cost_bps: float = 10.0,
     top_n: int = 5,
     allocation_method: str = "risk_parity",
+    use_event_triggers: bool = False,
 ) -> PaperTrade | None:
     """Sim 12m con allocazione DINAMICA (rebalance mensile o trimestrale).
 
     NO future leak: ogni rebalance classifier vede solo indicators ≤ current month-end.
+
+    Args:
+        use_event_triggers: T14 council action #4. Se True, force rebalance OFF-CALENDAR
+            quando trigger fires (VIX panic, M2 surge, curve uninvert, FOMC dovish).
     """
     from app.services.config_flags import use_uncertainty_gate
+    from app.services.regime.event_triggers import (
+        EventTriggerDetector, TriggerSnapshot, any_trigger_fired,
+    )
 
     trade = PaperTrade(
         start_date=start_date,
@@ -227,13 +235,19 @@ def run_paper_trade_dynamic(
     last_regime: str | None = None
     bench_sp500_monthly: list[float] = []
 
+    # T14 event-triggered rebalance state
+    trigger_detector = EventTriggerDetector() if use_event_triggers else None
+    prev_trigger_snapshot: TriggerSnapshot | None = None
+    event_rebalance_fires = 0
+
     for month_idx in range(12):
-        # Rebalance check
-        is_rebalance_month = (
+        # Rebalance check (calendar baseline)
+        is_calendar_rebalance = (
             month_idx == 0  # initial alloc
             or rebalance_freq == "monthly"
             or (rebalance_freq == "quarterly" and month_idx % 3 == 0)
         )
+        is_rebalance_month = is_calendar_rebalance
 
         # Classify with walk-forward
         month_end_dt = (pd.Timestamp(current.year, current.month, 1)
@@ -256,6 +270,25 @@ def run_paper_trade_dynamic(
         if last_regime is not None and regime != last_regime:
             trade.n_regime_changes += 1
         last_regime = regime
+
+        # T14 Event-triggered rebalance: check ad ogni mese se trigger fires
+        # vs snapshot precedente. Se sì AND non è già calendar rebalance,
+        # forza rebalance extra (cattura policy/panic events off-calendar).
+        if trigger_detector is not None:
+            indicators = cm.get("indicators", {}) or {}
+            curr_snapshot = TriggerSnapshot(
+                vix=float(indicators.get("vix", 18.0)),
+                m2_yoy=float(indicators.get("m2_yoy", 5.0)),
+                yield_curve_10y2y=float(indicators.get("yield_curve_10y2y", 1.0)),
+                fomc_sentiment=float(indicators.get("fomc_sentiment", 0.0)),
+            )
+            trigger_results = trigger_detector.check_window(
+                curr_snapshot, prev_trigger_snapshot,
+            )
+            if any_trigger_fired(trigger_results) and not is_calendar_rebalance:
+                is_rebalance_month = True
+                event_rebalance_fires += 1
+            prev_trigger_snapshot = curr_snapshot
 
         # Compute new top-5 weights (con uncertainty gate)
         if is_rebalance_month:
@@ -409,6 +442,10 @@ def main():
                         "2022 = 2021-12 to 2022-12. all_crisis = union.")
     p.add_argument("--top-n", type=int, default=5,
                    help="Council Test F: top-N asset (default 5).")
+    p.add_argument("--use-event-triggers", action="store_true",
+                   help="T14 council #4: force rebalance off-calendar quando "
+                        "trigger fires (VIX>30, M2 surge, curve uninvert, "
+                        "FOMC dovish).")
     p.add_argument("--allocation-method",
                    choices=["risk_parity", "equal", "score_weighted",
                             "confidence_weighted", "vol_target_concentration",
@@ -493,6 +530,7 @@ def main():
             transaction_cost_bps=args.transaction_cost_bps,
             top_n=args.top_n,
             allocation_method=args.allocation_method,
+            use_event_triggers=args.use_event_triggers,
         )
         if trade is None or trade.realized_return_12m is None:
             print(f"  Sim {i+1}: SKIP")
