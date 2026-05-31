@@ -135,3 +135,30 @@ class TestFullScenarioIntegration:
         calm_return = simulate_hedge_return(0.05)
         # 0.50 / abs(-0.08) = 6.25
         assert crash_return / abs(calm_return) > 5
+
+
+class TestVixyProxy:
+    """T15.4 — VIXY proxy alternative payoffs."""
+
+    def test_vixy_deeper_crash_payoff(self):
+        """VIXY payoff in deep crash > OTM put payoff."""
+        otm = simulate_hedge_return(-0.15, proxy="otm_put")
+        vixy = simulate_hedge_return(-0.15, proxy="vixy")
+        assert vixy > otm  # 0.80 > 0.50
+
+    def test_vixy_higher_calm_decay(self):
+        """VIXY decay in calm più aggressivo (roll cost)."""
+        otm = simulate_hedge_return(0.05, proxy="otm_put")
+        vixy = simulate_hedge_return(0.05, proxy="vixy")
+        assert vixy < otm  # -0.10 < -0.08
+
+    def test_vixy_moderate_crash_higher(self):
+        otm = simulate_hedge_return(-0.07, proxy="otm_put")
+        vixy = simulate_hedge_return(-0.07, proxy="vixy")
+        assert vixy > otm  # 0.35 > 0.20
+
+    def test_default_proxy_is_otm_put(self):
+        """No proxy arg → otm_put default."""
+        default = simulate_hedge_return(-0.15)
+        otm = simulate_hedge_return(-0.15, proxy="otm_put")
+        assert default == otm

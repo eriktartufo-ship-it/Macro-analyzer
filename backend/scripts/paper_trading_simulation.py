@@ -178,7 +178,7 @@ def _compute_top5_weights(probs, real_matrix, target_ts, top_n: int = 5,
     return alloc.weights or {a: 1.0 / n for a, _ in sorted_scores}
 
 
-def _portfolio_return_month(matrix, year, month, weights):
+def _portfolio_return_month(matrix, year, month, weights, hedge_proxy: str = "otm_put"):
     """Real return mensile di un portfolio at (year, month).
 
     T15: gestisce synthetic asset `tail_hedge_spy_put` via simulate_hedge_return
@@ -201,7 +201,7 @@ def _portfolio_return_month(matrix, year, month, weights):
         if asset == "tail_hedge_spy_put":
             if spy_return is None:
                 continue
-            total += w * simulate_hedge_return(spy_return)
+            total += w * simulate_hedge_return(spy_return, proxy=hedge_proxy)
             weight_sum += w
             continue
         if asset in row.index and not pd.isna(row[asset]):
@@ -222,6 +222,7 @@ def run_paper_trade_dynamic(
     allocation_method: str = "risk_parity",
     use_event_triggers: bool = False,
     use_tail_hedge: bool = False,
+    hedge_proxy: str = "otm_put",
 ) -> PaperTrade | None:
     """Sim 12m con allocazione DINAMICA (rebalance mensile o trimestrale).
 
@@ -357,7 +358,7 @@ def run_paper_trade_dynamic(
             trade.n_rebalances += 1
 
         # Compute monthly returns
-        r_model = _portfolio_return_month(real_matrix, current.year, current.month, current_weights)
+        r_model = _portfolio_return_month(real_matrix, current.year, current.month, current_weights, hedge_proxy=hedge_proxy)
         r_b60 = _portfolio_return_month(real_matrix, current.year, current.month, BENCHMARK_60_40)
         r_aw = _portfolio_return_month(real_matrix, current.year, current.month, BENCHMARK_ALL_WEATHER)
         r_pp = _portfolio_return_month(real_matrix, current.year, current.month, BENCHMARK_PERMANENT)
@@ -488,6 +489,9 @@ def main():
     p.add_argument("--use-tail-hedge", action="store_true",
                    help="T15 council #3: alloca 0.5-2pp portfolio a synthetic "
                         "tail hedge (OTM SPY put 6m) quando Crisis Risk > 0.60.")
+    p.add_argument("--hedge-proxy", choices=["otm_put", "vixy"], default="otm_put",
+                   help="T15 hedge proxy: otm_put (default, council T15 originale) "
+                        "o vixy (more convex, higher roll cost).")
     p.add_argument("--allocation-method",
                    choices=["risk_parity", "equal", "score_weighted",
                             "confidence_weighted", "vol_target_concentration",
@@ -574,6 +578,7 @@ def main():
             allocation_method=args.allocation_method,
             use_event_triggers=args.use_event_triggers,
             use_tail_hedge=args.use_tail_hedge,
+            hedge_proxy=args.hedge_proxy,
         )
         if trade is None or trade.realized_return_12m is None:
             print(f"  Sim {i+1}: SKIP")

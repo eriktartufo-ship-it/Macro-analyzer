@@ -26,9 +26,12 @@ Usage:
 """
 from __future__ import annotations
 
-# Council T15 thresholds (default conservativi)
+# Council T15 thresholds (default conservativi). Override env per testing:
+# HEDGE_MAX_BUDGET_OVERRIDE (es. "0.04" per max 4%)
+import os as _os
+
 HEDGE_TRIGGER_THRESHOLD: float = 0.60
-HEDGE_MAX_BUDGET: float = 0.02       # max 2% portfolio
+HEDGE_MAX_BUDGET: float = float(_os.getenv("HEDGE_MAX_BUDGET_OVERRIDE", "0.02"))
 HEDGE_MIN_BUDGET: float = 0.005      # min 0.5% se attivato
 
 # Synthetic OTM SPY put 6m -15% strike — payoff approssimato per scenario
@@ -37,6 +40,15 @@ HEDGE_PAYOFFS = {
     "moderate_crash": {"threshold": -0.05, "return": 0.20}, # SPY -10% to -5%
     "minor_dip": {"threshold": 0.0, "return": -0.05},       # SPY -5% to 0%
     "calm_or_up": {"threshold": float("inf"), "return": -0.08},  # SPY >= 0%
+}
+
+# VIXY-like proxy (long VIX futures ETF). Payoff più convex ma roll cost più alto.
+# Calibrato su VIXY 2011-2024: Mar 2020 +400%, periodi calm -10/-15%/yr decay.
+HEDGE_PAYOFFS_VIXY = {
+    "deep_crash":  {"threshold": -0.10, "return": 0.80},   # VIX spike massimo
+    "moderate_crash": {"threshold": -0.05, "return": 0.35}, # moderate spike
+    "minor_dip": {"threshold": 0.0, "return": -0.03},       # minor theta (futures roll)
+    "calm_or_up": {"threshold": float("inf"), "return": -0.10},  # heavy decay calm
 }
 
 
@@ -89,28 +101,34 @@ def compute_hedge_weight(
     return min_budget + (excess_score / range_score) * range_budget
 
 
-def simulate_hedge_return(spy_monthly_return: float) -> float:
-    """Synthetic OTM SPY put 6m -15% payoff approximation.
+def simulate_hedge_return(
+    spy_monthly_return: float,
+    proxy: str = "otm_put",
+) -> float:
+    """Synthetic tail hedge payoff approximation.
 
-    Buckets:
-    - SPY < -10%: hedge +50% (deep crash, put deep ITM)
-    - SPY -10% to -5%: hedge +20% (moderate crash, put ATM)
-    - SPY -5% to 0%: hedge -5% (minor dip, theta near strike)
-    - SPY >= 0%: hedge -8% (calm, theta + delta loss)
+    Two proxies:
+    - "otm_put" (default): OTM SPY put 6m -15% strike. Capped payoff +50%,
+      moderate theta decay -5/-8% in calm. Council T15 originale.
+    - "vixy": Long VIX futures ETF (VIXY-like). More convex (+80% in deep
+      crash) ma roll cost più alto (-10% in calm). Council T15 alternative
+      per scenari panic estremi (2020-style spike).
 
     Args:
         spy_monthly_return: SPY return nel mese (decimal: -0.10 = -10%).
+        proxy: "otm_put" (default) o "vixy".
 
     Returns:
         Hedge return nel mese (decimal).
     """
+    payoffs = HEDGE_PAYOFFS_VIXY if proxy == "vixy" else HEDGE_PAYOFFS
     if spy_monthly_return < -0.10:
-        return HEDGE_PAYOFFS["deep_crash"]["return"]
+        return payoffs["deep_crash"]["return"]
     if spy_monthly_return < -0.05:
-        return HEDGE_PAYOFFS["moderate_crash"]["return"]
+        return payoffs["moderate_crash"]["return"]
     if spy_monthly_return < 0.0:
-        return HEDGE_PAYOFFS["minor_dip"]["return"]
-    return HEDGE_PAYOFFS["calm_or_up"]["return"]
+        return payoffs["minor_dip"]["return"]
+    return payoffs["calm_or_up"]["return"]
 
 
 def apply_hedge_to_allocation(
