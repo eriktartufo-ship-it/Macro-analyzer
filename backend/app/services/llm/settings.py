@@ -30,13 +30,20 @@ logger = logging.getLogger(__name__)
 
 _SETTINGS_PATH = Path(__file__).resolve().parents[3] / ".cache" / "llm_settings.json"
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.5-flash"
 
+# Modelli Gemini disponibili 2026 (aggiornato dalla doc ai.google.dev/gemini-api).
+# Selezione: text reasoning models, no image/video/audio/embedding.
+# Default = gemini-3.5-flash (più intelligente stable, free tier disponibile).
 AVAILABLE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash-lite",
-    "gemini-3.1-pro-preview",
+    # Gemini 3.x — generazione corrente (2026)
+    "gemini-3.5-flash",          # stable, most intelligent (DEFAULT)
+    "gemini-3.1-flash-lite",     # stable, reduced cost
+    "gemini-3.1-pro-preview",    # preview, max capability
+    # Gemini 2.5 — generazione precedente, ancora stabile + free tier
+    "gemini-2.5-flash",          # stable, price-performance fallback
+    "gemini-2.5-flash-lite",     # cheapest, budget-friendly
+    "gemini-2.5-pro",            # most advanced 2.5
 ]
 
 
