@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { useDedollarBonus } from "../hooks/useDedollarBonus";
-import { FeatureFlagsPanel } from "./FeatureFlagsPanel";
+import { SettingsMenu } from "./SettingsMenu";
 
 export type Page = "dashboard" | "sentiment" | "dedollar" | "assets" | "data";
 export type Theme = "light" | "dark";
@@ -33,34 +32,31 @@ const TABS: Tab[] = [
 export function Header({ date, onRefresh, refreshing, page, onPageChange, theme, onThemeToggle }: Props) {
   const [pillStyle, setPillStyle] = useState({ left: 0, width: 0, opacity: 0 });
   const [mobilePillStyle, setMobilePillStyle] = useState({ left: 0, width: 0, opacity: 0 });
-  const [dedollarOn, setDedollarOn] = useDedollarBonus();
-  const [flagsOpen, setFlagsOpen] = useState(false);
 
   const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const mobileTabsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Update highlighter position when tab changes
   useEffect(() => {
-    const activeIndex = TABS.findIndex(t => t.id === page);
+    const activeIndex = TABS.findIndex((t) => t.id === page);
     const activeTab = tabsRef.current[activeIndex];
     const activeMobileTab = mobileTabsRef.current[activeIndex];
-    
-    // We use a small timeout to ensure DOM layout is complete before measuring
+
     const timeout = setTimeout(() => {
-        if (activeTab) {
-          setPillStyle({
-            left: activeTab.offsetLeft,
-            width: activeTab.clientWidth,
-            opacity: 1
-          });
-        }
-        if (activeMobileTab) {
-          setMobilePillStyle({
-            left: activeMobileTab.offsetLeft,
-            width: activeMobileTab.clientWidth,
-            opacity: 1
-          });
-        }
+      if (activeTab) {
+        setPillStyle({
+          left: activeTab.offsetLeft,
+          width: activeTab.clientWidth,
+          opacity: 1,
+        });
+      }
+      if (activeMobileTab) {
+        setMobilePillStyle({
+          left: activeMobileTab.offsetLeft,
+          width: activeMobileTab.clientWidth,
+          opacity: 1,
+        });
+      }
     }, 10);
     return () => clearTimeout(timeout);
   }, [page]);
@@ -75,31 +71,7 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
           </div>
         </div>
         <div className="header-actions">
-          <button
-            className="theme-toggle glass-active"
-            onClick={() => setFlagsOpen(true)}
-            aria-label="Feature flags"
-            title="Tier 5 feature flags (A/B testing live)"
-            style={{ fontSize: 13 }}
-          >
-            T5
-          </button>
-          <button
-            className="theme-toggle glass-active"
-            onClick={() => setDedollarOn(!dedollarOn)}
-            aria-label={dedollarOn ? "Disattiva dedollar bonus" : "Attiva dedollar bonus"}
-            title={
-              dedollarOn
-                ? "Dedollar bonus ATTIVO — gli asset score includono il bias"
-                : "Dedollar bonus DISATTIVO — score puro data-driven"
-            }
-            style={{
-              color: dedollarOn ? "var(--reflation, #10b981)" : undefined,
-              fontWeight: dedollarOn ? 700 : 400,
-            }}
-          >
-            $
-          </button>
+          <SettingsMenu />
           <button
             className="theme-toggle glass-active"
             onClick={onThemeToggle}
@@ -115,18 +87,20 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
       </div>
 
       <div className="nav-tabs" role="tablist">
-        <div 
-          className="nav-tab-highlight" 
+        <div
+          className="nav-tab-highlight"
           style={{
             left: pillStyle.left,
             width: pillStyle.width,
-            opacity: pillStyle.opacity
-          }} 
+            opacity: pillStyle.opacity,
+          }}
         />
         {TABS.map((tab, i) => (
           <button
             key={tab.id}
-            ref={el => { tabsRef.current[i] = el; }}
+            ref={(el) => {
+              tabsRef.current[i] = el;
+            }}
             role="tab"
             aria-selected={page === tab.id}
             className={`nav-tab ${page === tab.id ? "active" : ""}`}
@@ -137,21 +111,21 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
         ))}
       </div>
 
-      <FeatureFlagsPanel open={flagsOpen} onClose={() => setFlagsOpen(false)} />
-
       <div className="nav-bottom" role="tablist" style={{ position: "fixed" }}>
-        <div 
-          className="nav-bottom-highlight" 
+        <div
+          className="nav-bottom-highlight"
           style={{
             left: mobilePillStyle.left,
             width: mobilePillStyle.width,
-            opacity: mobilePillStyle.opacity
-          }} 
+            opacity: mobilePillStyle.opacity,
+          }}
         />
         {TABS.map((tab, i) => (
           <button
             key={tab.id}
-            ref={el => { mobileTabsRef.current[i] = el; }}
+            ref={(el) => {
+              mobileTabsRef.current[i] = el;
+            }}
             role="tab"
             aria-selected={page === tab.id}
             className={`nav-bottom-tab ${page === tab.id ? "active" : ""}`}
