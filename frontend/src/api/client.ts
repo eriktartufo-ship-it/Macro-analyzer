@@ -16,6 +16,7 @@ import type {
   FOMCReport,
   HMMPrediction,
   LeadTimeReport,
+  LlmSettings,
   MacroLlmAnalysis,
   MonteCarloForecast,
   ScenarioPreset,
@@ -101,6 +102,17 @@ export const api = {
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),
   macroLlmAnalysis: (forceRefresh = false) =>
     request<MacroLlmAnalysis>(`/macro-llm-analysis${forceRefresh ? "?force_refresh=true" : ""}`),
+  llmSettings: () => request<LlmSettings>("/llm-settings", undefined, { retries: 0 }),
+  llmSettingsUpdate: (payload: { api_key?: string; model?: string }) =>
+    request<LlmSettings>(
+      "/llm-settings",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      { retries: 0 },
+    ),
   dedollarization: () => request<Dedollarization>("/dedollarization"),
   dedollarizationHistory: (days = 365) =>
     request<DedollarHistoryItem[]>(`/dedollarization/history?days=${days}`),

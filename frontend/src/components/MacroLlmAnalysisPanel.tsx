@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { MacroLlmAnalysis } from "../types";
+import { LlmSettingsModal } from "./LlmSettingsModal";
 
 const REGIME_COLORS: Record<string, string> = {
   reflation: "var(--reflation)",
@@ -36,6 +37,7 @@ export function MacroLlmAnalysisPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const load = async (forceRefresh = false) => {
     if (forceRefresh) setRefreshing(true);
@@ -106,24 +108,46 @@ export function MacroLlmAnalysisPanel() {
             {data.stale && " · stale"}
           </span>
         </h2>
-        <button
-          onClick={() => load(true)}
-          disabled={refreshing}
-          style={{
-            background: "var(--surface-sunk)",
-            border: "1px solid var(--stroke)",
-            color: "var(--text)",
-            borderRadius: 6,
-            padding: "4px 10px",
-            fontSize: 11,
-            cursor: refreshing ? "default" : "pointer",
-            opacity: refreshing ? 0.5 : 1,
-          }}
-          title="Forza re-generazione (bypass cache 24h)"
-        >
-          {refreshing ? "..." : "↻ Rigenera"}
-        </button>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            style={{
+              background: "var(--surface-sunk)",
+              border: "1px solid var(--stroke)",
+              color: "var(--text)",
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+            title="Impostazioni LLM (API key + modello)"
+          >
+            ⚙ Settings
+          </button>
+          <button
+            onClick={() => load(true)}
+            disabled={refreshing}
+            style={{
+              background: "var(--surface-sunk)",
+              border: "1px solid var(--stroke)",
+              color: "var(--text)",
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 11,
+              cursor: refreshing ? "default" : "pointer",
+              opacity: refreshing ? 0.5 : 1,
+            }}
+            title="Forza re-generazione (bypass cache hash)"
+          >
+            {refreshing ? "..." : "↻ Rigenera"}
+          </button>
+        </div>
       </div>
+      <LlmSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={() => load(true)}
+      />
 
       {/* Headline */}
       <div
