@@ -45,6 +45,16 @@ export interface PlayerScore {
   signals: PlayerSignal[];
 }
 
+export interface LlmSettings {
+  api_key_set: boolean;
+  api_key_masked: string | null;
+  model: string;
+  model_default: string;
+  models_available: string[];
+  source_api_key: "runtime" | "env_macro" | "env_global" | "none" | string;
+  source_model: "runtime" | "env_macro" | "default" | string;
+}
+
 export interface MacroLlmAnalysis {
   headline: string;
   regime_thesis: string;

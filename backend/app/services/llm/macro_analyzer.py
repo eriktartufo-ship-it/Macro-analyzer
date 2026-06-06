@@ -29,17 +29,17 @@ from typing import Optional
 
 import requests
 
-from app.config import settings
+from app.services.llm import settings as llm_settings
 
 logger = logging.getLogger(__name__)
 
 # Cache directory (relative to backend root)
 _CACHE_DIR = Path(__file__).resolve().parents[3] / ".cache" / "macro_llm"
-_CACHE_TTL_HOURS = 24
+_CACHE_TTL_HOURS = 24 * 7  # 7 giorni TTL safety, ma cache invalidata anche da hash dati
 
-_GEMINI_API_URL = (
+_GEMINI_API_URL_TPL = (
     "https://generativelanguage.googleapis.com/v1beta/"
-    "models/gemini-2.5-flash:generateContent"
+    "models/{model}:generateContent"
 )
 
 _SYSTEM_PROMPT = """Sei un analista macro senior di un hedge fund top-tier (Bridgewater/Citadel style).
@@ -64,9 +64,49 @@ Output JSON schema:
 NO markdown fences. Output JSON puro."""
 
 
-def _cache_key(regime: str, classification_date: str) -> str:
-    """Generate cache filename per date + regime."""
-    return f"{classification_date}_{regime}.json"
+def _compute_data_hash(
+    regime: str,
+    probabilities: dict[str, float],
+    confidence: float,
+    indicators: dict[str, float],
+    scoreboard: dict[str, float],
+    model: str,
+) -> str:
+    """MD5 hash dei dati che influenzano l'output LLM.
+
+    Se i dati sono uguali → stesso hash → cache hit (no Gemini call).
+    Cambio API → MAYBE different output → diverso modello incluso nel hash.
+
+    Round numeri a 3 decimali per evitare invalidazioni spurie da floating-point.
+    """
+    def _round_dict(d: dict, ndigits: int = 3) -> dict:
+        out = {}
+        for k, v in d.items():
+            if isinstance(v, (int, float)):
+                out[k] = round(float(v), ndigits)
+            else:
+                out[k] = v
+        return out
+
+    canonical = {
+        "regime": regime,
+        "probabilities": _round_dict(probabilities, 3),
+        "confidence": round(float(confidence), 3),
+        "indicators": _round_dict(indicators, 3),
+        "scoreboard": _round_dict(scoreboard, 1),  # 1 decimal sufficient per asset score
+        "model": model,
+    }
+    canonical_json = json.dumps(canonical, sort_keys=True)
+    return hashlib.md5(canonical_json.encode("utf-8")).hexdigest()
+
+
+def _cache_key(data_hash: str) -> str:
+    """Cache filename basato sull'hash dei dati (NON su date+regime).
+
+    Vantaggio: se nello stesso giorno i dati cambiano (es. refresh midday),
+    nuovo hash → nuovo cache. Se dati identici per giorni → 1 sola call LLM.
+    """
+    return f"{data_hash}.json"
 
 
 def _cache_path(key: str) -> Path:
@@ -148,13 +188,19 @@ Non aggiungere disclaimer. Non inventare dati. Sii incisivo come un analista
 che scrive una nota interna al CIO."""
 
 
-def _call_gemini(prompt: str) -> Optional[str]:
-    if not settings.gemini_api_key:
-        return None
+def _call_gemini(prompt: str, api_key: str, model: str) -> Optional[str]:
+    """Chiama Gemini con api_key + model passati esplicitamente.
+
+    Args:
+        prompt: user prompt completo
+        api_key: Gemini API key (non None — caller verifica)
+        model: model name (es. "gemini-2.5-flash")
+    """
+    url = _GEMINI_API_URL_TPL.format(model=model)
     try:
         resp = requests.post(
-            _GEMINI_API_URL,
-            params={"key": settings.gemini_api_key},
+            url,
+            params={"key": api_key},
             json={
                 "contents": [
                     {"parts": [{"text": f"{_SYSTEM_PROMPT}\n\n---\n\n{prompt}"}]},
@@ -177,7 +223,7 @@ def _call_gemini(prompt: str) -> Optional[str]:
         text = "".join(p.get("text", "") for p in parts).strip()
         return text or None
     except Exception as e:
-        logger.warning(f"Gemini macro analysis call failed: {e}")
+        logger.warning(f"Gemini macro analysis call failed (model={model}): {e}")
         return None
 
 
@@ -219,21 +265,38 @@ def get_macro_analysis(
     Returns:
         dict con analysis + metadata o None se LLM unavailable + nessuna cache.
     """
-    cache_key = _cache_key(regime, classification_date)
+    # Resolve runtime settings (api_key + model)
+    api_key = llm_settings.get_api_key()
+    model = llm_settings.get_model()
 
-    # Cache hit
+    # Hash dei dati: se identici → cache hit (no LLM call)
+    data_hash = _compute_data_hash(
+        regime, probabilities, confidence, indicators, scoreboard, model,
+    )
+    cache_key = _cache_key(data_hash)
+
+    # Cache hit (data hash match)
     if not force_refresh:
         cached = _read_cache(cache_key)
         if cached is not None:
             cached["cache_hit"] = True
             return cached
 
-    # Cache miss: fresh fetch
+    # Cache miss → necessaria chiamata LLM. Verifica API key.
+    if not api_key:
+        # Last resort: prova ad usare qualsiasi cache (anche stale) per non lasciare UI vuota
+        cached = _read_cache(cache_key)
+        if cached is not None:
+            cached["cache_hit"] = True
+            cached["stale"] = True
+            return cached
+        return None
+
     top_scores = sorted(scoreboard.items(), key=lambda x: -x[1])[:15]
     prompt = _build_prompt(regime, probabilities, confidence, indicators, top_scores, fit_scores)
-    raw = _call_gemini(prompt)
+    raw = _call_gemini(prompt, api_key=api_key, model=model)
     if raw is None:
-        # Last resort: return stale cache se esiste
+        # LLM call failed → return stale cache se esiste
         cached = _read_cache(cache_key)
         if cached is not None:
             cached["cache_hit"] = True
@@ -253,7 +316,8 @@ def get_macro_analysis(
         "regime": regime,
         "classification_date": classification_date,
         "cached_at": datetime.now(timezone.utc).isoformat(),
-        "provider": "gemini-2.5-flash",
+        "provider": model,
+        "data_hash": data_hash,
         "cache_hit": False,
     }
     _write_cache(cache_key, payload)

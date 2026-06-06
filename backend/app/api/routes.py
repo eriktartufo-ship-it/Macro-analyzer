@@ -3,7 +3,7 @@
 import json
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -1195,6 +1195,45 @@ def get_scoreboard(
         confidence=regime.confidence,
         scores=scores,
     )
+
+
+@router.get("/llm-settings")
+def get_llm_settings():
+    """Stato corrente settings LLM (API key masked, modello, source resolution)."""
+    from app.services.llm import settings as llm_settings
+    return llm_settings.get_current_state()
+
+
+@router.post("/llm-settings")
+def update_llm_settings(payload: dict = Body(...)):
+    """Update runtime settings LLM (process-local + persistent file disco).
+
+    Body:
+      {
+        "api_key": "AIza...new key..." | "" (= clear),
+        "model": "gemini-2.5-pro" | "" (= clear)
+      }
+
+    Settings persistite in `.cache/llm_settings.json`. Override env var
+    `GEMINI_API_KEY_MACRO` e `GEMINI_MODEL_MACRO` + global config.
+    """
+    from app.services.llm import settings as llm_settings
+
+    if "api_key" in payload:
+        new_key = payload["api_key"]
+        if new_key is None or new_key == "":
+            llm_settings.set_api_key(None)
+        else:
+            llm_settings.set_api_key(str(new_key).strip())
+
+    if "model" in payload:
+        new_model = payload["model"]
+        if new_model is None or new_model == "":
+            llm_settings.set_model(None)
+        else:
+            llm_settings.set_model(str(new_model).strip())
+
+    return llm_settings.get_current_state()
 
 
 @router.get("/macro-llm-analysis")
