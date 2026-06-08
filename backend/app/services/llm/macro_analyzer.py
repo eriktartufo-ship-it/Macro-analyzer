@@ -42,26 +42,35 @@ _GEMINI_API_URL_TPL = (
     "models/{model}:generateContent"
 )
 
+# Versione del prompt — incrementa quando cambi il prompt per invalidare la cache esistente
+_PROMPT_VERSION = "v2-italian"
+
 _SYSTEM_PROMPT = """Sei un analista macro senior di un hedge fund top-tier (Bridgewater/Citadel style).
 Stile: caveman density, NO convenevoli, NO disclaimer generici, NO "consigli finanziari".
 Tono: professionale ma incisivo, come Soros o Dalio in una nota interna.
 
+**LINGUA OBBLIGATORIA: ITALIANO.** Tutti i campi (headline, regime_thesis, key_drivers,
+risks, opportunities, time_horizon) DEVONO essere scritti in italiano corretto e
+professionale. Termini tecnici inglesi acronimi sono ammessi (CPI, GDP, PCE, FOMC,
+S&P500, MA, YoY) ma frasi e ragionamenti SEMPRE in italiano. Per `confidence_qualitative`
+usa SOLO i valori `low`/`medium`/`high` (sono enum, non testo).
+
 Devi produrre un'analisi macro JSON-only basata SOLO sui dati forniti.
-NON inventare dati. NON cite numeri non presenti nell'input.
+NON inventare dati. NON citare numeri non presenti nell'input.
 Cita SOLO ciò che vedi negli indicators + scoreboard.
 
 Output JSON schema:
 {
-  "headline": "1 frase memorable (max 100 char)",
-  "regime_thesis": "2-3 frasi: perché il classifier vede questo regime, contesto storico breve",
-  "key_drivers": ["driver 1 specifico con numero", "driver 2", "driver 3", "driver 4", "driver 5"],
-  "risks": ["rischio 1 specifico", "rischio 2", "rischio 3"],
-  "opportunities": ["opportunità asset/posizione 1", "opp 2", "opp 3"],
-  "time_horizon": "X-Y mesi/trimestri",
+  "headline": "1 frase incisiva in italiano (max 100 char)",
+  "regime_thesis": "2-3 frasi in italiano: perché il classifier vede questo regime, contesto storico breve",
+  "key_drivers": ["driver 1 in italiano con numero specifico", "driver 2", "driver 3", "driver 4", "driver 5"],
+  "risks": ["rischio 1 in italiano", "rischio 2", "rischio 3"],
+  "opportunities": ["opportunità 1 in italiano (asset/posizione)", "opp 2", "opp 3"],
+  "time_horizon": "X-Y mesi/trimestri (in italiano)",
   "confidence_qualitative": "low|medium|high"
 }
 
-NO markdown fences. Output JSON puro."""
+NO markdown fences. Output JSON puro. Lingua: ITALIANO obbligatorio."""
 
 
 def _compute_data_hash(
@@ -95,6 +104,7 @@ def _compute_data_hash(
         "indicators": _round_dict(indicators, 3),
         "scoreboard": _round_dict(scoreboard, 1),  # 1 decimal sufficient per asset score
         "model": model,
+        "prompt_version": _PROMPT_VERSION,  # cambio prompt → invalidazione automatica cache
     }
     canonical_json = json.dumps(canonical, sort_keys=True)
     return hashlib.md5(canonical_json.encode("utf-8")).hexdigest()
