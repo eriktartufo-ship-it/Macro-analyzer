@@ -1,3 +1,8 @@
+from app.models.ai_portfolio import (
+    AiPortfolioDecision,
+    AiPortfolioPerformance,
+    AiPortfolioPosition,
+)
 from app.models.asset_regime_calibrations import AssetRegimeCalibration
 from app.models.asset_regime_performance import AssetRegimePerformance
 from app.models.backtest_results import BacktestResult
@@ -12,6 +17,9 @@ from app.models.runtime_flag_overrides import RuntimeFlagOverride
 from app.models.secular_trends import SecularTrend
 
 __all__ = [
+    "AiPortfolioDecision",
+    "AiPortfolioPerformance",
+    "AiPortfolioPosition",
     "AssetRegimeCalibration",
     "AssetRegimePerformance",
     "BacktestResult",

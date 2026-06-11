@@ -15,6 +15,9 @@ import type {
   FactorRegimeReport,
   FOMCReport,
   HMMPrediction,
+  AiPortfolioDecision,
+  AiPortfolioPerformanceResponse,
+  AiPortfolioPosition,
   LeadTimeReport,
   LlmSettings,
   MacroLlmAnalysis,
@@ -100,6 +103,17 @@ export const api = {
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),
+  aiPortfolioPositions: () => request<AiPortfolioPosition[]>("/ai-portfolio/positions"),
+  aiPortfolioDecisions: (days = 30) =>
+    request<AiPortfolioDecision[]>(`/ai-portfolio/decisions?days=${days}`),
+  aiPortfolioPerformance: (days = 180) =>
+    request<AiPortfolioPerformanceResponse>(`/ai-portfolio/performance?days=${days}`),
+  aiPortfolioManualScan: () =>
+    request<{ scan_summary: Record<string, unknown>; performance: unknown }>(
+      "/ai-portfolio/manual-scan",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+      { retries: 0 },
+    ),
   macroLlmAnalysis: (forceRefresh = false) =>
     request<MacroLlmAnalysis>(`/macro-llm-analysis${forceRefresh ? "?force_refresh=true" : ""}`),
   llmSettings: () => request<LlmSettings>("/llm-settings", undefined, { retries: 0 }),

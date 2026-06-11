@@ -1810,6 +1810,30 @@ def monthly_calibration_refresh():
         logger.error(f"monthly_calibration_refresh failed: {e}")
 
 
+def ai_portfolio_daily_scan():
+    """Daily AI Portfolio scan + performance snapshot.
+
+    Runs dopo daily_macro_refresh (30 minuti dopo) per usare gli ultimi
+    DailySignal + RegimeClassification.
+    """
+    from app.database import SessionLocal
+    from app.services.ai_portfolio import strategist, performance as perf
+
+    logger.info("AI portfolio daily scan starting...")
+    with SessionLocal() as db:
+        try:
+            summary = strategist.daily_scan(db)
+            logger.info(f"AI portfolio scan complete: {summary}")
+            snap = perf.snapshot(db)
+            if snap:
+                logger.info(
+                    f"AI portfolio NAV: ${snap.nav:.2f}, cum_ret: {snap.cumulative_return_pct*100:.2f}%, "
+                    f"DD: {snap.drawdown_pct*100:.2f}%, n_pos: {snap.n_positions}"
+                )
+        except Exception as e:
+            logger.exception(f"AI portfolio scan failed: {e}")
+
+
 def start_scheduler():
     """Avvia lo scheduler con job giornaliero."""
     scheduler.add_job(
@@ -1818,6 +1842,15 @@ def start_scheduler():
         hour=settings.scheduler_hour,
         minute=settings.scheduler_minute,
         id="daily_macro_refresh",
+        replace_existing=True,
+    )
+    # AI Portfolio: 30 minuti dopo daily_refresh, usa i dati appena aggiornati
+    scheduler.add_job(
+        ai_portfolio_daily_scan,
+        "cron",
+        hour=settings.scheduler_hour,
+        minute=(settings.scheduler_minute + 30) % 60,
+        id="ai_portfolio_daily_scan",
         replace_existing=True,
     )
     # Insider refresh: 03:00 UTC, separato dal macro refresh per non

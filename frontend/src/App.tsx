@@ -16,6 +16,7 @@ import { LazyDetails } from "./components/LazyDetails";
 const DedollarizationPage = lazy(() => import("./components/DedollarizationPage").then(m => ({ default: m.DedollarizationPage })));
 const AssetRankingTable = lazy(() => import("./components/AssetRankingTable").then(m => ({ default: m.AssetRankingTable })));
 const DataPage = lazy(() => import("./components/DataPage").then(m => ({ default: m.DataPage })));
+const AiPortfolioPage = lazy(() => import("./components/AiPortfolioPage").then(m => ({ default: m.AiPortfolioPage })));
 const NewsPanel = lazy(() => import("./components/NewsPanel").then(m => ({ default: m.NewsPanel })));
 const AnalysisPanel = lazy(() => import("./components/AnalysisPanel").then(m => ({ default: m.AnalysisPanel })));
 const CrisisHistoryTimeline = lazy(() => import("./components/CrisisHistoryTimeline").then(m => ({ default: m.CrisisHistoryTimeline })));
@@ -232,6 +233,12 @@ export default function App() {
       {ready && page === "data" && (
         <Suspense fallback={fallback}>
           <DataPage />
+        </Suspense>
+      )}
+
+      {ready && page === "ai-portfolio" && (
+        <Suspense fallback={fallback}>
+          <AiPortfolioPage />
         </Suspense>
       )}
     </div>
