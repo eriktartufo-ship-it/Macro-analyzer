@@ -1303,6 +1303,150 @@ def get_macro_llm_analysis(
     return result
 
 
+# ============================================================================
+# AI Portfolio (paper trading autonomo daily, sessione 2026-06-10)
+# ============================================================================
+
+
+@router.get("/ai-portfolio/positions")
+def get_ai_portfolio_positions(db: Session = Depends(get_db)):
+    """Posizioni attuali AI Portfolio + metriche."""
+    from app.models.ai_portfolio import AiPortfolioPosition
+    positions = (
+        db.query(AiPortfolioPosition)
+        .order_by(AiPortfolioPosition.current_weight_pct.desc())
+        .all()
+    )
+    return [
+        {
+            "asset_class": p.asset_class,
+            "target_weight_pct": p.target_weight_pct,
+            "current_weight_pct": p.current_weight_pct,
+            "tranches_filled": p.tranches_filled,
+            "tranches_total": p.tranches_total,
+            "entry_regime": p.entry_regime,
+            "avg_entry_score": p.avg_entry_score,
+            "estimated_pnl_pct": p.estimated_pnl_pct,
+            "took_partial_tp": p.took_partial_tp,
+            "opened_at": str(p.opened_at),
+            "last_action": p.last_action,
+            "last_action_date": str(p.last_action_date),
+            "days_held": (date.today() - p.opened_at).days,
+        }
+        for p in positions
+    ]
+
+
+@router.get("/ai-portfolio/decisions")
+def get_ai_portfolio_decisions(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+):
+    """Log decisioni AI Portfolio ultimi N giorni."""
+    from datetime import timedelta
+    from app.models.ai_portfolio import AiPortfolioDecision
+
+    cutoff = date.today() - timedelta(days=days)
+    decisions = (
+        db.query(AiPortfolioDecision)
+        .filter(AiPortfolioDecision.date >= cutoff)
+        .order_by(AiPortfolioDecision.date.desc(), AiPortfolioDecision.id.desc())
+        .limit(500)
+        .all()
+    )
+    return [
+        {
+            "date": str(d.date),
+            "asset_class": d.asset_class,
+            "action": d.action,
+            "size_pct": d.size_pct,
+            "tranche_index": d.tranche_index,
+            "tranches_total": d.tranches_total,
+            "score": d.score,
+            "confidence": d.confidence,
+            "regime": d.regime,
+            "momentum_signal": d.momentum_signal,
+            "vol_60d": d.vol_60d,
+            "estimated_pnl_pct": d.estimated_pnl_pct,
+            "reason_short": d.reason_short,
+        }
+        for d in decisions
+    ]
+
+
+@router.get("/ai-portfolio/performance")
+def get_ai_portfolio_performance(
+    days: int = Query(default=180, ge=1, le=1825),
+    db: Session = Depends(get_db),
+):
+    """Equity curve + DD + benchmarks (60/40 + S&P500)."""
+    from datetime import timedelta
+    from app.models.ai_portfolio import AiPortfolioPerformance
+
+    cutoff = date.today() - timedelta(days=days)
+    snaps = (
+        db.query(AiPortfolioPerformance)
+        .filter(AiPortfolioPerformance.date >= cutoff)
+        .order_by(AiPortfolioPerformance.date)
+        .all()
+    )
+    latest = snaps[-1] if snaps else None
+    return {
+        "current": (
+            {
+                "date": str(latest.date),
+                "nav": latest.nav,
+                "cumulative_return_pct": latest.cumulative_return_pct,
+                "drawdown_pct": latest.drawdown_pct,
+                "peak_nav": latest.peak_nav,
+                "n_positions": latest.n_positions,
+                "deployed_pct": latest.deployed_pct,
+                "top_position_asset": latest.top_position_asset,
+                "top_position_weight_pct": latest.top_position_weight_pct,
+                "benchmark_60_40_return_pct": latest.benchmark_60_40_return_pct,
+                "benchmark_sp500_return_pct": latest.benchmark_sp500_return_pct,
+            }
+            if latest
+            else None
+        ),
+        "history": [
+            {
+                "date": str(s.date),
+                "nav": s.nav,
+                "cumulative_return_pct": s.cumulative_return_pct,
+                "drawdown_pct": s.drawdown_pct,
+                "benchmark_60_40_return_pct": s.benchmark_60_40_return_pct,
+                "benchmark_sp500_return_pct": s.benchmark_sp500_return_pct,
+            }
+            for s in snaps
+        ],
+    }
+
+
+@router.post("/ai-portfolio/manual-scan")
+def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
+    """Trigger manuale del daily scan AI Portfolio + performance snapshot.
+
+    Utile per testing iniziale / bootstrap della prima posizione live.
+    """
+    from app.services.ai_portfolio import strategist, performance as perf
+    summary = strategist.daily_scan(db)
+    snap = perf.snapshot(db)
+    return {
+        "scan_summary": summary,
+        "performance": (
+            {
+                "date": str(snap.date),
+                "nav": snap.nav,
+                "cumulative_return_pct": snap.cumulative_return_pct,
+                "n_positions": snap.n_positions,
+            }
+            if snap
+            else None
+        ),
+    }
+
+
 @router.get("/fomc/report", response_model=FOMCReportResponse)
 def get_fomc_report(
     limit: int = Query(default=6, ge=1, le=12),

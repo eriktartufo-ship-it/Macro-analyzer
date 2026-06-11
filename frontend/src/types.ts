@@ -45,6 +45,60 @@ export interface PlayerScore {
   signals: PlayerSignal[];
 }
 
+export interface AiPortfolioPosition {
+  asset_class: string;
+  target_weight_pct: number;
+  current_weight_pct: number;
+  tranches_filled: number;
+  tranches_total: number;
+  entry_regime: string;
+  avg_entry_score: number;
+  estimated_pnl_pct: number;
+  took_partial_tp: boolean;
+  opened_at: string;
+  last_action: string;
+  last_action_date: string;
+  days_held: number;
+}
+
+export interface AiPortfolioDecision {
+  date: string;
+  asset_class: string;
+  action: string;
+  size_pct: number;
+  tranche_index: number;
+  tranches_total: number;
+  score: number;
+  confidence: number;
+  regime: string;
+  momentum_signal: string;
+  vol_60d: number | null;
+  estimated_pnl_pct: number | null;
+  reason_short: string;
+}
+
+export interface AiPortfolioPerformanceSnap {
+  date: string;
+  nav: number;
+  cumulative_return_pct: number;
+  drawdown_pct: number;
+  benchmark_60_40_return_pct: number | null;
+  benchmark_sp500_return_pct: number | null;
+}
+
+export interface AiPortfolioPerformanceCurrent extends AiPortfolioPerformanceSnap {
+  peak_nav: number;
+  n_positions: number;
+  deployed_pct: number;
+  top_position_asset: string | null;
+  top_position_weight_pct: number | null;
+}
+
+export interface AiPortfolioPerformanceResponse {
+  current: AiPortfolioPerformanceCurrent | null;
+  history: AiPortfolioPerformanceSnap[];
+}
+
 export interface LlmSettings {
   api_key_set: boolean;
   api_key_masked: string | null;
