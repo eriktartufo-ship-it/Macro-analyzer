@@ -16,8 +16,10 @@ import type {
   FOMCReport,
   HMMPrediction,
   AiPortfolioDecision,
+  AiPortfolioLearning,
   AiPortfolioPerformanceResponse,
   AiPortfolioPosition,
+  AiPortfolioReasoning,
   LeadTimeReport,
   LlmSettings,
   MacroLlmAnalysis,
@@ -108,6 +110,14 @@ export const api = {
     request<AiPortfolioDecision[]>(`/ai-portfolio/decisions?days=${days}`),
   aiPortfolioPerformance: (days = 180) =>
     request<AiPortfolioPerformanceResponse>(`/ai-portfolio/performance?days=${days}`),
+  aiPortfolioReasoning: (forceRefresh = false) =>
+    request<AiPortfolioReasoning>(
+      `/ai-portfolio/reasoning${forceRefresh ? "?force_refresh=true" : ""}`,
+      undefined,
+      { retries: 0 },
+    ),
+  aiPortfolioLearnings: (limit = 20) =>
+    request<AiPortfolioLearning[]>(`/ai-portfolio/learnings?limit=${limit}`),
   aiPortfolioManualScan: () =>
     request<{ scan_summary: Record<string, unknown>; performance: unknown }>(
       "/ai-portfolio/manual-scan",

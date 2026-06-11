@@ -3,8 +3,10 @@ import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
 import type {
   AiPortfolioDecision,
+  AiPortfolioLearning,
   AiPortfolioPerformanceResponse,
   AiPortfolioPosition,
+  AiPortfolioReasoning,
 } from "../types";
 
 const ACTION_COLORS: Record<string, string> = {
@@ -41,6 +43,8 @@ export function AiPortfolioPage() {
   const [positions, setPositions] = useState<AiPortfolioPosition[]>([]);
   const [decisions, setDecisions] = useState<AiPortfolioDecision[]>([]);
   const [perf, setPerf] = useState<AiPortfolioPerformanceResponse | null>(null);
+  const [reasoning, setReasoning] = useState<AiPortfolioReasoning | null>(null);
+  const [learnings, setLearnings] = useState<AiPortfolioLearning[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -49,14 +53,23 @@ export function AiPortfolioPage() {
     setLoading(true);
     setError(null);
     try {
-      const [p, d, perfRes] = await Promise.all([
+      const [p, d, perfRes, learns] = await Promise.all([
         api.aiPortfolioPositions(),
         api.aiPortfolioDecisions(30),
         api.aiPortfolioPerformance(180),
+        api.aiPortfolioLearnings(20).catch(() => [] as AiPortfolioLearning[]),
       ]);
       setPositions(p);
       setDecisions(d);
       setPerf(perfRes);
+      setLearnings(learns);
+      // Reasoning fetched separately, può fallire 503 → ok
+      try {
+        const r = await api.aiPortfolioReasoning();
+        setReasoning(r);
+      } catch {
+        setReasoning(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore caricamento");
     } finally {
@@ -184,6 +197,59 @@ export function AiPortfolioPage() {
         )}
       </div>
 
+      {/* AI Reasoning + Regime Challenge */}
+      {reasoning && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+            <h2 style={{ margin: 0 }}>
+              🧠 Analisi AI · {reasoning.date}
+            </h2>
+            <RegimeChallengeBadge agree={reasoning.ai_agrees} alt={reasoning.ai_alternative_regime} />
+          </div>
+          <div style={{
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "var(--text)",
+            padding: "10px 12px",
+            background: "var(--surface-sunk)",
+            borderLeft: "3px solid var(--accent)",
+            borderRadius: 4,
+            marginBottom: 10,
+          }}>
+            {reasoning.daily_summary}
+          </div>
+
+          {reasoning.ai_agrees !== "high" && reasoning.regime_challenge_reasoning && (
+            <div style={{
+              padding: "12px 14px",
+              background: "rgba(231,76,60,0.08)",
+              borderLeft: "3px solid var(--deflation)",
+              borderRadius: 4,
+              marginBottom: 10,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.6, color: "var(--deflation)", marginBottom: 6 }}>
+                ⚠ L'AI mette in discussione il regime
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: "var(--text)" }}>
+                Classifier dice <strong>{reasoning.regime_classifier_says}</strong>
+                {reasoning.ai_alternative_regime && (
+                  <>
+                    {" "}— AI suggerisce <strong style={{ color: "var(--deflation)" }}>{reasoning.ai_alternative_regime}</strong>
+                  </>
+                )}
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: "var(--muted)", marginTop: 6 }}>
+                {reasoning.regime_challenge_reasoning}
+              </div>
+            </div>
+          )}
+
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>
+            Provider: {reasoning.provider}
+          </div>
+        </div>
+      )}
+
       {/* Positions table */}
       <div className="card" style={{ marginTop: 16 }}>
         <h2 style={{ margin: 0, marginBottom: 8 }}>Posizioni attive</h2>
@@ -305,7 +371,14 @@ export function AiPortfolioPage() {
                         {d.momentum_signal}
                       </span>
                     </td>
-                    <td style={{ fontSize: 11, color: "var(--muted)" }}>{d.reason_short}</td>
+                    <td style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {d.reason_short}
+                      {reasoning?.decisions_reasoning?.[d.asset_class] && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: "var(--accent)", fontStyle: "italic" }}>
+                          🧠 {reasoning.decisions_reasoning[d.asset_class]}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -313,6 +386,59 @@ export function AiPortfolioPage() {
           </ScrollShadow>
         )}
       </div>
+
+      {/* Learnings post-mortem */}
+      {learnings.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <h2 style={{ margin: 0, marginBottom: 4 }}>📚 Learnings post-mortem</h2>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
+            Pattern aggregati dalle posizioni chiuse. Threshold shift = adattamento entry score per quel pattern.
+          </div>
+          <ScrollShadow innerClassName="table-wrap">
+            <table className="table table-responsive">
+              <thead>
+                <tr>
+                  <th>Pattern</th>
+                  <th className="num">W/L</th>
+                  <th className="num">Win rate</th>
+                  <th className="num">Avg PnL</th>
+                  <th className="num">Threshold shift</th>
+                  <th>Ultimo visto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {learnings.map((L) => (
+                  <tr key={L.pattern_key}>
+                    <td style={{ fontSize: 11 }}>{L.pattern_key}</td>
+                    <td className="num">
+                      <span style={{ color: "var(--reflation)" }}>{L.n_wins}</span>
+                      {" / "}
+                      <span style={{ color: "var(--deflation)" }}>{L.n_losses}</span>
+                    </td>
+                    <td className="num">{(L.win_rate * 100).toFixed(0)}%</td>
+                    <td
+                      className="num"
+                      style={{ color: L.avg_pnl_pct >= 0 ? "var(--reflation)" : "var(--deflation)" }}
+                    >
+                      {(L.avg_pnl_pct * 100).toFixed(1)}%
+                    </td>
+                    <td
+                      className="num"
+                      style={{
+                        color: L.entry_threshold_shift > 0 ? "var(--deflation)" : L.entry_threshold_shift < 0 ? "var(--reflation)" : "var(--muted)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {L.entry_threshold_shift > 0 ? "+" : ""}{L.entry_threshold_shift.toFixed(1)}
+                    </td>
+                    <td style={{ fontSize: 11, color: "var(--muted)" }}>{L.last_seen}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollShadow>
+        </div>
+      )}
 
       {/* Equity curve simplified */}
       {perf && perf.history.length > 1 && (
@@ -395,6 +521,33 @@ function BenchmarkRow({
         </span>
       </span>
     </div>
+  );
+}
+
+function RegimeChallengeBadge({ agree, alt }: { agree: string; alt: string | null }) {
+  const colors: Record<string, { bg: string; fg: string; label: string }> = {
+    high: { bg: "rgba(46,204,113,0.15)", fg: "var(--reflation)", label: "AI concorda" },
+    medium: { bg: "rgba(241,196,15,0.15)", fg: "var(--goldilocks)", label: "AI perplessa" },
+    low: { bg: "rgba(231,76,60,0.15)", fg: "var(--deflation)", label: "AI dissente" },
+  };
+  const c = colors[agree] || colors.high;
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 700,
+        padding: "3px 8px",
+        background: c.bg,
+        color: c.fg,
+        borderRadius: 4,
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+      }}
+      title={alt ? `Regime alternativo proposto: ${alt}` : undefined}
+    >
+      {c.label}
+      {agree !== "high" && alt && ` → ${alt}`}
+    </span>
   );
 }
 

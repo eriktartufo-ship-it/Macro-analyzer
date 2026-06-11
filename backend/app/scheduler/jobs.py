@@ -1817,7 +1817,11 @@ def ai_portfolio_daily_scan():
     DailySignal + RegimeClassification.
     """
     from app.database import SessionLocal
-    from app.services.ai_portfolio import strategist, performance as perf
+    from app.services.ai_portfolio import (
+        strategist,
+        performance as perf,
+        llm_reasoner,
+    )
 
     logger.info("AI portfolio daily scan starting...")
     with SessionLocal() as db:
@@ -1830,6 +1834,16 @@ def ai_portfolio_daily_scan():
                     f"AI portfolio NAV: ${snap.nav:.2f}, cum_ret: {snap.cumulative_return_pct*100:.2f}%, "
                     f"DD: {snap.drawdown_pct*100:.2f}%, n_pos: {snap.n_positions}"
                 )
+            # Fase 2: LLM reasoning + regime challenge (best effort)
+            try:
+                reasoning = llm_reasoner.generate_reasoning(db)
+                if reasoning:
+                    logger.info(
+                        f"AI portfolio LLM: ai_agrees={reasoning.ai_agrees}, "
+                        f"alt_regime={reasoning.ai_alternative_regime}"
+                    )
+            except Exception as e:
+                logger.warning(f"AI portfolio LLM reasoning failed (non-fatal): {e}")
         except Exception as e:
             logger.exception(f"AI portfolio scan failed: {e}")
 
