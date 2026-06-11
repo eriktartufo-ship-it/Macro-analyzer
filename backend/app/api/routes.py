@@ -1425,13 +1425,18 @@ def get_ai_portfolio_performance(
 
 @router.post("/ai-portfolio/manual-scan")
 def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
-    """Trigger manuale del daily scan AI Portfolio + performance snapshot.
-
-    Utile per testing iniziale / bootstrap della prima posizione live.
-    """
-    from app.services.ai_portfolio import strategist, performance as perf
+    """Trigger manuale daily scan + performance + LLM reasoning (best effort)."""
+    from app.services.ai_portfolio import (
+        strategist,
+        performance as perf,
+        llm_reasoner,
+    )
     summary = strategist.daily_scan(db)
     snap = perf.snapshot(db)
+    try:
+        llm_reasoner.generate_reasoning(db)
+    except Exception:
+        pass
     return {
         "scan_summary": summary,
         "performance": (
@@ -1445,6 +1450,54 @@ def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
             else None
         ),
     }
+
+
+@router.get("/ai-portfolio/reasoning")
+def get_ai_portfolio_reasoning(
+    force_refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    """LLM reasoning + regime challenge per ultima data disponibile."""
+    from app.services.ai_portfolio import llm_reasoner
+    import json as _json
+
+    if force_refresh:
+        r = llm_reasoner.generate_reasoning(db, force_refresh=True)
+    else:
+        r = llm_reasoner.latest_reasoning(db) or llm_reasoner.generate_reasoning(db)
+
+    if r is None:
+        raise HTTPException(
+            status_code=503,
+            detail="AI Portfolio reasoning non disponibile",
+        )
+
+    try:
+        dec_reasoning = _json.loads(r.decisions_reasoning_json or "{}")
+    except Exception:
+        dec_reasoning = {}
+
+    return {
+        "date": str(r.date),
+        "daily_summary": r.daily_summary,
+        "decisions_reasoning": dec_reasoning,
+        "regime_classifier_says": r.regime_classifier_says,
+        "ai_agrees": r.ai_agrees,
+        "ai_alternative_regime": r.ai_alternative_regime,
+        "regime_challenge_reasoning": r.regime_challenge_reasoning,
+        "provider": r.provider,
+        "cached_at": r.created_at.isoformat() if r.created_at else None,
+    }
+
+
+@router.get("/ai-portfolio/learnings")
+def get_ai_portfolio_learnings(
+    limit: int = Query(default=20, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    """Lista learnings post-mortem aggregati per pattern."""
+    from app.services.ai_portfolio import learning
+    return learning.list_top_learnings(db, limit=limit)
 
 
 @router.get("/fomc/report", response_model=FOMCReportResponse)

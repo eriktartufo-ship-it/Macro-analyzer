@@ -37,7 +37,7 @@ from app.models.ai_portfolio import (
 )
 from app.models.daily_signals import DailySignal
 from app.models.regime_classifications import RegimeClassification
-from app.services.ai_portfolio import sizer, momentum
+from app.services.ai_portfolio import sizer, momentum, pnl_tracker, learning
 from app.services.prices.yahoo_fetcher import YahooFetcher
 from app.services.scoring.engine import ASSET_CLASSES, ASSET_REGIME_DATA
 
@@ -66,16 +66,27 @@ def _regime_top_n_assets(probabilities: dict[str, float], top_n: int = TOP_N_REG
     return {a for a, _ in rankings[:top_n]}
 
 
-def _estimate_pnl_update(
-    position: AiPortfolioPosition,
-    current_score: float,
-    current_vol: Optional[float],
-) -> float:
-    """Aggiorna estimated PnL: drift = (current_score - entry_score)/100 * 0.5
-    + vol-noise. Coarse but bounded.
+def _refresh_real_pnl(position: AiPortfolioPosition) -> float:
+    """Fase 2: PnL reale da Yahoo daily prices invece di stima.
+
+    Strategia:
+    - Se avg_entry_price assente (positions create pre-fase-2): cattura prezzo corrente
+      e azzera PnL (start clean tracking da qui in poi)
+    - Se presente: PnL = (current - entry) / entry
     """
-    score_delta = (current_score - position.avg_entry_score) / 100.0
-    return position.estimated_pnl_pct + score_delta * 0.05  # 5% sensitivity per score delta
+    current_price = pnl_tracker.get_latest_price(position.asset_class)
+    if current_price is None:
+        return position.estimated_pnl_pct  # fallback: invariato
+
+    if position.avg_entry_price is None or position.avg_entry_price == 0:
+        # Backfill: posizioni pre-fase2 senza prezzo entry
+        position.avg_entry_price = current_price
+        position.current_price = current_price
+        return 0.0
+
+    position.current_price = current_price
+    pnl = pnl_tracker.compute_pnl_pct(position.avg_entry_price, current_price)
+    return pnl
 
 
 def _fetch_price_history_for_universe() -> dict[str, pd.Series]:
@@ -156,12 +167,10 @@ def daily_scan(
     targets_normalized = sizer.normalize_and_cap(raw_weights)
     n_tranches_default = sizer.dynamic_n_tranches(confidence)
 
-    # 5. Load existing positions + aggiorna PnL stimato per ciascuna
+    # 5. Load existing positions + Fase 2: aggiorna PnL REALE da Yahoo prices
     existing_positions = {}
     for p in db.query(AiPortfolioPosition).all():
-        curr_score = scoreboard.get(p.asset_class, 0.0)
-        curr_vol = None  # popolato dopo nella fase 6 via momentum.get_asset_signal_and_vol
-        p.estimated_pnl_pct = _estimate_pnl_update(p, curr_score, curr_vol)
+        p.estimated_pnl_pct = _refresh_real_pnl(p)
         existing_positions[p.asset_class] = p
 
     # 6. Decide per ogni asset
@@ -174,6 +183,11 @@ def daily_scan(
         in_favor = asset in regime_top
         position = existing_positions.get(asset)
 
+        # Fase 2: threshold dinamico da learning post-mortem
+        threshold_shift = learning.get_threshold_shift_for_pattern(
+            db, regime=dominant_regime, asset_class=asset, momentum=sig,
+        )
+
         action, reason, size = _decide(
             asset=asset,
             position=position,
@@ -184,6 +198,7 @@ def daily_scan(
             in_favor=in_favor,
             n_tranches_default=n_tranches_default,
             vol=vol,
+            entry_threshold_shift=threshold_shift,
         )
 
         # Log decision if non-trivial
@@ -225,14 +240,21 @@ def _decide(
     in_favor: bool,
     n_tranches_default: int,
     vol: Optional[float],
+    entry_threshold_shift: float = 0.0,
 ) -> tuple[str, str, float]:
-    """Returns (action, reason_short, size_pct)."""
+    """Returns (action, reason_short, size_pct).
+
+    Fase 2: entry_threshold_shift adatta dinamicamente la entry threshold in base
+    ai learnings post-mortem accumulati per quel pattern.
+    """
+    effective_entry_threshold = ENTRY_SCORE_THRESHOLD + entry_threshold_shift
     if position is None:
         # Entry rules
         if confidence < 0.30:
             return ("SKIP_NO_SIGNAL", "confidence below uncertainty gate", 0.0)
-        if score < ENTRY_SCORE_THRESHOLD:
-            return ("SKIP_NO_SIGNAL", f"score {score:.1f} < entry threshold {ENTRY_SCORE_THRESHOLD}", 0.0)
+        if score < effective_entry_threshold:
+            shift_str = f" (learned shift {entry_threshold_shift:+.1f})" if entry_threshold_shift != 0 else ""
+            return ("SKIP_NO_SIGNAL", f"score {score:.1f} < entry threshold {effective_entry_threshold:.1f}{shift_str}", 0.0)
         if not in_favor:
             return ("SKIP_NO_SIGNAL", "asset not in current regime top-12", 0.0)
         if momentum_sig != "BULLISH":
@@ -283,6 +305,8 @@ def _apply(
 ) -> None:
     """Mutate DB based on action."""
     if action == "OPEN_TRANCHE":
+        # Fase 2: cattura prezzo Yahoo all'entry
+        entry_price = pnl_tracker.get_latest_price(asset)
         if position is None:
             new_pos = AiPortfolioPosition(
                 asset_class=asset,
@@ -293,6 +317,8 @@ def _apply(
                 opened_at=target_date,
                 entry_regime=regime,
                 avg_entry_score=score,
+                avg_entry_price=entry_price,
+                current_price=entry_price,
                 estimated_pnl_pct=0.0,
                 took_partial_tp=False,
                 last_action="OPEN_TRANCHE",
@@ -302,11 +328,18 @@ def _apply(
             summary["n_open_tranches"] += 1
         else:
             position.current_weight_pct += size
+            tranches_before = position.tranches_filled
             position.tranches_filled += 1
             position.target_weight_pct = target
             # Update avg entry score weighted
             n = position.tranches_filled
             position.avg_entry_score = (position.avg_entry_score * (n - 1) + score) / n
+            # Fase 2: VWAP entry price (tranche aggiuntiva)
+            if entry_price is not None:
+                position.avg_entry_price = pnl_tracker.update_avg_entry_price(
+                    position.avg_entry_price, tranches_before, entry_price,
+                )
+                position.current_price = entry_price
             position.last_action = "OPEN_TRANCHE"
             position.last_action_date = target_date
             summary["n_open_tranches"] += 1
@@ -328,5 +361,21 @@ def _apply(
 
     elif action in ("FULL_CLOSE", "STOP_LOSS", "TAKE_PROFIT"):
         if position is not None:
+            # Fase 2: record post-mortem learning prima di cancellare
+            try:
+                # Costruisci stub decision per learning input
+                last_decision = AiPortfolioDecision(
+                    date=target_date,
+                    asset_class=asset,
+                    action=action,
+                    momentum_signal="NEUTRAL",  # fallback; learning usa entry_regime
+                    score=score,
+                    confidence=0.0,
+                    regime=regime,
+                    reason_short="auto-closed",
+                )
+                learning.record_closed_position(db, last_decision, position)
+            except Exception as e:
+                logger.warning(f"learning recording failed for {asset}: {e}")
             db.delete(position)
             summary["n_closures"] += 1

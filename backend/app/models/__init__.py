@@ -1,7 +1,9 @@
 from app.models.ai_portfolio import (
     AiPortfolioDecision,
+    AiPortfolioLearning,
     AiPortfolioPerformance,
     AiPortfolioPosition,
+    AiPortfolioReasoning,
 )
 from app.models.asset_regime_calibrations import AssetRegimeCalibration
 from app.models.asset_regime_performance import AssetRegimePerformance
@@ -18,8 +20,10 @@ from app.models.secular_trends import SecularTrend
 
 __all__ = [
     "AiPortfolioDecision",
+    "AiPortfolioLearning",
     "AiPortfolioPerformance",
     "AiPortfolioPosition",
+    "AiPortfolioReasoning",
     "AssetRegimeCalibration",
     "AssetRegimePerformance",
     "BacktestResult",

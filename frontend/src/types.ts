@@ -94,6 +94,29 @@ export interface AiPortfolioPerformanceCurrent extends AiPortfolioPerformanceSna
   top_position_weight_pct: number | null;
 }
 
+export interface AiPortfolioReasoning {
+  date: string;
+  daily_summary: string;
+  decisions_reasoning: Record<string, string>;
+  regime_classifier_says: string;
+  ai_agrees: "high" | "medium" | "low" | string;
+  ai_alternative_regime: string | null;
+  regime_challenge_reasoning: string | null;
+  provider: string;
+  cached_at: string | null;
+}
+
+export interface AiPortfolioLearning {
+  pattern_key: string;
+  n_wins: number;
+  n_losses: number;
+  win_rate: number;
+  avg_pnl_pct: number;
+  entry_threshold_shift: number;
+  last_seen: string;
+  insight_text: string | null;
+}
+
 export interface AiPortfolioPerformanceResponse {
   current: AiPortfolioPerformanceCurrent | null;
   history: AiPortfolioPerformanceSnap[];
