@@ -38,6 +38,8 @@ from app.models.ai_portfolio import (
 from app.models.daily_signals import DailySignal
 from app.models.regime_classifications import RegimeClassification
 from app.services.ai_portfolio import sizer, momentum, pnl_tracker, learning
+
+STRATEGY_TYPE = "model_driven"
 from app.services.prices.yahoo_fetcher import YahooFetcher
 from app.services.scoring.engine import ASSET_CLASSES, ASSET_REGIME_DATA
 
@@ -167,9 +169,13 @@ def daily_scan(
     targets_normalized = sizer.normalize_and_cap(raw_weights)
     n_tranches_default = sizer.dynamic_n_tranches(confidence)
 
-    # 5. Load existing positions + Fase 2: aggiorna PnL REALE da Yahoo prices
+    # 5. Load existing positions (filter per strategy) + PnL reale
     existing_positions = {}
-    for p in db.query(AiPortfolioPosition).all():
+    for p in (
+        db.query(AiPortfolioPosition)
+        .filter(AiPortfolioPosition.strategy_type == STRATEGY_TYPE)
+        .all()
+    ):
         p.estimated_pnl_pct = _refresh_real_pnl(p)
         existing_positions[p.asset_class] = p
 
@@ -186,6 +192,7 @@ def daily_scan(
         # Fase 2: threshold dinamico da learning post-mortem
         threshold_shift = learning.get_threshold_shift_for_pattern(
             db, regime=dominant_regime, asset_class=asset, momentum=sig,
+            strategy_type=STRATEGY_TYPE,
         )
 
         action, reason, size = _decide(
@@ -206,6 +213,7 @@ def daily_scan(
             decision = AiPortfolioDecision(
                 date=target_date,
                 asset_class=asset,
+                strategy_type=STRATEGY_TYPE,
                 action=action,
                 size_pct=size,
                 tranche_index=(position.tranches_filled + 1) if (position and action == "OPEN_TRANCHE") else (1 if action == "OPEN_TRANCHE" else 0),
@@ -226,7 +234,11 @@ def daily_scan(
 
     db.commit()
 
-    summary["n_positions_after"] = db.query(AiPortfolioPosition).count()
+    summary["n_positions_after"] = (
+        db.query(AiPortfolioPosition)
+        .filter(AiPortfolioPosition.strategy_type == STRATEGY_TYPE)
+        .count()
+    )
     return summary
 
 
@@ -310,6 +322,7 @@ def _apply(
         if position is None:
             new_pos = AiPortfolioPosition(
                 asset_class=asset,
+                strategy_type=STRATEGY_TYPE,
                 target_weight_pct=target,
                 current_weight_pct=size,
                 tranches_filled=1,
@@ -367,6 +380,7 @@ def _apply(
                 last_decision = AiPortfolioDecision(
                     date=target_date,
                     asset_class=asset,
+                    strategy_type=STRATEGY_TYPE,
                     action=action,
                     momentum_signal="NEUTRAL",  # fallback; learning usa entry_regime
                     score=score,

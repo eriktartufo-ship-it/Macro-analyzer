@@ -79,27 +79,23 @@ def record_closed_position(
     closed_decision: AiPortfolioDecision,
     closed_position: AiPortfolioPosition,
 ) -> AiPortfolioLearning:
-    """Aggiorna learning quando una posizione viene chiusa.
-
-    Args:
-        closed_decision: la decisione che ha chiuso la posizione
-            (FULL_CLOSE, STOP_LOSS, TAKE_PROFIT)
-        closed_position: la posizione prima della cancellazione (per pattern entry)
-
-    Returns: il learning aggiornato.
-    """
+    """Aggiorna learning quando una posizione viene chiusa (per strategy_type)."""
     pattern = build_pattern_key(
         regime=closed_position.entry_regime,
         asset_class=closed_position.asset_class,
         momentum=closed_decision.momentum_signal or "NEUTRAL",
     )
+    strategy = getattr(closed_position, "strategy_type", "model_driven")
 
     pnl = closed_position.estimated_pnl_pct
 
-    learning = db.query(AiPortfolioLearning).filter_by(pattern_key=pattern).first()
+    learning = db.query(AiPortfolioLearning).filter_by(
+        pattern_key=pattern, strategy_type=strategy,
+    ).first()
     if learning is None:
         learning = AiPortfolioLearning(
             pattern_key=pattern,
+            strategy_type=strategy,
             n_wins=1 if pnl > 0 else 0,
             n_losses=0 if pnl > 0 else 1,
             total_pnl_pct=pnl,
@@ -138,10 +134,13 @@ def get_threshold_shift_for_pattern(
     regime: str,
     asset_class: str,
     momentum: str,
+    strategy_type: str = "model_driven",
 ) -> float:
     """Restituisce lo shift threshold corrente per il pattern (0 se non esiste)."""
     pattern = build_pattern_key(regime, asset_class, momentum)
-    learning = db.query(AiPortfolioLearning).filter_by(pattern_key=pattern).first()
+    learning = db.query(AiPortfolioLearning).filter_by(
+        pattern_key=pattern, strategy_type=strategy_type,
+    ).first()
     if not learning:
         return 0.0
 
@@ -152,17 +151,18 @@ def get_threshold_shift_for_pattern(
     return learning.entry_threshold_shift
 
 
-def list_top_learnings(db: Session, limit: int = 20) -> list[dict]:
-    """Restituisce i top pattern per impatto (max ordered by abs shift)."""
-    rows = (
-        db.query(AiPortfolioLearning)
-        .order_by(AiPortfolioLearning.entry_threshold_shift.desc())
-        .limit(limit)
-        .all()
-    )
+def list_top_learnings(
+    db: Session, limit: int = 20, strategy_type: str | None = None,
+) -> list[dict]:
+    """Restituisce i top pattern per impatto. Filtra per strategy se passato."""
+    q = db.query(AiPortfolioLearning)
+    if strategy_type:
+        q = q.filter(AiPortfolioLearning.strategy_type == strategy_type)
+    rows = q.order_by(AiPortfolioLearning.entry_threshold_shift.desc()).limit(limit).all()
     return [
         {
             "pattern_key": r.pattern_key,
+            "strategy_type": r.strategy_type,
             "n_wins": r.n_wins,
             "n_losses": r.n_losses,
             "win_rate": r.win_rate,

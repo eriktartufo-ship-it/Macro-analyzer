@@ -22,12 +22,17 @@ from app.database import Base
 
 
 class AiPortfolioPosition(Base):
-    """Posizione corrente per asset (unique per asset)."""
+    """Posizione corrente per (asset, strategy). 2 strategie indipendenti:
+    `model_driven` (classifier regime) e `data_driven` (raw indicators rule-based).
+    """
 
     __tablename__ = "ai_portfolio_positions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    asset_class: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    asset_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    strategy_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="model_driven", index=True,
+    )
 
     # Sizing
     target_weight_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
@@ -53,6 +58,10 @@ class AiPortfolioPosition(Base):
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
     )
 
+    __table_args__ = (
+        UniqueConstraint("asset_class", "strategy_type", name="uq_position_asset_strategy"),
+    )
+
 
 class AiPortfolioDecision(Base):
     """Log immutabile decisioni AI daily (1 riga per asset per giorno se != HOLD)."""
@@ -62,6 +71,9 @@ class AiPortfolioDecision(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     asset_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    strategy_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="model_driven", index=True,
+    )
 
     # action enum: OPEN_TRANCHE | CLOSE_TRANCHE | FULL_CLOSE | HOLD | SKIP_NO_SIGNAL | STOP_LOSS | TAKE_PROFIT
     action: Mapped[str] = mapped_column(String(24), nullable=False)
@@ -86,12 +98,15 @@ class AiPortfolioDecision(Base):
 
 
 class AiPortfolioPerformance(Base):
-    """Snapshot NAV + metriche portafoglio (1 riga per data, unique)."""
+    """Snapshot NAV + metriche portafoglio per (data, strategy)."""
 
     __tablename__ = "ai_portfolio_performance"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    date: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    strategy_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="model_driven", index=True,
+    )
 
     nav: Mapped[float] = mapped_column(Float, nullable=False, default=100000.0)
     cumulative_return_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
@@ -109,6 +124,10 @@ class AiPortfolioPerformance(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    __table_args__ = (
+        UniqueConstraint("date", "strategy_type", name="uq_perf_date_strategy"),
+    )
+
 
 class AiPortfolioLearning(Base):
     """Post-mortem learnings: pattern di decisioni con outcome aggregato.
@@ -123,7 +142,10 @@ class AiPortfolioLearning(Base):
     __tablename__ = "ai_portfolio_learnings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pattern_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    pattern_key: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    strategy_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="model_driven", index=True,
+    )
 
     # Aggregated stats
     n_wins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -144,6 +166,10 @@ class AiPortfolioLearning(Base):
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow,
     )
 
+    __table_args__ = (
+        UniqueConstraint("pattern_key", "strategy_type", name="uq_learning_pattern_strategy"),
+    )
+
 
 class AiPortfolioReasoning(Base):
     """LLM reasoning cache per giorno: explanation + regime challenge.
@@ -155,7 +181,10 @@ class AiPortfolioReasoning(Base):
     __tablename__ = "ai_portfolio_reasoning"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    date: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    strategy_type: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="model_driven", index=True,
+    )
     data_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
     # LLM output structured
@@ -171,4 +200,8 @@ class AiPortfolioReasoning(Base):
     # Metadata
     provider: Mapped[str] = mapped_column(String(48), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("date", "strategy_type", name="uq_reasoning_date_strategy"),
+    )
 

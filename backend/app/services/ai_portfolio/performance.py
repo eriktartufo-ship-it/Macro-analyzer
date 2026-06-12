@@ -61,18 +61,17 @@ def _benchmark_sp500_daily_return(probabilities: dict[str, float]) -> float:
     return _estimate_daily_return(weights, probabilities)
 
 
-def snapshot(db: Session, target_date: date | None = None) -> AiPortfolioPerformance:
-    """Compute + persist daily performance snapshot.
+def snapshot(
+    db: Session,
+    target_date: date | None = None,
+    strategy_type: str = "model_driven",
+) -> AiPortfolioPerformance:
+    """Compute + persist daily snapshot per strategia.
 
-    Logic:
-    - Prev snapshot NAV (or STARTING if first)
-    - Estimate daily return from current weights × probs
-    - New NAV = prev × (1 + daily_return)
-    - Update peak + drawdown
+    Capital pool indipendente per strategy: ognuna parte da STARTING_NAV.
     """
     target_date = target_date or date.today()
 
-    # Latest regime + signals
     latest_regime = (
         db.query(RegimeClassification)
         .order_by(RegimeClassification.date.desc())
@@ -89,15 +88,20 @@ def snapshot(db: Session, target_date: date | None = None) -> AiPortfolioPerform
         "goldilocks": float(latest_regime.probability_goldilocks or 0),
     }
 
-    # Positions → weights
-    positions = db.query(AiPortfolioPosition).all()
+    # Positions filtered per strategy
+    positions = (
+        db.query(AiPortfolioPosition)
+        .filter(AiPortfolioPosition.strategy_type == strategy_type)
+        .all()
+    )
     weights = {p.asset_class: p.current_weight_pct for p in positions}
     n_positions = len(positions)
     deployed = sum(weights.values())
 
-    # Previous snapshot
+    # Previous snapshot per same strategy
     prev = (
         db.query(AiPortfolioPerformance)
+        .filter(AiPortfolioPerformance.strategy_type == strategy_type)
         .order_by(AiPortfolioPerformance.date.desc())
         .first()
     )
@@ -126,8 +130,12 @@ def snapshot(db: Session, target_date: date | None = None) -> AiPortfolioPerform
         top_asset = top.asset_class
         top_w = top.current_weight_pct
 
-    # Upsert snapshot (replace if exists for date)
-    existing = db.query(AiPortfolioPerformance).filter_by(date=target_date).first()
+    # Upsert snapshot (replace if exists for (date, strategy))
+    existing = (
+        db.query(AiPortfolioPerformance)
+        .filter_by(date=target_date, strategy_type=strategy_type)
+        .first()
+    )
     if existing:
         existing.nav = new_nav
         existing.cumulative_return_pct = cum_ret
@@ -143,6 +151,7 @@ def snapshot(db: Session, target_date: date | None = None) -> AiPortfolioPerform
     else:
         snap = AiPortfolioPerformance(
             date=target_date,
+            strategy_type=strategy_type,
             nav=new_nav,
             cumulative_return_pct=cum_ret,
             drawdown_pct=dd,
