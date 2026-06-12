@@ -1309,17 +1309,22 @@ def get_macro_llm_analysis(
 
 
 @router.get("/ai-portfolio/positions")
-def get_ai_portfolio_positions(db: Session = Depends(get_db)):
-    """Posizioni attuali AI Portfolio + metriche."""
+def get_ai_portfolio_positions(
+    strategy: str = Query(default="model_driven"),
+    db: Session = Depends(get_db),
+):
+    """Posizioni attuali AI Portfolio + metriche per strategy_type."""
     from app.models.ai_portfolio import AiPortfolioPosition
     positions = (
         db.query(AiPortfolioPosition)
+        .filter(AiPortfolioPosition.strategy_type == strategy)
         .order_by(AiPortfolioPosition.current_weight_pct.desc())
         .all()
     )
     return [
         {
             "asset_class": p.asset_class,
+            "strategy_type": p.strategy_type,
             "target_weight_pct": p.target_weight_pct,
             "current_weight_pct": p.current_weight_pct,
             "tranches_filled": p.tranches_filled,
@@ -1340,16 +1345,20 @@ def get_ai_portfolio_positions(db: Session = Depends(get_db)):
 @router.get("/ai-portfolio/decisions")
 def get_ai_portfolio_decisions(
     days: int = Query(default=30, ge=1, le=365),
+    strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """Log decisioni AI Portfolio ultimi N giorni."""
+    """Log decisioni AI Portfolio ultimi N giorni per strategy_type."""
     from datetime import timedelta
     from app.models.ai_portfolio import AiPortfolioDecision
 
     cutoff = date.today() - timedelta(days=days)
     decisions = (
         db.query(AiPortfolioDecision)
-        .filter(AiPortfolioDecision.date >= cutoff)
+        .filter(
+            AiPortfolioDecision.date >= cutoff,
+            AiPortfolioDecision.strategy_type == strategy,
+        )
         .order_by(AiPortfolioDecision.date.desc(), AiPortfolioDecision.id.desc())
         .limit(500)
         .all()
@@ -1358,6 +1367,7 @@ def get_ai_portfolio_decisions(
         {
             "date": str(d.date),
             "asset_class": d.asset_class,
+            "strategy_type": d.strategy_type,
             "action": d.action,
             "size_pct": d.size_pct,
             "tranche_index": d.tranche_index,
@@ -1377,16 +1387,20 @@ def get_ai_portfolio_decisions(
 @router.get("/ai-portfolio/performance")
 def get_ai_portfolio_performance(
     days: int = Query(default=180, ge=1, le=1825),
+    strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """Equity curve + DD + benchmarks (60/40 + S&P500)."""
+    """Equity curve + DD + benchmarks (60/40 + S&P500) per strategy_type."""
     from datetime import timedelta
     from app.models.ai_portfolio import AiPortfolioPerformance
 
     cutoff = date.today() - timedelta(days=days)
     snaps = (
         db.query(AiPortfolioPerformance)
-        .filter(AiPortfolioPerformance.date >= cutoff)
+        .filter(
+            AiPortfolioPerformance.date >= cutoff,
+            AiPortfolioPerformance.strategy_type == strategy,
+        )
         .order_by(AiPortfolioPerformance.date)
         .all()
     )
@@ -1425,46 +1439,55 @@ def get_ai_portfolio_performance(
 
 @router.post("/ai-portfolio/manual-scan")
 def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
-    """Trigger manuale daily scan + performance + LLM reasoning (best effort)."""
+    """Trigger manuale daily scan ENTRAMBE le strategie + performance + LLM reasoning."""
     from app.services.ai_portfolio import (
         strategist,
+        data_strategist,
         performance as perf,
         llm_reasoner,
     )
-    summary = strategist.daily_scan(db)
-    snap = perf.snapshot(db)
-    try:
-        llm_reasoner.generate_reasoning(db)
-    except Exception:
-        pass
-    return {
-        "scan_summary": summary,
-        "performance": (
-            {
-                "date": str(snap.date),
-                "nav": snap.nav,
-                "cumulative_return_pct": snap.cumulative_return_pct,
-                "n_positions": snap.n_positions,
-            }
-            if snap
-            else None
-        ),
-    }
+    results = {}
+    for mod, label in (
+        (strategist, "model_driven"),
+        (data_strategist, "data_driven"),
+    ):
+        summary = mod.daily_scan(db)
+        snap = perf.snapshot(db, strategy_type=label)
+        try:
+            llm_reasoner.generate_reasoning(db, strategy_type=label)
+        except Exception:
+            pass
+        results[label] = {
+            "scan_summary": summary,
+            "performance": (
+                {
+                    "date": str(snap.date),
+                    "nav": snap.nav,
+                    "cumulative_return_pct": snap.cumulative_return_pct,
+                    "n_positions": snap.n_positions,
+                }
+                if snap
+                else None
+            ),
+        }
+    return results
 
 
 @router.get("/ai-portfolio/reasoning")
 def get_ai_portfolio_reasoning(
     force_refresh: bool = Query(default=False),
+    strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """LLM reasoning + regime challenge per ultima data disponibile."""
+    """LLM reasoning + regime challenge per ultima data disponibile per strategy."""
     from app.services.ai_portfolio import llm_reasoner
     import json as _json
 
     if force_refresh:
-        r = llm_reasoner.generate_reasoning(db, force_refresh=True)
+        r = llm_reasoner.generate_reasoning(db, force_refresh=True, strategy_type=strategy)
     else:
-        r = llm_reasoner.latest_reasoning(db) or llm_reasoner.generate_reasoning(db)
+        r = llm_reasoner.latest_reasoning(db, strategy_type=strategy) or \
+            llm_reasoner.generate_reasoning(db, strategy_type=strategy)
 
     if r is None:
         raise HTTPException(
@@ -1493,11 +1516,60 @@ def get_ai_portfolio_reasoning(
 @router.get("/ai-portfolio/learnings")
 def get_ai_portfolio_learnings(
     limit: int = Query(default=20, ge=1, le=100),
+    strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """Lista learnings post-mortem aggregati per pattern."""
+    """Lista learnings post-mortem aggregati per pattern per strategy."""
     from app.services.ai_portfolio import learning
-    return learning.list_top_learnings(db, limit=limit)
+    return learning.list_top_learnings(db, limit=limit, strategy_type=strategy)
+
+
+@router.get("/ai-portfolio/leaderboard")
+def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
+    """Confronto rapido: model_driven vs data_driven (NAV + alpha vs benchmarks)."""
+    from app.models.ai_portfolio import AiPortfolioPerformance
+
+    out = {}
+    for strategy in ("model_driven", "data_driven"):
+        latest = (
+            db.query(AiPortfolioPerformance)
+            .filter(AiPortfolioPerformance.strategy_type == strategy)
+            .order_by(AiPortfolioPerformance.date.desc())
+            .first()
+        )
+        if latest is None:
+            out[strategy] = None
+            continue
+        out[strategy] = {
+            "date": str(latest.date),
+            "nav": latest.nav,
+            "cumulative_return_pct": latest.cumulative_return_pct,
+            "drawdown_pct": latest.drawdown_pct,
+            "peak_nav": latest.peak_nav,
+            "n_positions": latest.n_positions,
+            "deployed_pct": latest.deployed_pct,
+            "benchmark_60_40_return_pct": latest.benchmark_60_40_return_pct,
+            "benchmark_sp500_return_pct": latest.benchmark_sp500_return_pct,
+            "alpha_vs_60_40": (
+                latest.cumulative_return_pct - (latest.benchmark_60_40_return_pct or 0)
+            ),
+            "alpha_vs_sp500": (
+                latest.cumulative_return_pct - (latest.benchmark_sp500_return_pct or 0)
+            ),
+        }
+
+    # Head-to-head: chi vince
+    md = out.get("model_driven")
+    dd = out.get("data_driven")
+    head_to_head = None
+    if md and dd:
+        diff = md["cumulative_return_pct"] - dd["cumulative_return_pct"]
+        head_to_head = {
+            "winner": "model_driven" if diff > 0 else ("data_driven" if diff < 0 else "tie"),
+            "spread_pct": diff,
+            "spread_text": f"{abs(diff)*100:.2f}pp",
+        }
+    return {"by_strategy": out, "head_to_head": head_to_head}
 
 
 @router.get("/fomc/report", response_model=FOMCReportResponse)

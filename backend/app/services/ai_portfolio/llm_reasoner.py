@@ -211,8 +211,9 @@ def generate_reasoning(
     db: Session,
     target_date: date | None = None,
     force_refresh: bool = False,
+    strategy_type: str = "model_driven",
 ) -> Optional[AiPortfolioReasoning]:
-    """Genera o cache-restituisce reasoning + regime challenge per la data."""
+    """Genera o cache-restituisce reasoning + regime challenge per (data, strategy)."""
     target_date = target_date or date.today()
 
     # Latest regime
@@ -240,17 +241,24 @@ def generate_reasoning(
     except Exception:
         pass
 
-    # Decisions
+    # Decisions filtered per strategy
     decisions = (
         db.query(AiPortfolioDecision)
-        .filter(AiPortfolioDecision.date == target_date)
+        .filter(
+            AiPortfolioDecision.date == target_date,
+            AiPortfolioDecision.strategy_type == strategy_type,
+        )
         .all()
     )
-    positions = db.query(AiPortfolioPosition).all()
+    positions = (
+        db.query(AiPortfolioPosition)
+        .filter(AiPortfolioPosition.strategy_type == strategy_type)
+        .all()
+    )
 
-    # Learnings (top 10 per shift assoluto)
+    # Learnings (top 10 per shift assoluto, filtered per strategy)
     from app.services.ai_portfolio import learning as L
-    learnings = L.list_top_learnings(db, limit=10)
+    learnings = L.list_top_learnings(db, limit=10, strategy_type=strategy_type)
 
     # Hash + cache check
     model = llm_settings.get_model()
@@ -264,7 +272,11 @@ def generate_reasoning(
         model,
     )
 
-    existing = db.query(AiPortfolioReasoning).filter_by(date=target_date).first()
+    existing = (
+        db.query(AiPortfolioReasoning)
+        .filter_by(date=target_date, strategy_type=strategy_type)
+        .first()
+    )
     if existing and not force_refresh and existing.data_hash == h:
         return existing
 
@@ -326,6 +338,7 @@ def generate_reasoning(
     else:
         out = AiPortfolioReasoning(
             date=target_date,
+            strategy_type=strategy_type,
             data_hash=h,
             daily_summary=daily_summary,
             decisions_reasoning_json=json.dumps(dec_reasoning_clipped),
@@ -341,9 +354,12 @@ def generate_reasoning(
     return out
 
 
-def latest_reasoning(db: Session) -> Optional[AiPortfolioReasoning]:
+def latest_reasoning(
+    db: Session, strategy_type: str = "model_driven",
+) -> Optional[AiPortfolioReasoning]:
     return (
         db.query(AiPortfolioReasoning)
+        .filter(AiPortfolioReasoning.strategy_type == strategy_type)
         .order_by(AiPortfolioReasoning.date.desc())
         .first()
     )

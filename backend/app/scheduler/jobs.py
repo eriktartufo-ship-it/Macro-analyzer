@@ -1819,33 +1819,41 @@ def ai_portfolio_daily_scan():
     from app.database import SessionLocal
     from app.services.ai_portfolio import (
         strategist,
+        data_strategist,
         performance as perf,
         llm_reasoner,
     )
 
-    logger.info("AI portfolio daily scan starting...")
+    logger.info("AI portfolio HORSERACE daily scan starting...")
     with SessionLocal() as db:
-        try:
-            summary = strategist.daily_scan(db)
-            logger.info(f"AI portfolio scan complete: {summary}")
-            snap = perf.snapshot(db)
-            if snap:
-                logger.info(
-                    f"AI portfolio NAV: ${snap.nav:.2f}, cum_ret: {snap.cumulative_return_pct*100:.2f}%, "
-                    f"DD: {snap.drawdown_pct*100:.2f}%, n_pos: {snap.n_positions}"
-                )
-            # Fase 2: LLM reasoning + regime challenge (best effort)
+        # 2 strategie indipendenti — capitale $100k cadauno
+        for strategist_mod, label in (
+            (strategist, "model_driven"),
+            (data_strategist, "data_driven"),
+        ):
             try:
-                reasoning = llm_reasoner.generate_reasoning(db)
-                if reasoning:
+                summary = strategist_mod.daily_scan(db)
+                logger.info(f"AI portfolio scan {label} complete: {summary}")
+                snap = perf.snapshot(db, strategy_type=label)
+                if snap:
                     logger.info(
-                        f"AI portfolio LLM: ai_agrees={reasoning.ai_agrees}, "
-                        f"alt_regime={reasoning.ai_alternative_regime}"
+                        f"AI portfolio NAV {label}: ${snap.nav:.2f}, "
+                        f"cum_ret: {snap.cumulative_return_pct*100:.2f}%, "
+                        f"DD: {snap.drawdown_pct*100:.2f}%, n_pos: {snap.n_positions}"
                     )
+                try:
+                    reasoning = llm_reasoner.generate_reasoning(
+                        db, strategy_type=label,
+                    )
+                    if reasoning:
+                        logger.info(
+                            f"AI portfolio LLM {label}: ai_agrees={reasoning.ai_agrees}, "
+                            f"alt_regime={reasoning.ai_alternative_regime}"
+                        )
+                except Exception as e:
+                    logger.warning(f"LLM reasoning {label} failed (non-fatal): {e}")
             except Exception as e:
-                logger.warning(f"AI portfolio LLM reasoning failed (non-fatal): {e}")
-        except Exception as e:
-            logger.exception(f"AI portfolio scan failed: {e}")
+                logger.exception(f"AI portfolio scan {label} failed: {e}")
 
 
 def start_scheduler():

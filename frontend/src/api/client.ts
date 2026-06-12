@@ -105,19 +105,25 @@ export const api = {
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),
-  aiPortfolioPositions: () => request<AiPortfolioPosition[]>("/ai-portfolio/positions"),
-  aiPortfolioDecisions: (days = 30) =>
-    request<AiPortfolioDecision[]>(`/ai-portfolio/decisions?days=${days}`),
-  aiPortfolioPerformance: (days = 180) =>
-    request<AiPortfolioPerformanceResponse>(`/ai-portfolio/performance?days=${days}`),
-  aiPortfolioReasoning: (forceRefresh = false) =>
+  aiPortfolioPositions: (strategy: "model_driven" | "data_driven" = "model_driven") =>
+    request<AiPortfolioPosition[]>(`/ai-portfolio/positions?strategy=${strategy}`),
+  aiPortfolioDecisions: (days = 30, strategy: "model_driven" | "data_driven" = "model_driven") =>
+    request<AiPortfolioDecision[]>(`/ai-portfolio/decisions?days=${days}&strategy=${strategy}`),
+  aiPortfolioPerformance: (days = 180, strategy: "model_driven" | "data_driven" = "model_driven") =>
+    request<AiPortfolioPerformanceResponse>(`/ai-portfolio/performance?days=${days}&strategy=${strategy}`),
+  aiPortfolioLeaderboard: () =>
+    request<{
+      by_strategy: Record<string, unknown>;
+      head_to_head: { winner: string; spread_pct: number; spread_text: string } | null;
+    }>("/ai-portfolio/leaderboard"),
+  aiPortfolioReasoning: (forceRefresh = false, strategy: "model_driven" | "data_driven" = "model_driven") =>
     request<AiPortfolioReasoning>(
-      `/ai-portfolio/reasoning${forceRefresh ? "?force_refresh=true" : ""}`,
+      `/ai-portfolio/reasoning?strategy=${strategy}${forceRefresh ? "&force_refresh=true" : ""}`,
       undefined,
       { retries: 0 },
     ),
-  aiPortfolioLearnings: (limit = 20) =>
-    request<AiPortfolioLearning[]>(`/ai-portfolio/learnings?limit=${limit}`),
+  aiPortfolioLearnings: (limit = 20, strategy: "model_driven" | "data_driven" = "model_driven") =>
+    request<AiPortfolioLearning[]>(`/ai-portfolio/learnings?limit=${limit}&strategy=${strategy}`),
   aiPortfolioManualScan: () =>
     request<{ scan_summary: Record<string, unknown>; performance: unknown }>(
       "/ai-portfolio/manual-scan",
