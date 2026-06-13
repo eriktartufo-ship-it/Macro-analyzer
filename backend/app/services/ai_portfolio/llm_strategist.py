@@ -220,7 +220,7 @@ Decidi cosa fare oggi. Vedi sopra cosa suggeriscono i 2 sistemi algoritmici
 (Model + Data). Sei libero di concordare, dissentire, o aprire asset che NON
 hanno score >55 in nessuno dei due se la tua tesi macro lo giustifica.
 
-Output JSON: { "thesis": "...", "decisions": [...] }
+Output JSON: {{ "thesis": "...", "decisions": [...] }}
 """
 
 
