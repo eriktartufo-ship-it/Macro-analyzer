@@ -1447,14 +1447,23 @@ def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
         performance as perf,
         llm_reasoner,
     )
+    import traceback as _tb
     results = {}
     for mod, label in (
         (strategist, "model_driven"),
         (data_strategist, "data_driven"),
         (llm_strategist, "llm_driven"),
     ):
-        summary = mod.daily_scan(db)
-        snap = perf.snapshot(db, strategy_type=label)
+        try:
+            summary = mod.daily_scan(db)
+        except Exception as e:
+            results[label] = {"error": str(e), "trace": _tb.format_exc()[-800:]}
+            db.rollback()
+            continue
+        try:
+            snap = perf.snapshot(db, strategy_type=label)
+        except Exception as e:
+            snap = None
         try:
             llm_reasoner.generate_reasoning(db, strategy_type=label)
         except Exception:
