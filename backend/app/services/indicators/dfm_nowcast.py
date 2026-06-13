@@ -282,12 +282,16 @@ def compute_gdp_nowcast(
             #   In tal caso usa proxy (gdp_roc × 4) come fallback.
             # - Altrimenti cap a [proxy - 2, proxy + 2] per smoothing.
             if gdp_yoy_implied_raw is not None:
+                # AUDIT 2026-06-13 bughunter: era `last_gdp_qoq = gdp_quarterly.iloc[-1]`
+                # ma gdp_quarterly è PIL NOMINALE in $B (~29000), non QoQ %. Il calcolo
+                # `proxy = last × 4 = 116000` produceva discrepancy enorme → cap a 5.0
+                # fisso, semanticamente invertito. Fix: usa gdp_yoy.iloc[-1] (già YoY%
+                # calcolato a riga 272), che è il proxy semanticamente corretto.
                 try:
-                    last_gdp_qoq = float(gdp_quarterly.iloc[-1])
+                    proxy_yoy = float(gdp_yoy.iloc[-1]) if not gdp_yoy.empty else None
                 except Exception:
-                    last_gdp_qoq = None
-                if last_gdp_qoq is not None:
-                    proxy_yoy = last_gdp_qoq * 4.0
+                    proxy_yoy = None
+                if proxy_yoy is not None:
                     discrepancy = abs(gdp_yoy_implied_raw - proxy_yoy)
                     if discrepancy > 2.5:
                         gdp_yoy_implied = max(-5.0, min(5.0, proxy_yoy))
@@ -302,7 +306,7 @@ def compute_gdp_nowcast(
                             min(proxy_yoy + 2.0, gdp_yoy_implied_raw),
                         )
                 else:
-                    # Fallback al vecchio cap range se gdp_roc non disponibile
+                    # Fallback al vecchio cap range se gdp_yoy non disponibile
                     gdp_yoy_implied = max(-5.0, min(5.0, gdp_yoy_implied_raw))
             else:
                 gdp_yoy_implied = None
