@@ -1,6 +1,7 @@
 """Job scheduler per refresh giornaliero dei dati macro."""
 
 from datetime import date
+from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from loguru import logger
@@ -512,6 +513,9 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         # nome canonico atteso da financial_stress_veto.py.
         if hy is not None:
             indicators["hy_oas"] = hy
+            # AUDIT 2026-06-13 bughunter: data_strategist.py legge `hy_credit_spread`,
+            # propaghiamo lo stesso valore con entrambi i nomi.
+            indicators["hy_credit_spread"] = hy
 
         # energy_yoy: variazione 12-mesi dell'energy index Yahoo (XLE o WTI).
         try:
@@ -639,6 +643,56 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
             _enrich_with_momentum_derivatives(indicators, series_for_momentum, cutoff)
     except Exception as e:
         logger.warning(f"Momentum derivatives skipped: {e}")
+
+    # AUDIT 2026-06-13 bughunter: 7 indicators T17/T18 calcolati in backfill ma
+    # NON nel daily refresh. Senza questi, `data_strategist.py` e `llm_strategist.py`
+    # usano default fallback fake (es. wage_growth_atlanta=3.0, sticky_cpi=2.5,
+    # m2_yoy=5.0), bloccando trigger INFLATION_HEDGE/INFLATION_PEAK/RISK_ON/etc.
+    # Stessa logica di backfill._build_indicators_as_of righe 195-229.
+    def _roc_12m(name: str) -> Optional[float]:
+        try:
+            data = fetcher.fetch_and_transform(name)
+            roc_12m = data.get("roc_12m") if data else None
+            if roc_12m is not None and not roc_12m.empty:
+                return float(roc_12m.dropna().iloc[-1])
+        except Exception:
+            pass
+        return None
+
+    def _last_level(name: str) -> Optional[float]:
+        try:
+            s = fetcher.fetch_series(name)
+            if s is not None and not s.empty:
+                clean = s.dropna()
+                if not clean.empty:
+                    return float(clean.iloc[-1])
+        except Exception:
+            pass
+        return None
+
+    # T17 Labor + Credit
+    v = _last_level("sticky_cpi_yoy")
+    if v is not None:
+        indicators["sticky_cpi_yoy"] = v
+    v = _last_level("wage_growth_atlanta")
+    if v is not None:
+        indicators["wage_growth_atlanta"] = v
+
+    # T18 Cyclical leading (YoY transforms)
+    for src, key in (
+        ("heavy_truck_sales", "heavy_truck_sales_yoy"),
+        ("building_permits", "building_permits_yoy"),
+        ("consumer_credit", "consumer_credit_yoy"),
+        ("durable_goods_orders", "durable_goods_orders_yoy"),
+    ):
+        v = _roc_12m(src)
+        if v is not None:
+            indicators[key] = v
+
+    # M2 YoY: backfill scrive direttamente `m2_yoy`, anche live serve.
+    v = _roc_12m("m2")
+    if v is not None:
+        indicators["m2_yoy"] = v
 
     return indicators
 

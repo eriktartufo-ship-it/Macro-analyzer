@@ -94,7 +94,10 @@ def evaluate_data_driven_scores(
     gdp_roc = _safe(indicators, "gdp_roc", 1.0)
     gdp_chg_6m = _safe(indicators, "gdp_roc_change_6m", 0.0)
     yield_curve = _safe(indicators, "yield_curve_10y2y", 1.0)
-    m2_yoy = _safe(indicators, "m2_yoy", 5.0)
+    # AUDIT 2026-06-13 bughunter: era default 5.0, esattamente sulla boundary
+    # del trigger RISK_ON (m2_yoy > 5.0). Un dato mancante non deve causare
+    # flip on/off random del trigger. Default neutro 0.0.
+    m2_yoy = _safe(indicators, "m2_yoy", 0.0)
     fed_funds = _safe(indicators, "fed_funds_rate", 3.0)
     breakeven_10y = _safe(indicators, "breakeven_10y", 2.0)
     unrate = _safe(indicators, "unrate", 4.5)
