@@ -1820,16 +1820,18 @@ def ai_portfolio_daily_scan():
     from app.services.ai_portfolio import (
         strategist,
         data_strategist,
+        llm_strategist,
         performance as perf,
         llm_reasoner,
     )
 
     logger.info("AI portfolio HORSERACE daily scan starting...")
     with SessionLocal() as db:
-        # 2 strategie indipendenti — capitale $100k cadauno
+        # 3 strategie indipendenti — capitale $100k cadauno
         for strategist_mod, label in (
             (strategist, "model_driven"),
             (data_strategist, "data_driven"),
+            (llm_strategist, "llm_driven"),
         ):
             try:
                 summary = strategist_mod.daily_scan(db)
