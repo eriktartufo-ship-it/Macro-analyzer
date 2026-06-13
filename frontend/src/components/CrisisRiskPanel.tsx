@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type {
   CrisisRiskAssessment,
-  CrisisRiskLevel,
   CrisisType,
   PositioningStance,
 } from "../types";
@@ -10,12 +9,15 @@ interface Props {
   data: CrisisRiskAssessment;
 }
 
-const RISK_COLORS: Record<CrisisRiskLevel, { bg: string; fg: string; label: string }> = {
+const RISK_COLORS: Record<string, { bg: string; fg: string; label: string }> = {
   low: { bg: "var(--success-bg)", fg: "var(--reflation)", label: "BASSO" },
+  moderate: { bg: "var(--warn-bg)", fg: "var(--warn-text)", label: "MODERATO" },
   elevated: { bg: "var(--warn-bg)", fg: "var(--warn-text)", label: "ELEVATO" },
   high: { bg: "var(--danger-bg)", fg: "var(--deflation)", label: "ALTO" },
   extreme: { bg: "var(--danger-bg)", fg: "var(--deflation)", label: "ESTREMO" },
 };
+
+const RISK_FALLBACK = { bg: "var(--warn-bg)", fg: "var(--warn-text)", label: "—" };
 
 const CRISIS_TYPE_META: Record<CrisisType, { label: string; tag: string; tagBg: string }> = {
   no_crisis: {
@@ -65,8 +67,12 @@ function stanceLabel(s: PositioningStance): string {
 export function CrisisRiskPanel({ data }: Props) {
   const [expanded, setExpanded] = useState(false);
 
-  const risk = RISK_COLORS[data.risk_level];
-  const crisisMeta = CRISIS_TYPE_META[data.crisis_type];
+  const risk = RISK_COLORS[data.risk_level] || RISK_FALLBACK;
+  const crisisMeta = CRISIS_TYPE_META[data.crisis_type] || {
+    label: data.crisis_type || "Sconosciuto",
+    tag: "?",
+    tagBg: "var(--warn-bg)",
+  };
 
   const positioningSorted = Object.entries(data.positioning)
     .map(([asset, stance]) => ({ asset, stance, weight: stanceWeight(stance) }))
