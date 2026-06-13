@@ -9,7 +9,9 @@ import type {
   AiPortfolioReasoning,
 } from "../types";
 
-type StrategyType = "model_driven" | "data_driven";
+type StrategyType = "model_driven" | "data_driven" | "llm_driven";
+
+const STRATEGY_ORDER: StrategyType[] = ["model_driven", "data_driven", "llm_driven"];
 
 const STRATEGY_META: Record<StrategyType, { label: string; emoji: string; subtitle: string; color: string }> = {
   model_driven: {
@@ -23,6 +25,12 @@ const STRATEGY_META: Record<StrategyType, { label: string; emoji: string; subtit
     emoji: "📊",
     subtitle: "Raw indicators FRED + ROC + soglie",
     color: "var(--goldilocks)",
+  },
+  llm_driven: {
+    label: "LLM-Driven",
+    emoji: "🤖",
+    subtitle: "Gemini decide guardando entrambi i sistemi",
+    color: "var(--stagflation)",
   },
 };
 
@@ -60,26 +68,31 @@ export function AiPortfolioPage() {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Per ogni strategia tengo lo stato
+  // Per ogni strategia tengo lo stato (3 strategie)
   const [posByStrat, setPosByStrat] = useState<Record<StrategyType, AiPortfolioPosition[]>>({
     model_driven: [],
     data_driven: [],
+    llm_driven: [],
   });
   const [decByStrat, setDecByStrat] = useState<Record<StrategyType, AiPortfolioDecision[]>>({
     model_driven: [],
     data_driven: [],
+    llm_driven: [],
   });
   const [perfByStrat, setPerfByStrat] = useState<Record<StrategyType, AiPortfolioPerformanceResponse | null>>({
     model_driven: null,
     data_driven: null,
+    llm_driven: null,
   });
   const [reasoningByStrat, setReasoningByStrat] = useState<Record<StrategyType, AiPortfolioReasoning | null>>({
     model_driven: null,
     data_driven: null,
+    llm_driven: null,
   });
   const [learnByStrat, setLearnByStrat] = useState<Record<StrategyType, AiPortfolioLearning[]>>({
     model_driven: [],
     data_driven: [],
+    llm_driven: [],
   });
 
   const loadFor = async (strategy: StrategyType) => {
@@ -107,7 +120,7 @@ export function AiPortfolioPage() {
 
   const loadAll = async () => {
     setError(null);
-    await Promise.all([loadFor("model_driven"), loadFor("data_driven")]);
+    await Promise.all(STRATEGY_ORDER.map((s) => loadFor(s)));
     try {
       const lb = await api.aiPortfolioLeaderboard();
       setLeaderboard(lb);
@@ -139,10 +152,8 @@ export function AiPortfolioPage() {
   const meta = STRATEGY_META[activeStrategy];
 
   const lbHead = (leaderboard as any)?.head_to_head as
-    | { winner: string; spread_pct: number; spread_text: string }
+    | { winner: string; podium?: string[]; spread_pct: number; spread_text: string }
     | null;
-  const mdCurrent = perfByStrat.model_driven?.current;
-  const ddCurrent = perfByStrat.data_driven?.current;
 
   return (
     <div>
@@ -154,7 +165,7 @@ export function AiPortfolioPage() {
           <div>
             <h2 style={{ margin: 0 }}>🏇 AI Portfolio Horserace</h2>
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-              2 strategie competono, $100k capitale separato ciascuna. Stesso universe 24 asset.
+              3 strategie competono, $100k capitale separato ciascuna. Stesso universe 24 asset.
             </div>
           </div>
           <button
@@ -171,49 +182,51 @@ export function AiPortfolioPage() {
               opacity: scanning ? 0.5 : 1,
             }}
           >
-            {scanning ? "Scanning…" : "🔄 Scan entrambe"}
+            {scanning ? "Scanning…" : "🔄 Scan tutte e 3"}
           </button>
         </div>
 
-        {/* Leaderboard head-to-head */}
-        {lbHead && mdCurrent && ddCurrent && (
-          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-            <LeaderCard
-              strategy="model_driven"
-              current={mdCurrent}
-              isWinner={lbHead.winner === "model_driven"}
-            />
-            <div style={{ display: "flex", alignItems: "center", padding: "0 8px" }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>
-                  {lbHead.winner === "tie" ? "=" : "→"}
-                </div>
-                <div>Spread {lbHead.spread_text}</div>
-                <div style={{ fontSize: 9 }}>{lbHead.winner === "tie" ? "tie" : `${lbHead.winner.replace("_", " ")} avanti`}</div>
-              </div>
-            </div>
-            <LeaderCard
-              strategy="data_driven"
-              current={ddCurrent}
-              isWinner={lbHead.winner === "data_driven"}
-            />
+        {/* Leaderboard 3-way */}
+        {lbHead && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
+            {STRATEGY_ORDER.map((s) => {
+              const current = perfByStrat[s]?.current;
+              if (!current) return null;
+              const podium = lbHead.podium || [];
+              const rank = podium.indexOf(s);
+              return (
+                <LeaderCard
+                  key={s}
+                  strategy={s}
+                  current={current}
+                  rank={rank}
+                />
+              );
+            })}
+          </div>
+        )}
+        {lbHead && (
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, textAlign: "center" }}>
+            Spread top-bottom: <strong style={{ color: "var(--text)" }}>{lbHead.spread_text}</strong>
+            {lbHead.winner && ` · 🏆 ${STRATEGY_META[lbHead.winner as StrategyType]?.label || lbHead.winner}`}
           </div>
         )}
 
-        {/* Equity chart 4-line */}
+        {/* Equity chart 5-line */}
         {perfByStrat.model_driven && perfByStrat.data_driven && (
           <div style={{ marginTop: 16 }}>
-            <EquityChart4
+            <EquityChart5
               model={perfByStrat.model_driven.history}
               data={perfByStrat.data_driven.history}
+              llm={perfByStrat.llm_driven?.history || []}
             />
           </div>
         )}
       </div>
 
       {/* Strategy selector tabs */}
-      <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-        {(["model_driven", "data_driven"] as StrategyType[]).map((s) => {
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        {STRATEGY_ORDER.map((s) => {
           const m = STRATEGY_META[s];
           const active = activeStrategy === s;
           return (
@@ -415,17 +428,18 @@ export function AiPortfolioPage() {
 function LeaderCard({
   strategy,
   current,
-  isWinner,
+  rank,
 }: {
   strategy: StrategyType;
   current: any;
-  isWinner: boolean;
+  rank: number;
 }) {
   const meta = STRATEGY_META[strategy];
+  const isWinner = rank === 0;
+  const medal = rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : "";
   return (
     <div
       style={{
-        flex: 1,
         padding: "12px 14px",
         background: isWinner ? "rgba(46,204,113,0.10)" : "var(--surface-sunk)",
         border: `1px solid ${isWinner ? "var(--reflation)" : "var(--stroke)"}`,
@@ -433,8 +447,8 @@ function LeaderCard({
         position: "relative",
       }}
     >
-      {isWinner && (
-        <span style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>🏆</span>
+      {medal && (
+        <span style={{ position: "absolute", top: 8, right: 10, fontSize: 16 }}>{medal}</span>
       )}
       <div style={{ fontSize: 11, fontWeight: 700, color: meta.color, textTransform: "uppercase", letterSpacing: 0.6 }}>
         {meta.emoji} {meta.label}
@@ -477,22 +491,25 @@ function RegimeChallengeBadge({ agree, alt }: { agree: string; alt: string | nul
   );
 }
 
-function EquityChart4({
+function EquityChart5({
   model,
   data,
+  llm,
 }: {
   model: AiPortfolioPerformanceResponse["history"];
   data: AiPortfolioPerformanceResponse["history"];
+  llm: AiPortfolioPerformanceResponse["history"];
 }) {
   const W = 720;
-  const H = 220;
+  const H = 240;
   const PAD = 30;
 
   // Use the longer history for x axis
-  const len = Math.max(model.length, data.length);
+  const len = Math.max(model.length, data.length, llm.length);
   const allVals = [
     ...model.flatMap((h) => [h.cumulative_return_pct, h.benchmark_60_40_return_pct ?? 0, h.benchmark_sp500_return_pct ?? 0]),
     ...data.flatMap((h) => [h.cumulative_return_pct]),
+    ...llm.flatMap((h) => [h.cumulative_return_pct]),
   ];
   const minV = Math.min(0, ...allVals);
   const maxV = Math.max(0.001, ...allVals);
@@ -519,20 +536,23 @@ function EquityChart4({
       <line x1={PAD} y1={yScale(0)} x2={W - PAD} y2={yScale(0)} stroke="var(--stroke)" strokeDasharray="2 4" />
       <text x={W - PAD + 4} y={yScale(0) + 4} fontSize={10} fill="var(--muted)">0%</text>
 
-      <path d={linePath(model, "benchmark_sp500_return_pct")} fill="none" stroke="var(--stagflation)" strokeWidth={1.5} strokeDasharray="4 3" />
+      <path d={linePath(model, "benchmark_sp500_return_pct")} fill="none" stroke="var(--deflation)" strokeWidth={1.5} strokeDasharray="4 3" />
       <path d={linePath(model, "benchmark_60_40_return_pct")} fill="none" stroke="var(--muted)" strokeWidth={1.5} strokeDasharray="2 3" />
       <path d={linePath(model, "cumulative_return_pct")} fill="none" stroke="var(--reflation)" strokeWidth={2.5} />
       <path d={linePath(data, "cumulative_return_pct")} fill="none" stroke="var(--goldilocks)" strokeWidth={2.5} />
+      <path d={linePath(llm, "cumulative_return_pct")} fill="none" stroke="var(--stagflation)" strokeWidth={2.5} />
 
       <g transform={`translate(${PAD}, 10)`} fontSize={11}>
         <rect width={12} height={3} y={0} fill="var(--reflation)" />
         <text x={18} y={6} fill="var(--text)">🧠 Model</text>
         <rect width={12} height={3} y={14} fill="var(--goldilocks)" />
         <text x={18} y={20} fill="var(--text)">📊 Data</text>
-        <rect width={12} height={3} y={28} fill="var(--muted)" />
-        <text x={18} y={34} fill="var(--text)">60/40</text>
-        <rect width={12} height={3} y={42} fill="var(--stagflation)" />
-        <text x={18} y={48} fill="var(--text)">S&amp;P 500</text>
+        <rect width={12} height={3} y={28} fill="var(--stagflation)" />
+        <text x={18} y={34} fill="var(--text)">🤖 LLM</text>
+        <rect width={12} height={3} y={42} fill="var(--muted)" />
+        <text x={18} y={48} fill="var(--text)">60/40</text>
+        <rect width={12} height={3} y={56} fill="var(--deflation)" />
+        <text x={18} y={62} fill="var(--text)">S&amp;P 500</text>
       </g>
     </svg>
   );

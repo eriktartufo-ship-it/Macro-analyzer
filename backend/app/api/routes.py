@@ -1439,10 +1439,11 @@ def get_ai_portfolio_performance(
 
 @router.post("/ai-portfolio/manual-scan")
 def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
-    """Trigger manuale daily scan ENTRAMBE le strategie + performance + LLM reasoning."""
+    """Trigger manuale daily scan TUTTE LE 3 strategie + performance + LLM reasoning."""
     from app.services.ai_portfolio import (
         strategist,
         data_strategist,
+        llm_strategist,
         performance as perf,
         llm_reasoner,
     )
@@ -1450,6 +1451,7 @@ def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
     for mod, label in (
         (strategist, "model_driven"),
         (data_strategist, "data_driven"),
+        (llm_strategist, "llm_driven"),
     ):
         summary = mod.daily_scan(db)
         snap = perf.snapshot(db, strategy_type=label)
@@ -1526,11 +1528,11 @@ def get_ai_portfolio_learnings(
 
 @router.get("/ai-portfolio/leaderboard")
 def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
-    """Confronto rapido: model_driven vs data_driven (NAV + alpha vs benchmarks)."""
+    """Confronto 3-way: model vs data vs LLM (NAV + alpha vs benchmarks)."""
     from app.models.ai_portfolio import AiPortfolioPerformance
 
     out = {}
-    for strategy in ("model_driven", "data_driven"):
+    for strategy in ("model_driven", "data_driven", "llm_driven"):
         latest = (
             db.query(AiPortfolioPerformance)
             .filter(AiPortfolioPerformance.strategy_type == strategy)
@@ -1558,16 +1560,22 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
             ),
         }
 
-    # Head-to-head: chi vince
-    md = out.get("model_driven")
-    dd = out.get("data_driven")
+    # 3-way ranking
+    ranked = sorted(
+        [(k, v) for k, v in out.items() if v is not None],
+        key=lambda kv: -kv[1]["cumulative_return_pct"],
+    )
+    podium = [k for k, _ in ranked]
     head_to_head = None
-    if md and dd:
-        diff = md["cumulative_return_pct"] - dd["cumulative_return_pct"]
+    if len(ranked) >= 2:
+        first_ret = ranked[0][1]["cumulative_return_pct"]
+        last_ret = ranked[-1][1]["cumulative_return_pct"]
+        spread = first_ret - last_ret
         head_to_head = {
-            "winner": "model_driven" if diff > 0 else ("data_driven" if diff < 0 else "tie"),
-            "spread_pct": diff,
-            "spread_text": f"{abs(diff)*100:.2f}pp",
+            "winner": ranked[0][0],
+            "podium": podium,
+            "spread_pct": spread,
+            "spread_text": f"{spread*100:.2f}pp",
         }
     return {"by_strategy": out, "head_to_head": head_to_head}
 
