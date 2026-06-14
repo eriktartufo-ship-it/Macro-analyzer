@@ -317,3 +317,69 @@ def test_1996_no_false_deflation():
     assert probs["deflation"] < probs["goldilocks"], (
         f"deflation={probs['deflation']:.2f} >= goldilocks={probs['goldilocks']:.2f}"
     )
+
+
+def test_2018_goldilocks_not_deflation():
+    """Audit raydalio 2026-06-13 (fix #1+#3): il 2018 (Trump tax cuts) era goldilocks
+    canonico — VIX < 18, payrolls > 1.5%, CPI 2-2.5%, GDP 2.5-3%, unrate 3.9%.
+    Pre-fix: il modello classificava 50% di questi mesi come deflation per via di
+    CPI penalty troppo permissiva (soglia 2.5%) + assenza gate payrolls.
+    Post-fix #1: CPI penalty soglia 2.0 + slope 0.35 → deflation -50% per CPI 2.5.
+    Post-fix #3: payrolls > 1.5 + CPI > 1.5 → deflation × 0.85 hard gate.
+    Risultato atteso: deflation NON dominante; goldilocks o reflation in pole."""
+    indicators = {
+        "gdp_roc": 2.7,
+        "cpi_yoy": 2.4,
+        "unrate": 3.9,
+        "unrate_roc": -1.0,
+        "pmi": 56.0,
+        "yield_curve_10y2y": 0.5,
+        "initial_claims_roc": -5.0,
+        "lei_roc": 0.3,
+        "fed_funds_rate": 2.0,
+        "core_pce_yoy": 2.1,
+        "payrolls_roc_12m": 1.7,
+        "indpro_roc_12m": 3.5,
+        "baa_spread": 1.8,
+        "consumer_sentiment": 96.0,
+        "vix": 15.0,
+        "nfci": -0.65,
+        "breakeven_10y": 2.2,
+    }
+    result = classify_regime(indicators)
+    probs = result["probabilities"]
+    assert probs["deflation"] < probs["goldilocks"] or probs["deflation"] < probs["reflation"], (
+        f"deflation={probs['deflation']:.2f} domina su goldilocks={probs['goldilocks']:.2f} "
+        f"e reflation={probs['reflation']:.2f} (atteso: 2018 NON è deflation)"
+    )
+    assert probs["deflation"] < 0.30, f"deflation={probs['deflation']:.2f} >= 0.30 in pieno 2018 goldilocks"
+
+
+def test_2009_deflation_survives_payrolls_gate():
+    """Regression post-fix #3: la deflation severa 2009 (payrolls collassati,
+    gdp_collapse alto) NON deve essere indebolita dal gate payrolls. Il gate
+    skip per gdp_collapse_severity > 0.80, e payrolls 2009 era negativo
+    (-4% YoY), ben sotto 1.5% strict → gate non triggera comunque."""
+    indicators = {
+        "gdp_roc": -3.5,
+        "cpi_yoy": -1.5,
+        "unrate": 9.5,
+        "unrate_roc": 5.0,
+        "pmi": 35.0,
+        "yield_curve_10y2y": 2.0,
+        "initial_claims_roc": 50.0,
+        "lei_roc": -2.0,
+        "fed_funds_rate": 0.25,
+        "core_pce_yoy": 1.0,
+        "payrolls_roc_12m": -4.0,
+        "indpro_roc_12m": -12.0,
+        "baa_spread": 5.0,
+        "consumer_sentiment": 55.0,
+        "vix": 40.0,
+        "breakeven_10y": 1.2,
+    }
+    result = classify_regime(indicators)
+    probs = result["probabilities"]
+    assert probs["deflation"] > 0.40, (
+        f"deflation={probs['deflation']:.2f} in pieno 2009 GFC deve essere > 0.40"
+    )
