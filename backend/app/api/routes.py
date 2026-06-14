@@ -1535,6 +1535,45 @@ def get_ai_portfolio_learnings(
     return learning.list_top_learnings(db, limit=limit, strategy_type=strategy)
 
 
+@router.post("/ai-portfolio/reset")
+def reset_ai_portfolio(
+    confirm: str = Query(default=""),
+    db: Session = Depends(get_db),
+):
+    """DESTRUCTIVE: wipe positions/decisions/performance/learnings/reasoning per
+    tutte le 3 strategie. Riparte da $100k pulito. Richiede `?confirm=YES_WIPE_ALL`.
+
+    Usato per allineare la baseline 3-way prima di un nuovo run a confronto pari.
+    """
+    if confirm != "YES_WIPE_ALL":
+        raise HTTPException(
+            status_code=400,
+            detail="Reset destructive. Passa ?confirm=YES_WIPE_ALL per procedere.",
+        )
+
+    from app.models.ai_portfolio import (
+        AiPortfolioDecision,
+        AiPortfolioLearning,
+        AiPortfolioPerformance,
+        AiPortfolioPosition,
+        AiPortfolioReasoning,
+    )
+
+    counts = {}
+    for model in (
+        AiPortfolioReasoning,
+        AiPortfolioLearning,
+        AiPortfolioPerformance,
+        AiPortfolioDecision,
+        AiPortfolioPosition,
+    ):
+        n = db.query(model).count()
+        db.query(model).delete()
+        counts[model.__tablename__] = n
+    db.commit()
+    return {"status": "reset_complete", "deleted": counts}
+
+
 @router.get("/ai-portfolio/leaderboard")
 def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
     """Confronto 3-way: model vs data vs LLM (NAV + alpha vs benchmarks)."""
