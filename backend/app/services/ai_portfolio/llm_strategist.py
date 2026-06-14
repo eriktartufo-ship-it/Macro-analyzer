@@ -40,9 +40,8 @@ import requests
 from sqlalchemy.orm import Session
 
 from app.models.ai_portfolio import AiPortfolioDecision, AiPortfolioPosition
-from app.models.daily_signals import DailySignal
 from app.models.regime_classifications import RegimeClassification
-from app.services.ai_portfolio import data_strategist, learning, momentum, pnl_tracker, sizer
+from app.services.ai_portfolio import learning, momentum, pnl_tracker
 from app.services.llm import settings as llm_settings
 from app.services.scoring.engine import ASSET_CLASSES
 
@@ -50,7 +49,10 @@ logger = logging.getLogger(__name__)
 
 
 STRATEGY_TYPE = "llm_driven"
-_PROMPT_VERSION = "v1-decider"
+# v2-independent (2026-06-13): rimossi model_scoreboard + data_scoreboard
+# dal prompt per evitare anchoring bias. Gemini analizza solo indicators
+# raw + regime come second opinion. Bump prompt_version invalida cache.
+_PROMPT_VERSION = "v2-independent"
 
 # Stesse soglie hard di safety (Gemini suggerisce ma noi clampiamo)
 MAX_SIZE_PCT_PER_TRANCHE = 0.08  # 8% max per tranche, anti-hallucination
@@ -69,10 +71,10 @@ _GEMINI_API_URL_TPL = (
 )
 
 
-_SYSTEM_PROMPT = """Sei un portfolio manager senior di un hedge fund discreazionale.
-Decidi tu cosa fare, NON ripeti meccanicamente quello che dicono i due sistemi
-algorithmici (Model-Driven e Data-Driven) che ti mostro: usali come INPUT, ma
-hai libertà di dissentire.
+_SYSTEM_PROMPT = """Sei un portfolio manager senior di un hedge fund discrezionale.
+Fai la TUA analisi INDIPENDENTE dei dati macro raw: niente segnali pre-masticati,
+niente scoreboard di altri sistemi. Ti diamo solo gli indicators FRED + un regime
+classifier come second opinion (che puoi ignorare se la tua tesi lo giustifica).
 
 **LINGUA**: campo `reason` SEMPRE in italiano professionale, breve (max 150 char).
 
@@ -110,8 +112,10 @@ factor_quality, factor_value
   ]
 }
 
-Decidi come Soros: aggressivo dove hai conviction, prudente dove i due sistemi
-sotto disagree."""
+Decidi come Soros: forma la TUA tesi macro leggendo gli indicators raw, poi
+costruisci il portafoglio coerente. Aggressivo dove hai conviction analitica,
+prudente dove i dati sono ambigui. Non delegare il pensiero al regime
+classifier — quella è una baseline, non la verità."""
 
 
 def _compute_input_hash(
@@ -140,8 +144,6 @@ def _build_user_prompt(
     probabilities: dict,
     confidence: float,
     indicators: dict,
-    model_scoreboard: dict[str, float],
-    data_scoreboard: dict[str, float],
     positions: list[AiPortfolioPosition],
     learnings: list[dict],
 ) -> str:
@@ -149,32 +151,57 @@ def _build_user_prompt(
         f"{k}={v:.0%}" for k, v in sorted(probabilities.items(), key=lambda x: -x[1])
     )
 
-    # Indicators chiave (top 18, già normalizzati)
-    key_inds = [
-        "gdp_roc", "gdp_roc_change_6m", "cpi_yoy", "cpi_yoy_change_6m", "core_pce_yoy",
-        "sticky_cpi_yoy", "wage_growth_atlanta", "unrate", "unrate_roc",
-        "initial_claims_roc", "yield_curve_10y2y", "fed_funds_rate", "m2_yoy",
-        "vix", "hy_credit_spread", "nfci", "consumer_sentiment",
-        "heavy_truck_sales_yoy", "building_permits_yoy", "durable_goods_orders_yoy",
-        "breakeven_10y",
-    ]
-    ind_lines = []
-    for k in key_inds:
-        v = indicators.get(k)
-        if v is not None:
+    # Indicators raw — TUTTI quelli disponibili. Niente pre-selezione del modello.
+    # Gemini decide cosa è rilevante. Ordinati per leggibilità (gruppi macro).
+    key_inds_grouped = {
+        "Crescita / attività": [
+            "gdp_roc", "gdp_roc_change_6m", "gdp_yoy_dfm",
+            "payrolls_roc_12m", "indpro_roc_12m",
+            "heavy_truck_sales_yoy", "building_permits_yoy",
+            "durable_goods_orders_yoy", "consumer_credit_yoy",
+        ],
+        "Lavoro": [
+            "unrate", "unrate_roc", "initial_claims_roc",
+            "wage_growth_atlanta", "job_openings",
+        ],
+        "Inflazione": [
+            "cpi_yoy", "cpi_yoy_change_6m", "core_pce_yoy",
+            "sticky_cpi_yoy", "breakeven_10y", "breakeven_10y_change_3m",
+            "energy_yoy",
+        ],
+        "Politica monetaria": [
+            "fed_funds_rate", "m2_yoy", "term_premium_10y",
+            "yield_curve_10y2y", "yield_curve_10y3m",
+        ],
+        "Stress / sentiment": [
+            "vix", "vix_ma_ratio", "nfci", "nfci_change_3m",
+            "hy_credit_spread", "baa_spread",
+            "consumer_sentiment", "news_sentiment",
+        ],
+        "Cross-asset": [
+            "copper_gold_ratio", "gold_oil_ratio", "hy_ig_spread_ratio",
+            "lei_roc", "insider_score",
+        ],
+        "Dedollarization": [
+            "dedollar_combined",
+        ],
+        "Internazionale": [
+            "ecb_main_refi_rate", "boe_bank_rate", "boj_policy_rate",
+        ],
+    }
+    indicator_blocks = []
+    for group_name, keys in key_inds_grouped.items():
+        lines = []
+        for k in keys:
+            v = indicators.get(k)
+            if v is None:
+                continue
             try:
-                ind_lines.append(f"  - {k}: {float(v):.3f}")
+                lines.append(f"  - {k}: {float(v):.3f}")
             except (ValueError, TypeError):
                 pass
-
-    # Score comparison side-by-side (solo top divergenti + favorevoli)
-    score_lines = []
-    for asset in ASSET_CLASSES:
-        m = model_scoreboard.get(asset, 0.0)
-        d = data_scoreboard.get(asset, 50.0)
-        if max(m, d) >= 50 or abs(m - d) > 15:
-            divergence = "‼" if abs(m - d) > 20 else " "
-            score_lines.append(f"  {divergence} {asset}: model={m:.1f} | data={d:.1f}")
+        if lines:
+            indicator_blocks.append(f"### {group_name}\n" + "\n".join(lines))
 
     # Positions
     pos_lines = []
@@ -196,29 +223,33 @@ def _build_user_prompt(
             f"(win_rate {L['win_rate']:.0%}, shift {L['entry_threshold_shift']:+.1f})"
         )
 
-    return f"""## CONTESTO PORTFOLIO LLM-DRIVEN — {target_date}
+    return f"""## CONTESTO — {target_date}
 
-**Regime classifier**: {regime.upper()} (confidence {confidence:.0%})
-**Probabilità**: {probs_str}
+## INDICATORS MACRO RAW (FRED, valori veri di oggi)
+{chr(10).join(indicator_blocks) if indicator_blocks else "  (nessun indicator disponibile)"}
 
-## INDICATORS MACRO (FRED, raw)
-{chr(10).join(ind_lines) if ind_lines else "  (nessun indicator)"}
+## SECOND OPINION — classifier macro regime (puoi ignorare)
+Regime classifier dice: **{regime.upper()}** (confidence {confidence:.0%})
+Probabilità: {probs_str}
 
-## SCORE COMPARISON: Model-Driven vs Data-Driven
-(asset interessanti, ‼ = divergenza > 20 punti)
-{chr(10).join(score_lines[:30]) if score_lines else "  (nessun asset interessante)"}
+(Questa è la lettura di un modello a soglie. Spesso ha ragione, a volte ha torto.
+Usalo come benchmark cognitivo, non come istruzione. Se la tua analisi indipendente
+degli indicators sopra ti porta a una conclusione diversa, fidati dei tuoi numeri.)
 
 ## TUE POSIZIONI APERTE ({len(positions)})
 {chr(10).join(pos_lines) if pos_lines else "  (nessuna posizione)"}
 
-## TUOI LEARNINGS POST-MORTEM (solo llm_driven, top 5 con shift attivi)
-{chr(10).join(learn_lines) if learn_lines else "  (nessun pattern con shift accumulato)"}
+## TUOI LEARNINGS POST-MORTEM (top 5 con shift accumulato)
+{chr(10).join(learn_lines) if learn_lines else "  (nessun pattern ancora maturato)"}
 
 ## RICHIESTA
 
-Decidi cosa fare oggi. Vedi sopra cosa suggeriscono i 2 sistemi algoritmici
-(Model + Data). Sei libero di concordare, dissentire, o aprire asset che NON
-hanno score >55 in nessuno dei due se la tua tesi macro lo giustifica.
+1. Forma la TUA tesi macro leggendo gli indicators raw. In 1 frase (max 250 char).
+2. Per ogni asset dell'universo (24) su cui hai conviction, emetti una decision.
+   Asset SENZA conviction: ometti (non serve SKIP esplicito).
+3. Justifica ogni OPEN con un `reason` di 1 frase italiana che cita gli indicators
+   specifici della tua tesi (es. "CPI 4.27 + sticky 2.87 + payrolls 0.32 → stagflation,
+   gold overweight").
 
 Output JSON: {{ "thesis": "...", "decisions": [...] }}
 """
@@ -320,18 +351,11 @@ def daily_scan(
     except Exception:
         pass
 
-    # 2. Model scoreboard (da DailySignal)
-    signals = (
-        db.query(DailySignal)
-        .filter(DailySignal.date == latest.date)
-        .all()
-    )
-    model_scoreboard = {s.asset_class: float(s.final_score) for s in signals}
+    # v2-independent 2026-06-13: rimossi model/data scoreboard dal prompt per
+    # eliminare anchoring bias. Gemini riceve solo indicators raw + regime come
+    # second opinion. Decide cosa è rilevante per ogni asset autonomamente.
 
-    # 3. Data scoreboard (re-evaluating rule engine — cheap)
-    data_scoreboard, _ = data_strategist.evaluate_data_driven_scores(indicators)
-
-    # 4. Positions LLM-driven + PnL reale
+    # 2. Positions LLM-driven + PnL reale
     existing = {
         p.asset_class: p
         for p in db.query(AiPortfolioPosition)
@@ -377,8 +401,6 @@ def daily_scan(
         probabilities=probabilities,
         confidence=confidence,
         indicators=indicators,
-        model_scoreboard=model_scoreboard,
-        data_scoreboard=data_scoreboard,
         positions=list(existing.values()),
         learnings=learnings,
     )
