@@ -971,6 +971,9 @@ def classify_regime(
     unrate_roc = indicators.get("unrate_roc", 0.0)
     breakeven = indicators.get("breakeven_10y", 2.0)
     vix = indicators.get("vix", 18.0)
+    # Audit raydalio Fix #3: payrolls per gate anti-deflation con jobs strong.
+    # Default 1.5 esattamente sulla soglia → strict > significa default NON triggera.
+    payrolls_roc = indicators.get("payrolls_roc_12m", 1.5)
 
     # T7.1 GDP COLLAPSE OVERRIDE (continualizzato post-T9 audit council):
     # cattura le recessioni disinflazionistiche (2008/2020/2001/1990) dove
@@ -1008,12 +1011,14 @@ def classify_regime(
         raw_scores["stagflation"] *= stag_mult
         raw_scores["deflation"] *= defl_mult
 
-    # Deflation richiede inflation NON alta. Soglia allineata al Fed target (2%):
-    # sopra 2.5% (= target + buffer) la deflation classica e' incompatibile per definizione.
-    # Penalty progressiva: -25% per ogni 1% sopra 2.5, floor 0.20 (mai zero).
-    # Es. CPI 3.5% -> penalty 0.75; CPI 4.5% -> penalty 0.50; CPI 5.5% -> floor 0.25.
-    if cpi > 2.5:
-        raw_scores["deflation"] *= max(0.20, 1.0 - (cpi - 2.5) * 0.25)
+    # Deflation richiede inflation NON alta. Soglia allineata al Fed target ESATTO (2%):
+    # Audit raydalio 2026-06-13: deflation overfit al 40% storico (target 5-15%),
+    # falsi positivi sistematici su 1995-99 e 2017-19 (CPI 2-3%). Fix #1:
+    # soglia 2.5 → 2.0 (Fed target), slope penalty 0.25 → 0.35 (più aggressiva).
+    # Es. CPI 2.5 → ×0.825 (era ×1.0), CPI 3.0 → ×0.65 (era ×0.875),
+    # CPI 3.5 → ×0.475 (era ×0.75), CPI 4.5 → ×0.125 → floor 0.20.
+    if cpi > 2.0:
+        raw_scores["deflation"] *= max(0.20, 1.0 - (cpi - 2.0) * 0.35)
     # Deflation richiede anche aspettative di inflation basse: se breakeven > 2.3% (mercato
     # pricing inflation forward sopra Fed target), riduci ulteriormente. Questo cattura
     # il caso "CPI scende ma mercato non crede" -> NON e' deflation classica.
@@ -1024,6 +1029,18 @@ def classify_regime(
     if unrate < 5.0 and gdp > 1.0:
         health_penalty = max(0.4, 1.0 - (5.0 - unrate) * 0.15 - (gdp - 1.0) * 0.10)
         raw_scores["deflation"] *= health_penalty
+    # Audit raydalio 2026-06-13 Fix #3: jobs strong + CPI non collassato = NON deflation.
+    # In 2017-19 (goldilocks misclassificato) payrolls cresceva 1.5-1.8% YoY e CPI 1.5-2.5%.
+    # In deflation vera (2008-09, 2020-Q1, 2001) payrolls erano negativi o sub-0.5%.
+    # Gate hard -15%: payrolls_roc_12m > 1.5% (strict, default 1.5 NON triggera) AND
+    # CPI > 1.5% (esclude deflation severa 2009 dove CPI andò a -2%).
+    # Skip se gdp_collapse_severity > 0.80 (2008-style override).
+    if (
+        payrolls_roc > 1.5
+        and cpi > 1.5
+        and gdp_collapse_severity < 0.80
+    ):
+        raw_scores["deflation"] *= 0.85
     # Stagflation richiede inflation ALTA — penalizza se CPI < 3%
     if cpi < 3.0:
         raw_scores["stagflation"] *= max(0.2, cpi / 3.0)
