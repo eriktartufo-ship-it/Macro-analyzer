@@ -49,6 +49,37 @@ def get_latest_price(asset_class: str) -> Optional[float]:
         return None
 
 
+def get_daily_return_for_ticker(ticker: str) -> Optional[float]:
+    """Return giornaliero reale Yahoo per un ticker arbitrario: (last/prev-1).
+
+    Usato per benchmark esterni all'universe (SPY per S&P500, TLT per bonds).
+    """
+    try:
+        from datetime import date, timedelta
+
+        end = date.today()
+        start = end - timedelta(days=15)  # buffer weekend+holiday
+        s = _fetcher().fetch(ticker, start_date=start, end_date=end)
+        if s is None or s.empty or len(s) < 2:
+            return None
+        last = float(s.iloc[-1])
+        prev = float(s.iloc[-2])
+        if prev == 0:
+            return None
+        return (last - prev) / prev
+    except Exception as e:
+        logger.warning(f"pnl_tracker: daily_return failed for {ticker}: {e}")
+        return None
+
+
+def get_daily_return(asset_class: str) -> Optional[float]:
+    """Return giornaliero reale Yahoo per un asset interno via mapping ticker."""
+    ticker = asset_to_ticker(asset_class)
+    if not ticker:
+        return None
+    return get_daily_return_for_ticker(ticker)
+
+
 def compute_pnl_pct(entry_price: float | None, current_price: float | None) -> float:
     """PnL % = (current - entry) / entry. 0 se uno dei due è None o entry=0."""
     if not entry_price or not current_price or entry_price == 0:
