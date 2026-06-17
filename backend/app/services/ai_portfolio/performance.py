@@ -1,7 +1,11 @@
 """AI Portfolio Performance Tracker.
 
 Computa NAV portafoglio daily + cumulative return + DD + benchmarks 60/40
-e S&P500. Stima coarse: usa ASSET_REGIME_DATA monthly returns × prob regime.
+e S&P500. **Usa prezzi reali Yahoo Finance** (refactor 2026-06-17 Erik):
+- Portfolio NAV: sum(weight × daily_return_reale) per ogni position
+- Benchmark S&P500: SPY daily return
+- Benchmark 60/40: 60% SPY + 40% TLT (long Treasuries) daily return
+- Fallback regime-based (ASSET_REGIME_DATA) solo se Yahoo fail per il portfolio.
 
 Starting NAV = $100,000. Tutte le metriche % vs starting.
 """
@@ -18,20 +22,26 @@ from app.models.ai_portfolio import (
 )
 from app.models.daily_signals import DailySignal
 from app.models.regime_classifications import RegimeClassification
+from app.services.ai_portfolio import pnl_tracker
 from app.services.scoring.engine import ASSET_REGIME_DATA
 
 logger = logging.getLogger(__name__)
 
 STARTING_NAV = 100_000.0
+# Tickers benchmark esterni all'universe interno (SPY puro per S&P500, non QQQ).
+SP500_BENCHMARK_TICKER = "SPY"
+BONDS_LONG_BENCHMARK_TICKER = "TLT"
 
 
-def _estimate_daily_return(
+def _estimate_daily_return_from_regime(
     weights: dict[str, float],
     probabilities: dict[str, float],
 ) -> float:
-    """Daily return stimato = weighted avg monthly_return / 21 (trading days).
+    """FALLBACK regime-based: usa ASSET_REGIME_DATA. Solo se Yahoo fail.
 
-    Uses ASSET_REGIME_DATA avg_return per regime, blended by regime probs.
+    DEPRECATO come source di verità (vedi epitaffio Macro_Analyzer.md:12:
+    "ASSET_REGIME_DATA usato come return source = ottimizzazione tautologica").
+    Tenuto come safety-net per giorni con Yahoo down.
     """
     total = 0.0
     for asset, w in weights.items():
@@ -44,21 +54,42 @@ def _estimate_daily_return(
         for regime, prob in probabilities.items():
             stats = asset_data.get(regime, {})
             expected_annual += prob * stats.get("avg_return", 0.0)
-        # Daily approximation: annual / 252
         total += w * expected_annual / 252.0
     return total
 
 
-def _benchmark_60_40_daily_return(probabilities: dict[str, float]) -> float:
-    """60/40 = 60% us_equities_growth + 40% us_bonds_long."""
-    weights = {"us_equities_growth": 0.60, "us_bonds_long": 0.40}
-    return _estimate_daily_return(weights, probabilities)
+def _real_portfolio_daily_return(
+    weights: dict[str, float],
+    probabilities: dict[str, float],
+) -> float:
+    """Daily return reale del portafoglio: sum(weight × daily_return_reale).
+
+    Per asset con Yahoo unavailable, fallback al regime estimate per QUEL asset
+    (non per il portafoglio intero) — evita di azzerare il contributo.
+    """
+    total = 0.0
+    for asset, w in weights.items():
+        if w <= 0:
+            continue
+        dr = pnl_tracker.get_daily_return(asset)
+        if dr is None:
+            # Fallback solo per questo asset: regime-estimate
+            dr = _estimate_daily_return_from_regime({asset: 1.0}, probabilities)
+        total += w * dr
+    return total
 
 
-def _benchmark_sp500_daily_return(probabilities: dict[str, float]) -> float:
-    """S&P500 proxy = us_equities_growth 100%."""
-    weights = {"us_equities_growth": 1.0}
-    return _estimate_daily_return(weights, probabilities)
+def _benchmark_sp500_daily_return() -> float:
+    """S&P500 reale via SPY daily return. Fallback 0 se Yahoo fail."""
+    dr = pnl_tracker.get_daily_return_for_ticker(SP500_BENCHMARK_TICKER)
+    return dr if dr is not None else 0.0
+
+
+def _benchmark_60_40_daily_return() -> float:
+    """60/40 reale: 60% SPY + 40% TLT daily return. Fallback 0 per ciascun leg."""
+    sp = pnl_tracker.get_daily_return_for_ticker(SP500_BENCHMARK_TICKER) or 0.0
+    bo = pnl_tracker.get_daily_return_for_ticker(BONDS_LONG_BENCHMARK_TICKER) or 0.0
+    return 0.6 * sp + 0.4 * bo
 
 
 def snapshot(
@@ -110,10 +141,10 @@ def snapshot(
     prev_b60 = prev.benchmark_60_40_return_pct if prev else 0.0
     prev_sp = prev.benchmark_sp500_return_pct if prev else 0.0
 
-    # Daily returns
-    portfolio_dr = _estimate_daily_return(weights, probabilities)
-    b60_dr = _benchmark_60_40_daily_return(probabilities)
-    sp_dr = _benchmark_sp500_daily_return(probabilities)
+    # Daily returns — prezzi REALI Yahoo (refactor 2026-06-17)
+    portfolio_dr = _real_portfolio_daily_return(weights, probabilities)
+    b60_dr = _benchmark_60_40_daily_return()
+    sp_dr = _benchmark_sp500_daily_return()
 
     new_nav = prev_nav * (1 + portfolio_dr)
     new_peak = max(prev_peak, new_nav)
