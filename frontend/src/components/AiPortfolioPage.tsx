@@ -154,6 +154,9 @@ export function AiPortfolioPage() {
   const lbHead = (leaderboard as any)?.head_to_head as
     | { winner: string; podium?: string[]; spread_pct: number; spread_text: string }
     | null;
+  const spyMarket = (leaderboard as any)?.market?.spy as
+    | { price: number | null; daily_change_pct: number | null }
+    | undefined;
 
   return (
     <div>
@@ -167,6 +170,37 @@ export function AiPortfolioPage() {
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
               3 strategie competono, $100k capitale separato ciascuna. Stesso universe 24 asset.
             </div>
+            {spyMarket && spyMarket.price != null && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--muted)",
+                  marginTop: 6,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>S&amp;P 500 (SPY):</span>
+                <strong style={{ color: "var(--text)", fontWeight: 600 }}>
+                  ${spyMarket.price.toFixed(2)}
+                </strong>
+                {spyMarket.daily_change_pct != null && (
+                  <span
+                    style={{
+                      color:
+                        spyMarket.daily_change_pct >= 0
+                          ? "var(--reflation)"
+                          : "var(--deflation)",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {spyMarket.daily_change_pct >= 0 ? "▲" : "▼"}{" "}
+                    {(spyMarket.daily_change_pct * 100).toFixed(2)}% oggi
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={manualScan}

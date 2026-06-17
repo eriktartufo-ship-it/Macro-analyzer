@@ -114,7 +114,10 @@ export const api = {
   aiPortfolioLeaderboard: () =>
     request<{
       by_strategy: Record<string, unknown>;
-      head_to_head: { winner: string; spread_pct: number; spread_text: string } | null;
+      head_to_head: { winner: string; podium?: string[]; spread_pct: number; spread_text: string } | null;
+      market?: {
+        spy?: { price: number | null; daily_change_pct: number | null };
+      };
     }>("/ai-portfolio/leaderboard"),
   aiPortfolioReasoning: (forceRefresh = false, strategy: "model_driven" | "data_driven" | "llm_driven" = "model_driven") =>
     request<AiPortfolioReasoning>(
