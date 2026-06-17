@@ -1625,7 +1625,37 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
             "spread_pct": spread,
             "spread_text": f"{spread*100:.2f}pp",
         }
-    return {"by_strategy": out, "head_to_head": head_to_head}
+
+    # Market snapshot SPY (vero S&P500): close + daily change %
+    # User request 2026-06-17: visualizzare il movimento di mercato reale
+    # accanto ai 3 NAV AI per contesto.
+    from app.services.ai_portfolio import pnl_tracker as _pnl
+    spy_price = None
+    spy_pct = None
+    try:
+        from datetime import date as _d, timedelta as _td
+        from app.services.prices.yahoo_fetcher import YahooFetcher
+        s = YahooFetcher().fetch("SPY", start_date=_d.today() - _td(days=15), end_date=_d.today())
+        if s is not None and not s.empty:
+            spy_price = float(s.iloc[-1])
+    except Exception:
+        spy_price = None
+    try:
+        spy_pct = _pnl.get_daily_return_for_ticker("SPY")
+    except Exception:
+        spy_pct = None
+    market = {
+        "spy": {
+            "price": spy_price,
+            "daily_change_pct": spy_pct,
+        }
+    }
+
+    return {
+        "by_strategy": out,
+        "head_to_head": head_to_head,
+        "market": market,
+    }
 
 
 @router.get("/fomc/report", response_model=FOMCReportResponse)
