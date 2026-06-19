@@ -23,6 +23,10 @@ from app.services.prices.asset_universe import ASSET_TICKERS, BENCHMARK_TICKERS
 # Cache disco: backend/.cache/yahoo/
 _CACHE_ROOT = Path(__file__).resolve().parents[3] / ".cache" / "yahoo"
 _CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 ore: i prezzi cambiano daily, ma non bombardiamo Yahoo
+# AUDIT 2026-06-19: mem-cache aveva NO TTL → restituiva la prima serie cache-ata
+# per sempre finché il container non riavviava. SPY mostrava daily -0.5962% di 2gg fa.
+# Aggiungo TTL in-memory di 1h (forza refresh dentro lo stesso giorno se cache vecchia).
+_MEM_TTL_SECONDS = 60 * 60  # 1 ora
 
 
 def _cache_path(ticker: str) -> Path:
@@ -41,7 +45,8 @@ class YahooFetcher:
     """Fetcher con cache per serie storiche prezzi Yahoo Finance."""
 
     def __init__(self) -> None:
-        self._mem_cache: dict[str, pd.Series] = {}
+        # AUDIT 2026-06-19: ogni entry è (timestamp_load, series). TTL 1h.
+        self._mem_cache: dict[str, tuple[float, pd.Series]] = {}
         _CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 
     def _load_disk(self, ticker: str) -> Optional[pd.Series]:
@@ -76,15 +81,27 @@ class YahooFetcher:
 
         Default range: max storia disponibile (start = 1970-01-01).
         Returns: Series con index DatetimeIndex e valori close adjusted.
+
+        AUDIT 2026-06-19: cache_key include end_date (default oggi) per evitare
+        di restituire serie stale tra giorni diversi. Mem-cache TTL 1h.
         """
-        cache_key = ticker
+        end_for_key = (end_date or date.today()).isoformat()
+        cache_key = f"{ticker}|{end_for_key}"
+
         if not force_refresh and cache_key in self._mem_cache:
-            return self._mem_cache[cache_key]
+            ts, s = self._mem_cache[cache_key]
+            if (time.time() - ts) < _MEM_TTL_SECONDS:
+                return s
+            # mem-cache scaduto, ricarica
+            self._mem_cache.pop(cache_key, None)
 
         if not force_refresh:
             disk = self._load_disk(ticker)
             if disk is not None:
-                self._mem_cache[cache_key] = disk
+                # Filtra alla data richiesta per coerenza con il cache_key
+                if end_date is not None:
+                    disk = disk[disk.index <= pd.Timestamp(end_date)]
+                self._mem_cache[cache_key] = (time.time(), disk)
                 return disk
 
         # Import lazy: yfinance ha import slow
@@ -114,7 +131,7 @@ class YahooFetcher:
                     df.columns = df.columns.get_level_values(0)
                 close = df["Close"].dropna()
                 close.name = "close"
-                self._mem_cache[cache_key] = close
+                self._mem_cache[cache_key] = (time.time(), close)
                 self._save_disk(ticker, close)
                 return close
             except Exception as e:
