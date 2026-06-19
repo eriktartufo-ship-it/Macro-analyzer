@@ -49,7 +49,16 @@ class YahooFetcher:
         self._mem_cache: dict[str, tuple[float, pd.Series]] = {}
         _CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 
-    def _load_disk(self, ticker: str) -> Optional[pd.Series]:
+    def _load_disk(
+        self, ticker: str, want_end: Optional[date] = None,
+    ) -> Optional[pd.Series]:
+        """Carica serie da disco se fresca E con dati fino a want_end - 2 trading days.
+
+        AUDIT 2026-06-19 bughunter #1 residuo: TTL file (6h) non garantiva
+        freshness dei DATI dentro. Se SPY.parquet ha max_date Jun 16 e age 2h,
+        viene servito comunque per richieste end=Jun 19 → daily_change stale.
+        Fix: se max(disk.index) < (want_end - 2 days) → invalida e re-fetch.
+        """
         path = _cache_path(ticker)
         if not _is_fresh(path):
             return None
@@ -57,6 +66,16 @@ class YahooFetcher:
             df = pd.read_parquet(path)
             s = df["close"]
             s.index = pd.to_datetime(s.index)
+            if want_end is not None and not s.empty:
+                # Tolleranza 3 gg per coprire weekend/holiday market USA
+                cutoff = pd.Timestamp(want_end) - pd.Timedelta(days=3)
+                if s.index.max() < cutoff:
+                    logger.info(
+                        f"Yahoo disk cache for {ticker} stale: "
+                        f"max={s.index.max().date()} < cutoff={cutoff.date()}, "
+                        f"forcing re-fetch"
+                    )
+                    return None
             return s
         except Exception as e:
             logger.warning(f"Yahoo disk cache read failed for {ticker}: {e}")
@@ -96,7 +115,7 @@ class YahooFetcher:
             self._mem_cache.pop(cache_key, None)
 
         if not force_refresh:
-            disk = self._load_disk(ticker)
+            disk = self._load_disk(ticker, want_end=end_date or date.today())
             if disk is not None:
                 # Filtra alla data richiesta per coerenza con il cache_key
                 if end_date is not None:
@@ -109,8 +128,12 @@ class YahooFetcher:
 
         start = start_date or date(1970, 1, 1)
         end = end_date or date.today()
+        # AUDIT 2026-06-19 bughunter #4: yfinance interpreta end come exclusive.
+        # Per ottenere il close del giorno corrente (post-market US 22:00 UTC)
+        # serve end = today + 1. Pattern standard yfinance.
+        end_for_yf = end + timedelta(days=1)
 
-        logger.info(f"Yahoo: fetching {ticker} from {start} to {end}")
+        logger.info(f"Yahoo: fetching {ticker} from {start} to {end} (yf end={end_for_yf})")
 
         last_err: Optional[Exception] = None
         for attempt in range(3):
@@ -118,7 +141,7 @@ class YahooFetcher:
                 df = yf.download(
                     ticker,
                     start=start.isoformat(),
-                    end=end.isoformat(),
+                    end=end_for_yf.isoformat(),
                     progress=False,
                     auto_adjust=True,
                     actions=False,
