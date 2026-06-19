@@ -266,7 +266,11 @@ def compute_gdp_nowcast(
     ols_alpha, ols_beta, ols_r2 = None, None, None
     gdp_yoy_implied: float | None = None
     try:
-        gdp_raw = fetcher.fetch_series("gdp")
+        # AUDIT 2026-06-19 bughunter #2: era fetch_series("gdp") = PIL NOMINALE
+        # (FRED GDP, $B SAAR) → YoY ~6% contaminato dall'inflazione. Il classifier
+        # interpretava gdp_yoy_dfm come "crescita reale" → segnale sigmoid spurio
+        # positivo verso Goldilocks in stagflation. Fix: usa real_gdp (GDPC1).
+        gdp_raw = fetcher.fetch_series("real_gdp")
         gdp_raw.index = pd.to_datetime(gdp_raw.index)
         gdp_quarterly = gdp_raw.resample("ME").last().ffill()
         gdp_yoy = _yoy_transform(gdp_quarterly).dropna()
