@@ -134,12 +134,9 @@ FRED_SERIES = {
         "frequency": "weekly",
         "transform": "level",
     },
-    "hy_credit_spread": {
-        "fred_id": "BAMLH0A0HYM2",
-        "description": "ICE BofA High Yield OAS (% over Treasuries) — leader stress 3-6m",
-        "frequency": "daily",
-        "transform": "level",
-    },
+    # AUDIT 2026-07-12: rimossa la definizione duplicata di hy_credit_spread
+    # (ridefinita più sotto, sezione T17: l'ultima vince nel dict — questa era
+    # silenziosamente sovrascritta).
     "ig_credit_spread": {
         "fred_id": "BAMLC0A0CM",
         "description": "ICE BofA Investment Grade OAS (% over Treasuries)",
@@ -244,12 +241,8 @@ FRED_SERIES = {
         "frequency": "monthly",
         "transform": "yoy",
     },
-    "durable_goods_orders": {
-        "fred_id": "DGORDER",
-        "description": "Manufacturers' New Orders: Durable Goods (business investment)",
-        "frequency": "monthly",
-        "transform": "yoy",
-    },
+    # AUDIT 2026-07-12: rimossa definizione duplicata di durable_goods_orders
+    # (ridefinita più sotto con transform "roc": l'ultima vince nel dict).
     # T19 Council 2026-05-31 sessione 26: NOWCAST features high-frequency macro.
     # Real-time GDP/CPI/wages estimates aggiornati daily/weekly. Lead 1-3 mesi su
     # BEA/BLS official prints. Council rated highest expected alpha (+0.8-1.5pp).
@@ -324,12 +317,8 @@ FRED_SERIES = {
         "transform": "yoy",
     },
     # --- T9: Valuation (Shiller CAPE proxy via S&P 500 + earnings) ---
-    "sp500": {
-        "fred_id": "SP500",
-        "description": "S&P 500 Index (daily, for CAPE/valuation calc)",
-        "frequency": "daily",
-        "transform": "level",
-    },
+    # AUDIT 2026-07-12: rimossa definizione duplicata di sp500 (ridefinita più
+    # sotto, identica: l'ultima vince nel dict).
     # --- T9: Fed dot plot / forward guidance proxy ---
     "fed_funds_futures_1y": {
         "fred_id": "DGS1",
@@ -352,30 +341,17 @@ FRED_SERIES = {
         "transform": "level",
     },
     # --- T9-AUDIT P1: 5 feeds aggiunti post-council ---
-    "fed_balance_sheet": {
-        "fred_id": "WALCL",
-        "description": "Fed Balance Sheet (Total Assets, weekly) — QE/QT regime shift signal",
-        "frequency": "weekly",
-        "transform": "roc",
-    },
+    # AUDIT 2026-07-12: rimosse definizioni duplicate di fed_balance_sheet e
+    # reverse_repo (ridefinite più sotto, identiche: l'ultima vince nel dict).
     "hy_oas_baml": {
         "fred_id": "BAMLH0A0HYM2",
         "description": "BAML US HY Master OAS — tail credit stress, complement to BAA",
         "frequency": "daily",
         "transform": "level",
     },
-    "reverse_repo": {
-        "fred_id": "RRPONTSYD",
-        "description": "Overnight Reverse Repo Facility — liquidity drain, leading deflation",
-        "frequency": "daily",
-        "transform": "level",
-    },
-    "wilshire_5000": {
-        "fred_id": "WILL5000IND",
-        "description": "Wilshire 5000 Total Market Index (for Buffett indicator Wilshire/GDP)",
-        "frequency": "daily",
-        "transform": "level",
-    },
+    # AUDIT 2026-07-12: rimosso anche wilshire_5000 — WILL5000IND è
+    # DISCONTINUED su FRED (Bad Request a ogni fetch = log-noise quotidiano)
+    # e la serie non era consumata da nessun modulo.
     "nfci_leverage": {
         "fred_id": "NFCILEVERAGE",
         "description": "Chicago Fed NFCI Leverage subindex — separates leverage from volatility",
@@ -674,5 +650,37 @@ FRED_SERIES = {
         "description": "BoJ Immediate Rate / Call Rate (%, monthly) — Japan policy",
         "frequency": "monthly",
         "transform": "level",
+    },
+    # --- P1 2026-07-12 (gap analysis audit): liquidità completa + survey
+    #     leading + estero. Tutte verificate live su FRED prima dell'aggiunta.
+    "treasury_general_account": {
+        "fred_id": "WTREGEN",
+        "description": "Treasury General Account presso la Fed ($M, weekly) — 3° pezzo net liquidity = WALCL − RRP − TGA",
+        "frequency": "weekly",
+        "transform": "level",
+    },
+    "empire_fed_activity": {
+        "fred_id": "GACDISA066MSFRBNY",
+        "description": "Empire State Mfg Survey general activity (diffusion, SA) — leading, esce PRIMA dell'ISM",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "philly_fed_activity": {
+        "fred_id": "GACDFSA066MSFRBPHI",
+        "description": "Philadelphia Fed Mfg Business Outlook general activity (diffusion, SA) — leading",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "dallas_fed_activity": {
+        "fred_id": "BACTSAMFRBDAL",
+        "description": "Dallas Fed Mfg Outlook general business activity (diffusion, SA) — leading",
+        "frequency": "monthly",
+        "transform": "level",
+    },
+    "korea_exports": {
+        "fred_id": "XTEXVA01KRM667S",
+        "description": "Korea exports valore USD (monthly, OECD) — canary del trade mondiale, lead su global growth",
+        "frequency": "monthly",
+        "transform": "yoy",
     },
 }
