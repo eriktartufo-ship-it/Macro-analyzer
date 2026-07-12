@@ -1,9 +1,12 @@
-# One-shot (workflow_dispatch): scrive le env del Portfolio Tracking in
-# /opt/macro/.env leggendole dal secret PT_ENV_BLOCK (mascherato nei log,
-# mai nel repo) e ricrea il backend. Idempotente: se PT_SECRET è già nel
-# .env non riappende nulla (MAI cambiare PT_SECRET in prod: invalida le
-# sessioni). Per cambiare una password: editare /opt/macro/.env a mano e
-# rifare `docker compose up -d --force-recreate backend`.
+# One-shot (workflow_dispatch): allinea la configurazione del Portfolio Tracking
+# sul VPS — sincronizza docker-compose.yml dal repo (la copia in /opt/macro è
+# manuale e il CI non la aggiorna), scrive le env PT_* dal secret PT_ENV_BLOCK
+# (mascherato nei log, mai nel repo) e ricrea il backend con l'immagine latest.
+# Idempotente: se PT_SECRET è già nel file env non riappende nulla (MAI cambiare
+# PT_SECRET in prod: invalida le sessioni). Per cambiare una password: editare
+# il file env a mano e rifare `docker compose up -d --force-recreate backend`.
+# Nota permessi: gh-runner non può scrivere in /opt/macro → scritture via
+# container helper (docker = root effettivo sul bind mount).
 name: PT env setup (one-shot)
 
 on:
@@ -13,7 +16,20 @@ jobs:
   setup:
     runs-on: [self-hosted, linux, vps-macro]
     steps:
-      - name: Append PT env to /opt/macro/.env + recreate backend
+      - name: Checkout (per il compose canonico del repo)
+        uses: actions/checkout@v4
+
+      - name: Sync docker-compose.yml repo → /opt/macro (con diff visibile)
+        run: |
+          set -euo pipefail
+          echo "--- diff compose VPS vs repo (informativo) ---"
+          diff /opt/macro/docker-compose.yml docker-compose.yml || true
+          echo "--- fine diff ---"
+          docker run --rm -v "$PWD:/src:ro" -v /opt/macro:/m alpine \
+            sh -c 'cp /m/docker-compose.yml /m/docker-compose.yml.bak && cp /src/docker-compose.yml /m/docker-compose.yml'
+          echo "compose sincronizzato (backup in docker-compose.yml.bak)"
+
+      - name: Append PT env + pull + recreate backend
         env:
           PT_ENV_BLOCK: ${{ secrets.PT_ENV_BLOCK }}
         run: |
@@ -24,12 +40,26 @@ jobs:
             exit 1
           fi
           if grep -q '^PT_SECRET=' .env; then
-            echo "PT env già presenti in .env — nessun append"
+            echo "PT env già presenti — nessun append"
           else
-            # Il runner (gh-runner) non può scrivere /opt/macro/.env: append via
-            # container helper (docker = root effettivo sul bind mount).
             printf '\n%s\n' "${PT_ENV_BLOCK}" | docker run --rm -i -v /opt/macro:/m alpine sh -c 'cat >> /m/.env'
-            echo "PT env aggiunte a .env"
+            echo "PT env aggiunte"
           fi
-          # Il solo restart NON ricarica un .env cambiato: serve il force-recreate
+          docker compose pull backend
+          # Il solo restart NON ricarica env/compose cambiati: force-recreate
           docker compose up -d --force-recreate backend
+
+      - name: Smoke PT endpoint
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5 6 7 8; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://macro.pieranlab.cloud/api/v1/pt/assets || true)
+            if [ "$code" = "200" ]; then
+              echo "OK: /api/v1/pt/assets risponde 200"
+              exit 0
+            fi
+            echo "tentativo $i: $code — retry tra 8s"
+            sleep 8
+          done
+          echo "PT endpoint non attivo dopo i retry" >&2
+          exit 1
