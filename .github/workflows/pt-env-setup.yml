@@ -26,7 +26,9 @@ jobs:
           if grep -q '^PT_SECRET=' .env; then
             echo "PT env già presenti in .env — nessun append"
           else
-            printf '\n%s\n' "${PT_ENV_BLOCK}" >> .env
+            # Il runner (gh-runner) non può scrivere /opt/macro/.env: append via
+            # container helper (docker = root effettivo sul bind mount).
+            printf '\n%s\n' "${PT_ENV_BLOCK}" | docker run --rm -i -v /opt/macro:/m alpine sh -c 'cat >> /m/.env'
             echo "PT env aggiunte a .env"
           fi
           # Il solo restart NON ricarica un .env cambiato: serve il force-recreate
