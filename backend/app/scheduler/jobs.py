@@ -456,14 +456,18 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         from app.models import SecularTrend
 
         with SessionLocal() as session:
-            latest = (
+            # AUDIT 2026-07-12 (CRITICAL): la variabile si chiamava `latest` e
+            # SHADOWAVA il parametro dict FRED → il blocco cross-asset sotto
+            # faceva `latest.get(...)` su un oggetto ORM → AttributeError
+            # silenziata → hy_credit_spread/hy_oas/hy_ig/energy_yoy MAI scritti.
+            latest_insider = (
                 session.query(SecularTrend)
                 .filter(SecularTrend.trend_name == "insider_activity")
                 .order_by(SecularTrend.date.desc())
                 .first()
             )
-            if latest is not None and latest.score is not None:
-                indicators["insider_score"] = float(latest.score)
+            if latest_insider is not None and latest_insider.score is not None:
+                indicators["insider_score"] = float(latest_insider.score)
     except Exception as e:
         logger.warning(f"Insider score load skipped: {e}")
 
@@ -630,8 +634,12 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         import pandas as _pd
         from app.services.regime.backfill import _enrich_with_momentum_derivatives
 
+        # AUDIT 2026-07-12: aggiunte fed_balance_sheet + fed_funds — senza,
+        # walcl_roc_3m e real_rate_change_3m (calcolati dalla stessa helper e
+        # letti dal classifier per liquidity surge / crisis detection) non
+        # venivano MAI popolati live (train/serve skew).
         series_for_momentum: dict[str, _pd.Series] = {}
-        for name in ("cpi", "core_pce", "real_gdp"):
+        for name in ("cpi", "core_pce", "real_gdp", "fed_balance_sheet", "fed_funds"):
             try:
                 s = fetcher.fetch_series(name)
                 if s is not None and not s.empty:
@@ -693,6 +701,34 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     v = _roc_12m("m2")
     if v is not None:
         indicators["m2_yoy"] = v
+
+    # AUDIT 2026-07-12 (CRITICAL train/serve skew): 5 indicator letti dal
+    # classifier (classifier.py:455-480) e popolati dal backfill
+    # (regime/backfill.py:192-234) ma MAI dal live → i pillar T13/T17/T19
+    # (incluso GDPNow) giravano sui default hardcoded in produzione, e le
+    # accuracy da backtest sovrastimavano il live.
+    # Stesse trasformazioni di backfill._build_indicators_as_of.
+
+    # T13 forward inflation (level read)
+    v = _last_level("umich_inflation_1y")
+    if v is not None:
+        indicators["umich_inflation_1y"] = v
+    v = _last_level("breakeven_5y5y")
+    if v is not None:
+        indicators["breakeven_5y5y"] = v
+
+    # T17 labor (level + YoY)
+    v = _last_level("jolts_quits_rate")
+    if v is not None:
+        indicators["jolts_quits_rate"] = v
+    v = _roc_12m("avg_weekly_hours")
+    if v is not None:
+        indicators["avg_weekly_hours_yoy"] = v
+
+    # T19 Atlanta GDPNow (level, weekly)
+    v = _last_level("gdp_nowcast_atlanta")
+    if v is not None:
+        indicators["gdp_nowcast_atlanta"] = v
 
     return indicators
 

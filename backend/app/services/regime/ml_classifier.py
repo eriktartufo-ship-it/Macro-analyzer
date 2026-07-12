@@ -182,6 +182,14 @@ def extract_features(indicators: dict[str, Any]) -> tuple[np.ndarray, list[str]]
     features: list[float] = []
     names: list[str] = []
 
+    # AUDIT 2026-07-12 (CRITICAL): NAPM discontinuato → live non ha mai `pmi`.
+    # Il proxy indpro (T9-AUDIT-BUG-4) era applicato solo al rule-based: il
+    # blend ML vedeva sempre ANCHOR_MEAN 50.0 (manifatturiero cieco ogni
+    # giorno). Stesso proxy qui: gli episodi storici hanno il PMI vero e
+    # restano invariati, il live usa il proxy → train e serve coerenti.
+    from app.services.common.indicator_aliases import derive_pmi_proxy
+    indicators = {**indicators, "pmi": derive_pmi_proxy(indicators)}
+
     # Raw 19
     for k in BASE_INDICATORS:
         features.append(_safe(indicators, k, ANCHOR_MEAN.get(k, 0.0)))

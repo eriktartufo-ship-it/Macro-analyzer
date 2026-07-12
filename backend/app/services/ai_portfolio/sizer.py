@@ -26,8 +26,15 @@ def dynamic_n_tranches(confidence: float) -> int:
     confidence > 0.80: 2 (alta convinzione, aggressivo)
     confidence > 0.65: 3
     confidence > 0.50: 4
-    confidence > 0.30: 5 (cauto)
-    confidence ≤ 0.30: 0 (uncertainty gate skip)
+    confidence >= 0.30: 5 (cauto)
+    confidence < 0.30: 0 (uncertainty gate skip)
+
+    AUDIT 2026-07-12 (boundary bug, stessa classe del m2_yoy=5.0):
+    data_strategist calcola confidence = max(0.30, fired/10) → col floor a
+    ESATTAMENTE 0.30 il vecchio `> 0.30` dava 0 tranche → "target weight 0"
+    per ogni asset → Data-Driven in deadlock totale (0 posizioni dal reset
+    del 19/6). Il gate di incertezza resta a < 0.30, coerente con
+    `_decide` che skippa a confidence < 0.30.
     """
     if confidence > 0.80:
         return 2
@@ -35,7 +42,7 @@ def dynamic_n_tranches(confidence: float) -> int:
         return 3
     if confidence > 0.50:
         return 4
-    if confidence > 0.30:
+    if confidence >= 0.30:
         return 5
     return 0
 
