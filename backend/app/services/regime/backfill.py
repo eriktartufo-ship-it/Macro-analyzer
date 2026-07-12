@@ -67,6 +67,9 @@ _CLASSIFIER_SERIES = (
     "durable_goods_orders", # DGORDER (mensile, dal 1992)
     # T19 Nowcast features (council 2026-05-31 sessione 26)
     "gdp_nowcast_atlanta", # GDPNOW (settimanale, dal 2014)
+    # T20 livello-vs-accelerazione (council P2 2026-07-12)
+    "unit_labor_cost",     # ULCNFB (trimestrale, dal 1947)
+    "productivity_nfb",    # OPHNFB (trimestrale, dal 1947)
 )
 
 
@@ -232,6 +235,14 @@ def _build_indicators_as_of(
     v = last_before("gdp_nowcast_atlanta")
     if v is not None:
         indicators["gdp_nowcast_atlanta"] = v
+
+    # T20 livello-vs-accelerazione: YoY su serie TRIMESTRALI (4 periodi)
+    v = roc("unit_labor_cost", 4)
+    if v is not None:
+        indicators["ulc_yoy"] = v
+    v = roc("productivity_nfb", 4)
+    if v is not None:
+        indicators["productivity_yoy"] = v
 
     # T11 (2026-05-27): momentum derivatives per pillar acceleration-based.
     _enrich_with_momentum_derivatives(indicators, series, cutoff)

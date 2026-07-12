@@ -683,4 +683,17 @@ FRED_SERIES = {
         "frequency": "monthly",
         "transform": "yoy",
     },
+    # --- T20 P2 2026-07-12 (council): livello-vs-accelerazione ---
+    "unit_labor_cost": {
+        "fred_id": "ULCNFB",
+        "description": "Unit Labor Cost nonfarm business (Q, index, dal 1947) — YoY = pressione salariale netta di produttività",
+        "frequency": "quarterly",
+        "transform": "yoy",
+    },
+    "productivity_nfb": {
+        "fred_id": "OPHNFB",
+        "description": "Nonfarm business output per hour (Q, index, dal 1947) — YoY = produttività (goldilocks quality)",
+        "frequency": "quarterly",
+        "transform": "yoy",
+    },
 }

@@ -174,7 +174,7 @@ def _build_user_prompt(
             "cpi_yoy", "cpi_yoy_change_6m", "core_pce_yoy",
             "sticky_cpi_yoy", "umich_inflation_1y", "breakeven_5y5y",
             "breakeven_10y", "breakeven_10y_change_3m",
-            "energy_yoy",
+            "energy_yoy", "ulc_yoy", "productivity_yoy",
         ],
         "Politica monetaria / liquidità": [
             "fed_funds_rate", "fed_funds_implied_12m", "fed_path_12m",

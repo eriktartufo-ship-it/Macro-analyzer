@@ -730,6 +730,31 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     if v is not None:
         indicators["gdp_nowcast_atlanta"] = v
 
+    # T20 livello-vs-accelerazione (council P2 2026-07-12): YoY su serie
+    # TRIMESTRALI = 4 periodi indietro (NON roc_12m: 12 obs trimestrali
+    # sarebbero 3 anni). Stessa trasformazione di backfill.roc(name, 4).
+    def _roc_quarterly_yoy(name: str) -> Optional[float]:
+        try:
+            s = fetcher.fetch_series(name)
+            if s is None:
+                return None
+            clean = s.dropna()
+            if len(clean) <= 4:
+                return None
+            prev = float(clean.iloc[-5])
+            if prev == 0:
+                return None
+            return (float(clean.iloc[-1]) / prev - 1) * 100
+        except Exception:
+            return None
+
+    v = _roc_quarterly_yoy("unit_labor_cost")
+    if v is not None:
+        indicators["ulc_yoy"] = v
+    v = _roc_quarterly_yoy("productivity_nfb")
+    if v is not None:
+        indicators["productivity_yoy"] = v
+
     # ── P1 2026-07-12 (gap analysis audit) ──────────────────────────────
     # Data-first: nuovi INDICATOR (visibili in /regime/explain, consumati da
     # LLM/data strategist). NESSUN nuovo pillar classifier senza A/B backtest
