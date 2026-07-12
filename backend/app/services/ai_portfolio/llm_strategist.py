@@ -52,7 +52,7 @@ STRATEGY_TYPE = "llm_driven"
 # v2-independent (2026-06-13): rimossi model_scoreboard + data_scoreboard
 # dal prompt per evitare anchoring bias. Gemini analizza solo indicators
 # raw + regime come second opinion. Bump prompt_version invalida cache.
-_PROMPT_VERSION = "v3-budget-cap"  # 2026-07-12: regola budget 100% nel prompt
+_PROMPT_VERSION = "v4-p1-data"  # 2026-07-12: budget 100% + indicator P1 (net liquidity, ZQ, COT, MOVE, survey Fed)
 
 # Stesse soglie hard di safety (Gemini suggerisce ma noi clampiamo)
 MAX_SIZE_PCT_PER_TRANCHE = 0.08  # 8% max per tranche, anti-hallucination
@@ -159,9 +159,12 @@ def _build_user_prompt(
     key_inds_grouped = {
         "Crescita / attività": [
             "gdp_roc", "gdp_roc_change_6m", "gdp_yoy_dfm",
+            "gdp_nowcast_atlanta",
             "payrolls_roc_12m", "indpro_roc_12m",
             "heavy_truck_sales_yoy", "building_permits_yoy",
             "durable_goods_orders_yoy", "consumer_credit_yoy",
+            "empire_fed_activity", "philly_fed_activity",
+            "dallas_fed_activity", "fed_surveys_composite",
         ],
         "Lavoro": [
             "unrate", "unrate_roc", "initial_claims_roc",
@@ -169,27 +172,35 @@ def _build_user_prompt(
         ],
         "Inflazione": [
             "cpi_yoy", "cpi_yoy_change_6m", "core_pce_yoy",
-            "sticky_cpi_yoy", "breakeven_10y", "breakeven_10y_change_3m",
+            "sticky_cpi_yoy", "umich_inflation_1y", "breakeven_5y5y",
+            "breakeven_10y", "breakeven_10y_change_3m",
             "energy_yoy",
         ],
-        "Politica monetaria": [
-            "fed_funds_rate", "m2_yoy", "term_premium_10y",
+        "Politica monetaria / liquidità": [
+            "fed_funds_rate", "fed_funds_implied_12m", "fed_path_12m",
+            "m2_yoy", "net_liquidity_usd_bn", "net_liquidity_roc_3m",
+            "walcl_roc_3m", "term_premium_10y",
             "yield_curve_10y2y", "yield_curve_10y3m",
         ],
         "Stress / sentiment": [
-            "vix", "vix_ma_ratio", "nfci", "nfci_change_3m",
+            "vix", "vix_ma_ratio", "move_index", "nfci", "nfci_change_3m",
             "hy_credit_spread", "baa_spread",
             "consumer_sentiment", "news_sentiment",
         ],
         "Cross-asset": [
             "copper_gold_ratio", "gold_oil_ratio", "hy_ig_spread_ratio",
-            "lei_roc", "insider_score",
+            "lei_roc",
+        ],
+        "Positioning (contrarian agli estremi |z|>2)": [
+            "insider_score", "cot_bonds10y_z", "cot_gold_z",
+            "cot_equity_z", "cot_usd_z",
         ],
         "Dedollarization": [
             "dedollar_combined",
         ],
         "Internazionale": [
             "ecb_main_refi_rate", "boe_bank_rate", "boj_policy_rate",
+            "korea_exports_yoy",
         ],
     }
     indicator_blocks = []

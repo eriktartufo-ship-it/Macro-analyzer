@@ -76,17 +76,37 @@ def safe_indicator(
 def derive_pmi_proxy(indicators: dict[str, Any]) -> float:
     """T9-AUDIT-BUG-4: NAPM (ISM PMI) discontinuato su FRED.
 
-    Proxy: `pmi ≈ 50 + 5 × indpro_yoy_clipped`, clamped [30, 65].
-
-    Logica: industrial production YoY è correlato a ISM PMI (R² ~0.6 storico).
-    Quando indpro_yoy = 0 (no growth) → pmi ~ 50 (neutral).
-    Quando indpro_yoy = +5% → pmi ~ 65 (forte expansion).
-    Quando indpro_yoy = -5% → pmi ~ 35 (contraction).
+    Priorità (P1 2026-07-12):
+    1. `pmi` reale se presente (episodi storici del training ML lo hanno).
+    2. **Survey Fed regionali** (Empire + Philly + Dallas, diffusion index):
+       sono LEADING ed escono PRIMA dell'ISM (correlazione col PMI ~0.85).
+       Mapping documentato: `pmi ≈ 50 + composite/3`, clamp [35, 65]
+       (composite +30 → pmi 60; -30 → 40 — coerente con range storico ISM).
+    3. Fallback legacy: `pmi ≈ 50 + 5 × indpro_yoy` clamp [30, 65] —
+       indpro è COINCIDENT, distrugge il timing: usato solo se le survey
+       non sono disponibili (es. scenari storici del backfill senza survey).
     """
     if "pmi" in indicators:
         v = safe_indicator(indicators, "pmi", default=50.0)
         if v != 50.0:  # se non default, usa valore reale
             return v
+
+    # P1: survey regionali leading (media delle disponibili)
+    surveys = [
+        indicators.get(k)
+        for k in ("empire_fed_activity", "philly_fed_activity", "dallas_fed_activity")
+    ]
+    valid = []
+    for s in surveys:
+        try:
+            f = float(s)
+        except (TypeError, ValueError):
+            continue
+        if not (math.isnan(f) or math.isinf(f)):
+            valid.append(f)
+    if valid:
+        composite = sum(valid) / len(valid)
+        return max(35.0, min(65.0, 50.0 + composite / 3.0))
 
     indpro_yoy = safe_indicator(indicators, "indpro_yoy", default=0.0)
     proxy = 50.0 + 5.0 * indpro_yoy

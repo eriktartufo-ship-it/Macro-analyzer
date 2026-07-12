@@ -730,6 +730,92 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     if v is not None:
         indicators["gdp_nowcast_atlanta"] = v
 
+    # ── P1 2026-07-12 (gap analysis audit) ──────────────────────────────
+    # Data-first: nuovi INDICATOR (visibili in /regime/explain, consumati da
+    # LLM/data strategist). NESSUN nuovo pillar classifier senza A/B backtest
+    # (regola anti-hand-tuning).
+
+    # P1.a — Survey Fed regionali (leading, escono prima dell'ISM).
+    # Alimentano anche derive_pmi_proxy (che prima usava indpro, coincident).
+    _survey_vals = []
+    for name in ("empire_fed_activity", "philly_fed_activity", "dallas_fed_activity"):
+        v = _last_level(name)
+        if v is not None:
+            indicators[name] = v
+            _survey_vals.append(v)
+    if _survey_vals:
+        indicators["fed_surveys_composite"] = sum(_survey_vals) / len(_survey_vals)
+
+    # P1.b — Net liquidity = WALCL − RRP − TGA (in $B, unità normalizzate).
+    try:
+        from app.services.indicators.liquidity import compute_net_liquidity
+
+        walcl = _last_level("fed_balance_sheet")   # $M
+        rrp = _last_level("reverse_repo")          # $B
+        tga = _last_level("treasury_general_account")  # $M
+        nl = compute_net_liquidity(walcl, rrp, tga)
+        if nl is not None:
+            indicators["net_liquidity_usd_bn"] = nl
+            # ROC 3m: ricalcola dalla storia settimanale (13 obs indietro)
+            try:
+                w_s = fetcher.fetch_series("fed_balance_sheet")
+                r_s = fetcher.fetch_series("reverse_repo")
+                t_s = fetcher.fetch_series("treasury_general_account")
+                if all(s is not None and len(s.dropna()) >= 14 for s in (w_s, r_s, t_s)):
+                    # RRP è daily, WALCL/TGA weekly: -14 obs sulla serie weekly
+                    # ~3 mesi; per RRP usa -63 (daily ~3 mesi lavorativi).
+                    prev = compute_net_liquidity(
+                        float(w_s.dropna().iloc[-14]),
+                        float(r_s.dropna().iloc[-63]) if len(r_s.dropna()) >= 63 else float(r_s.dropna().iloc[0]),
+                        float(t_s.dropna().iloc[-14]),
+                    )
+                    if prev is not None and prev > 0:
+                        indicators["net_liquidity_roc_3m"] = (nl / prev - 1.0) * 100.0
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning(f"Net liquidity skipped: {e}")
+
+    # P1.c — MOVE reale (bond vol) via Yahoo ^MOVE. Prima "bond vol" = VIX
+    # mascherato (treasury_volatility_move → VIXCLS): 2022 docet, equity vol
+    # bassa + bond vol record sono regimi diversi.
+    try:
+        from app.services.prices.yahoo_fetcher import YahooFetcher as _YF
+
+        move_s = _YF().fetch("^MOVE")
+        if move_s is not None and not move_s.dropna().empty:
+            indicators["move_index"] = float(move_s.dropna().iloc[-1])
+    except Exception as e:
+        logger.warning(f"MOVE fetch skipped: {e}")
+
+    # P1.d — Fed funds futures REALI (ZQ ~12m) al posto del proxy DGS1.
+    # fed_path_12m < 0 = tagli prezzati, > 0 = rialzi prezzati.
+    try:
+        from app.services.indicators.fed_funds_futures import fetch_implied_12m
+        from app.services.prices.yahoo_fetcher import YahooFetcher as _YF2
+
+        implied = fetch_implied_12m(_YF2())
+        if implied is not None:
+            indicators["fed_funds_implied_12m"] = implied
+            ff_now = indicators.get("fed_funds_rate")
+            if ff_now is not None:
+                indicators["fed_path_12m"] = implied - float(ff_now)
+    except Exception as e:
+        logger.warning(f"Fed funds futures skipped: {e}")
+
+    # P1.e — Korea exports YoY (canary trade mondiale, lead global growth).
+    v = _roc_12m("korea_exports")
+    if v is not None:
+        indicators["korea_exports_yoy"] = v
+
+    # P1.f — CFTC COT positioning z-scores (4 mercati, weekly, cache 12h).
+    try:
+        from app.services.alt_data.cftc_cot import fetch_cot_zscores
+
+        indicators.update(fetch_cot_zscores())
+    except Exception as e:
+        logger.warning(f"CFTC COT skipped: {e}")
+
     return indicators
 
 
