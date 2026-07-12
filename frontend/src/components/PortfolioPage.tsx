@@ -1,7 +1,9 @@
-/** Portafogli personali — tracking manuale a prezzi di mercato + semaforo macro.
+/** Portafogli personali — cockpit gestionale a prezzi di mercato + semaforo macro.
  *
- * Mobile-first, "nonno-proof": login semplice, totale grande, semaforo
- * verde/giallo/rosso per capire se è un buon momento per accumulare.
+ * Mobile-first, "nonno-proof": login semplice, hero col totale + KPI,
+ * barra di allocazione, semaforo verde/giallo/rosso per capire se è un buon
+ * momento per accumulare. Desktop = 2 colonne (contenuto + rail analisi),
+ * stile gestionale come il cockpit CognitiveOS ma con l'identità Macro.
  * La strategia (card dedicata) appare solo per gli utenti che ce l'hanno
  * (per Erik la scrive Claude Code via canale admin).
  */
@@ -13,6 +15,7 @@ import {
   setToken,
   type PtAdvice,
   type PtPortfolio,
+  type PtPosition,
   type PtStrategy,
   type PtTransaction,
   type PtTransactionIn,
@@ -43,6 +46,30 @@ const LIGHT_LABEL: Record<string, string> = {
 const ASSET_ORDER: ("gold" | "silver" | "bitcoin")[] = ["gold", "silver", "bitcoin"];
 const ASSET_LABEL = { gold: "Oro", silver: "Argento", bitcoin: "Bitcoin" } as const;
 
+/** Colori segmenti allocazione: semantici per metalli/crypto (token regime),
+ * sfumature di accent per i ticker generici. Solo token del design system. */
+function segmentColor(p: PtPosition, tickerIndex: number): { background: string; opacity?: number } {
+  if (p.asset_key === "gold") return { background: "var(--goldilocks)" };
+  if (p.asset_key === "silver") return { background: "var(--subtle)" };
+  if (p.asset_key === "bitcoin") return { background: "var(--stagflation)" };
+  const fades = [1, 0.7, 0.45, 0.28];
+  return { background: "var(--accent)", opacity: fades[tickerIndex % fades.length] };
+}
+
+function segmentStyles(positions: PtPosition[]): Map<string, { background: string; opacity?: number }> {
+  const map = new Map<string, { background: string; opacity?: number }>();
+  let tickerIdx = 0;
+  for (const p of positions) {
+    if (p.asset_key === "gold" || p.asset_key === "silver" || p.asset_key === "bitcoin") {
+      map.set(p.asset_key, segmentColor(p, 0));
+    } else {
+      map.set(p.asset_key, segmentColor(p, tickerIdx));
+      tickerIdx += 1;
+    }
+  }
+  return map;
+}
+
 interface Preset {
   asset_key: string;
   label: string;
@@ -61,6 +88,7 @@ const UNIT_LABEL: Record<string, string> = {
   oz: "once",
   btc: "BTC",
   share: "quote",
+  unit: "quote",
 };
 
 export function PortfolioPage() {
@@ -126,16 +154,18 @@ function LoginCard({
 
   return (
     <div className="pt-login-wrap">
-      <form className="card pt-login" onSubmit={submit}>
+      <form className="card pt-login pt-rise" onSubmit={submit}>
         <h2>Il mio portafoglio</h2>
         <p className="pt-login-sub">Entra per vedere i tuoi investimenti</p>
         <label className="pt-field">
-          <span>Nome utente</span>
+          <span>Email</span>
           <input
+            type="email"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoComplete="username"
             autoCapitalize="none"
+            inputMode="email"
             required
           />
         </label>
@@ -216,60 +246,119 @@ function PortfolioDashboard({
 
       {error && <div className="error">{error}</div>}
 
-      {portfolio && <TotalsCard portfolio={portfolio} />}
+      <div className="pt-grid">
+        <div className="pt-area-hero pt-rise">
+          {portfolio && <HeroCard portfolio={portfolio} />}
+        </div>
 
-      <AdviceCard advice={advice} onRefreshed={setAdvice} />
+        <div className="pt-area-side">
+          <div className="pt-rise pt-rise-1">
+            <AdviceCard advice={advice} onRefreshed={setAdvice} />
+          </div>
+          {strategy && portfolio && (
+            <div className="pt-rise pt-rise-2">
+              <StrategyCard strategy={strategy} portfolio={portfolio} />
+            </div>
+          )}
+        </div>
 
-      {strategy && portfolio && (
-        <StrategyCard strategy={strategy} portfolio={portfolio} />
-      )}
+        <div className="pt-area-positions pt-rise pt-rise-2">
+          {portfolio && portfolio.positions.length > 0 && (
+            <PositionsCard portfolio={portfolio} />
+          )}
+        </div>
 
-      {portfolio && portfolio.positions.length > 0 && (
-        <PositionsCard portfolio={portfolio} />
-      )}
+        <div className="pt-area-form pt-rise pt-rise-3">
+          {showForm ? (
+            <TransactionForm
+              onSaved={async () => {
+                setShowForm(false);
+                await load();
+              }}
+              onCancel={() => setShowForm(false)}
+            />
+          ) : (
+            <button className="btn pt-btn-full pt-add" onClick={() => setShowForm(true)}>
+              + Aggiungi movimento
+            </button>
+          )}
+        </div>
 
-      {showForm ? (
-        <TransactionForm
-          onSaved={async () => {
-            setShowForm(false);
-            await load();
-          }}
-          onCancel={() => setShowForm(false)}
-        />
-      ) : (
-        <button className="btn pt-btn-full pt-add" onClick={() => setShowForm(true)}>
-          + Aggiungi movimento
-        </button>
-      )}
-
-      {transactions.length > 0 && (
-        <TransactionsCard transactions={transactions} onDelete={onDelete} />
-      )}
+        <div className="pt-area-tx pt-rise pt-rise-3">
+          {transactions.length > 0 && (
+            <TransactionsCard transactions={transactions} onDelete={onDelete} />
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function TotalsCard({ portfolio }: { portfolio: PtPortfolio }) {
+function HeroCard({ portfolio }: { portfolio: PtPortfolio }) {
   const t = portfolio.totals;
+  const styles = segmentStyles(portfolio.positions);
+  const allocated = portfolio.positions.filter(
+    (p) => p.allocation_pct != null && p.allocation_pct > 0,
+  );
+
   return (
-    <div className="card pt-totals">
+    <div className="card pt-hero">
       <div className="pt-totals-label">Valore totale</div>
       <div className="pt-totals-value">{eur(t.market_value_eur)}</div>
-      <div className="pt-totals-row">
-        <span>
-          Investiti: <strong>{eur(t.invested_eur)}</strong>
-        </span>
-        {t.pnl_eur != null && (
-          <span className={pnlClass(t.pnl_eur)}>
-            {t.pnl_eur >= 0 ? "▲" : "▼"} {eur(Math.abs(t.pnl_eur))}
-            {t.pnl_pct != null && ` (${t.pnl_pct >= 0 ? "+" : ""}${num(t.pnl_pct, 1)}%)`}
-          </span>
-        )}
-      </div>
-      {t.realized_pnl_eur !== 0 && (
-        <div className="pt-totals-sub">
-          Guadagni già incassati: <span className={pnlClass(t.realized_pnl_eur)}>{eur(t.realized_pnl_eur)}</span>
+      {t.pnl_eur != null && (
+        <div className={`pt-hero-badge ${pnlClass(t.pnl_eur)}`}>
+          {t.pnl_eur >= 0 ? "▲" : "▼"} {eur(Math.abs(t.pnl_eur))}
+          {t.pnl_pct != null && ` (${t.pnl_pct >= 0 ? "+" : ""}${num(t.pnl_pct, 1)}%)`}
         </div>
+      )}
+
+      <div className="pt-kpis">
+        <div className="pt-kpi">
+          <div className="v">{eur(t.invested_eur)}</div>
+          <div className="l">Investiti</div>
+        </div>
+        <div className="pt-kpi">
+          <div className={`v ${pnlClass(t.pnl_eur)}`}>
+            {t.pnl_eur != null ? `${t.pnl_eur >= 0 ? "+" : ""}${eur(t.pnl_eur)}` : "—"}
+          </div>
+          <div className="l">Guadagno</div>
+          {t.realized_pnl_eur !== 0 && (
+            <div className="hint">di cui incassati {eur(t.realized_pnl_eur)}</div>
+          )}
+        </div>
+        <div className="pt-kpi">
+          <div className={`v ${pnlClass(t.pnl_pct)}`}>
+            {t.pnl_pct != null ? `${t.pnl_pct >= 0 ? "+" : ""}${num(t.pnl_pct, 1)}%` : "—"}
+          </div>
+          <div className="l">Rendimento</div>
+        </div>
+        <div className="pt-kpi">
+          <div className="v">{portfolio.positions.length}</div>
+          <div className="l">Posizioni</div>
+        </div>
+      </div>
+
+      {allocated.length > 0 && (
+        <>
+          <div className="pt-alloc-bar" role="img" aria-label="Ripartizione del portafoglio">
+            {allocated.map((p) => (
+              <div
+                key={p.asset_key}
+                className="pt-alloc-seg"
+                style={{ width: `${p.allocation_pct}%`, ...styles.get(p.asset_key) }}
+                title={`${p.label} ${num(p.allocation_pct!, 1)}%`}
+              />
+            ))}
+          </div>
+          <div className="pt-alloc-legend">
+            {allocated.map((p) => (
+              <span className="pt-chip" key={p.asset_key}>
+                <span className="pt-chip-dot" style={styles.get(p.asset_key)} />
+                {p.label} <strong>{num(p.allocation_pct!, 1)}%</strong>
+              </span>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
@@ -419,31 +508,43 @@ function StrategyCard({
 }
 
 function PositionsCard({ portfolio }: { portfolio: PtPortfolio }) {
+  const styles = segmentStyles(portfolio.positions);
   return (
     <div className="card">
       <h3>Le mie posizioni</h3>
       {portfolio.positions.map((p) => (
         <div className="pt-pos-row" key={p.asset_key}>
-          <div className="pt-pos-main">
-            <span className="pt-pos-label">{p.label}</span>
-            <span className="pt-pos-qty">
-              {num(p.quantity)} {UNIT_LABEL[p.unit] ?? p.unit}
-              {p.avg_cost_eur > 0 && ` · PMC ${eur(p.avg_cost_eur, 2)}`}
-            </span>
+          <div className="pt-pos-top">
+            <div className="pt-pos-main">
+              <span className="pt-pos-label">
+                <span className="pt-chip-dot" style={styles.get(p.asset_key)} />
+                {p.label}
+              </span>
+              <span className="pt-pos-qty">
+                {num(p.quantity)} {UNIT_LABEL[p.unit] ?? p.unit}
+                {p.avg_cost_eur > 0 && ` · PMC ${eur(p.avg_cost_eur, 2)}`}
+              </span>
+            </div>
+            <div className="pt-pos-side">
+              <span className="pt-pos-value">{eur(p.market_value_eur)}</span>
+              <span className={`pt-pos-pnl ${pnlClass(p.pnl_eur)}`}>
+                {p.pnl_eur != null
+                  ? `${p.pnl_eur >= 0 ? "+" : ""}${eur(p.pnl_eur)}${
+                      p.pnl_pct != null ? ` (${p.pnl_pct >= 0 ? "+" : ""}${num(p.pnl_pct, 1)}%)` : ""
+                    }`
+                  : "prezzo n.d."}
+              </span>
+            </div>
           </div>
-          <div className="pt-pos-side">
-            <span className="pt-pos-value">{eur(p.market_value_eur)}</span>
-            <span className={`pt-pos-pnl ${pnlClass(p.pnl_eur)}`}>
-              {p.pnl_eur != null
-                ? `${p.pnl_eur >= 0 ? "+" : ""}${eur(p.pnl_eur)}${
-                    p.pnl_pct != null ? ` (${p.pnl_pct >= 0 ? "+" : ""}${num(p.pnl_pct, 1)}%)` : ""
-                  }`
-                : "prezzo n.d."}
-            </span>
-            {p.allocation_pct != null && (
-              <span className="pt-pos-alloc">{num(p.allocation_pct, 1)}% del totale</span>
-            )}
-          </div>
+          {p.allocation_pct != null && (
+            <div className="pt-pos-allocbar">
+              <div
+                className="pt-pos-allocfill"
+                style={{ width: `${Math.min(p.allocation_pct, 100)}%`, ...styles.get(p.asset_key) }}
+              />
+              <span className="pt-pos-alloc">{num(p.allocation_pct, 1)}%</span>
+            </div>
+          )}
         </div>
       ))}
     </div>

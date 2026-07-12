@@ -2061,3 +2061,224 @@ html[data-theme="light"] .pt-field select {
     min-width: 140px;
   }
 }
+
+/* ============================================================
+   Portafogli v2 — layout gestionale (KPI grid, allocazione, rail)
+   Le regole qui sotto ESTENDONO/OVERRIDANO il blocco .pt- sopra.
+   ============================================================ */
+
+.pt-page {
+  max-width: 1080px;
+}
+
+/* Grid areas: mobile = colonna unica (semaforo subito dopo l'hero),
+   desktop = contenuto + rail analisi */
+.pt-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "hero"
+    "side"
+    "positions"
+    "form"
+    "tx";
+  gap: 14px;
+}
+.pt-area-hero {
+  grid-area: hero;
+}
+.pt-area-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.pt-area-positions {
+  grid-area: positions;
+}
+.pt-area-form {
+  grid-area: form;
+}
+.pt-area-tx {
+  grid-area: tx;
+}
+
+@media (min-width: 900px) {
+  .pt-grid {
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    grid-template-areas:
+      "hero side"
+      "positions side"
+      "form side"
+      "tx side";
+    align-items: start;
+  }
+}
+
+/* Hero: numero grande + badge PnL + KPI tiles + allocazione */
+.pt-hero {
+  text-align: center;
+}
+.pt-hero-badge {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--surface-sunk);
+  margin: 2px 0 14px;
+}
+
+.pt-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  text-align: left;
+}
+@media (min-width: 641px) {
+  .pt-kpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.pt-kpi {
+  background: var(--surface-sunk);
+  border-radius: 12px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+.pt-kpi .v {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pt-kpi .l {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-top: 3px;
+}
+.pt-kpi .hint {
+  font-size: 11px;
+  color: var(--subtle);
+  margin-top: 2px;
+}
+
+/* Barra allocazione impilata + legenda chip */
+.pt-alloc-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--surface-sunk);
+  margin-top: 14px;
+}
+.pt-alloc-seg {
+  min-width: 2px;
+}
+.pt-alloc-seg + .pt-alloc-seg {
+  border-left: 2px solid var(--card);
+}
+.pt-alloc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.pt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-sunk);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.pt-chip strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.pt-chip-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* Posizioni: riga a blocco con mini-bar allocazione */
+.pt-pos-row {
+  display: block;
+}
+.pt-pos-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.pt-pos-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.pt-pos-allocbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.pt-pos-allocfill {
+  height: 6px;
+  border-radius: 4px;
+}
+.pt-pos-alloc {
+  font-size: 11px;
+  color: var(--subtle);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Motion craft: entrata fade-up <300ms, stagger leggero, active press */
+@keyframes ptRise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pt-rise {
+  animation: ptRise 0.26s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+.pt-rise-1 {
+  animation-delay: 0.05s;
+}
+.pt-rise-2 {
+  animation-delay: 0.1s;
+}
+.pt-rise-3 {
+  animation-delay: 0.15s;
+}
+.pt-page .btn:active:not(:disabled),
+.pt-segmented button:active,
+.pt-btn-cancel:active,
+.pt-tx-delete:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pt-rise,
+  .pt-rise-1,
+  .pt-rise-2,
+  .pt-rise-3 {
+    animation: none;
+  }
+}
