@@ -2098,6 +2098,22 @@ def start_scheduler():
         id="monthly_calibration_refresh",
         replace_existing=True,
     )
+    # Portfolio Tracking: consigli macro settimanali nella notte tra venerdì e
+    # sabato (01:00 UTC = 02/03 ora italiana): i mercati hanno appena chiuso la
+    # settimana, i prezzi dell'oro restano fermi nel weekend → si legge l'analisi
+    # con calma e si decide se comprare (scelta Erik 2026-07-12).
+    if settings.enable_portfolio_tracking:
+        from app.services.portfolio_tracking.advisor import weekly_advice_job
+
+        scheduler.add_job(
+            weekly_advice_job,
+            "cron",
+            day_of_week="sat",
+            hour=1,
+            minute=0,
+            id="pt_weekly_advice",
+            replace_existing=True,
+        )
     scheduler.start()
     logger.info(
         f"Scheduler avviato: macro refresh alle "

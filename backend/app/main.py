@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from app.api.routes import router
+from app.config import settings
 from app.scheduler.jobs import start_scheduler, stop_scheduler
 
 
@@ -69,6 +70,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Runtime flag persistence init skipped: {e}")
 
+    # Portfolio Tracking (pt_*): lazy-create tabelle solo se il modulo è attivo.
+    if settings.enable_portfolio_tracking:
+        try:
+            from app.database import Base, engine
+            from app.models import PtAdvice, PtPriceCache, PtStrategy, PtTransaction  # noqa: F401
+
+            Base.metadata.create_all(bind=engine, tables=[
+                PtTransaction.__table__,
+                PtPriceCache.__table__,
+                PtAdvice.__table__,
+                PtStrategy.__table__,
+            ])
+            logger.info("Portfolio Tracking attivo: tabelle pt_* pronte")
+        except Exception as e:
+            logger.warning(f"Portfolio Tracking table init skipped: {e}")
+
     # CRITICAL #2 council 2026-05-27: lock initial model snapshot se non esiste.
     # Versione sealed iniziale = "v1.0-sealed-YYYY-MM-DD". Successivi lock
     # manuali via POST /api/v1/model/lock.
@@ -113,6 +130,11 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+if settings.enable_portfolio_tracking:
+    from app.api.portfolio_tracking import router as pt_router
+
+    app.include_router(pt_router)
 
 
 @app.get("/")

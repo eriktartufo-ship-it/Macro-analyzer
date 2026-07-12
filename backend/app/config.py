@@ -20,5 +20,16 @@ class Settings(BaseSettings):
     scheduler_hour: int = 6
     scheduler_minute: int = 0
 
+    # Portfolio Tracking (modulo pt_*, default OFF — additivo, zero impatto se spento)
+    enable_portfolio_tracking: bool = False
+    # Formato: "username:Display Name:password,username2:Display2:password2"
+    # (fallback 2 campi "username:password" → display = username capitalizzato)
+    pt_users: str = ""
+    # Secret HMAC per i token di sessione. MAI cambiarlo una volta in prod
+    # (lezione RGV: invalida tutte le sessioni attive).
+    pt_secret: str = ""
+    # Token admin per push da Claude Code (strategy vetrina + import bulk)
+    pt_admin_token: str = ""
+
 
 settings = Settings()

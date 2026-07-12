@@ -24,6 +24,7 @@ const InsiderActivityTile = lazy(() => import("./components/InsiderActivityTile"
 const Tier9TransitionPanel = lazy(() => import("./components/Tier9TransitionPanel").then(m => ({ default: m.Tier9TransitionPanel })));
 const Tier9ForecastPanel = lazy(() => import("./components/Tier9ForecastPanel").then(m => ({ default: m.Tier9ForecastPanel })));
 const FailureLearningsPanel = lazy(() => import("./components/FailureLearningsPanel").then(m => ({ default: m.FailureLearningsPanel })));
+const PortfolioPage = lazy(() => import("./components/PortfolioPage").then(m => ({ default: m.PortfolioPage })));
 
 const THEME_KEY = "macro-theme";
 
@@ -62,7 +63,12 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [dedollarFlag] = useDedollarBonus();
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState<Page>("dashboard");
+  // Deep-link: macro.pieranlab.cloud/portfolio apre direttamente i Portafogli
+  const [page, setPage] = useState<Page>(() =>
+    typeof window !== "undefined" && window.location.pathname.startsWith("/portfolio")
+      ? "portfolio"
+      : "dashboard",
+  );
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   useEffect(() => {
@@ -151,8 +157,8 @@ export default function App() {
         onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
       />
 
-      {loading && <div className="loading">Loading macro data…</div>}
-      {error && !loading && <div className="error">{error}</div>}
+      {loading && page !== "portfolio" && <div className="loading">Loading macro data…</div>}
+      {error && !loading && page !== "portfolio" && <div className="error">{error}</div>}
 
       {ready && page === "dashboard" && (
         <>
@@ -239,6 +245,13 @@ export default function App() {
       {ready && page === "ai-portfolio" && (
         <Suspense fallback={fallback}>
           <AiPortfolioPage />
+        </Suspense>
+      )}
+
+      {/* Portafogli personali: indipendente da `ready` (non serve il modello macro) */}
+      {page === "portfolio" && (
+        <Suspense fallback={fallback}>
+          <PortfolioPage />
         </Suspense>
       )}
     </div>

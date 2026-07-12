@@ -1,0 +1,33 @@
+# One-shot (workflow_dispatch): scrive le env del Portfolio Tracking in
+# /opt/macro/.env leggendole dal secret PT_ENV_BLOCK (mascherato nei log,
+# mai nel repo) e ricrea il backend. Idempotente: se PT_SECRET è già nel
+# .env non riappende nulla (MAI cambiare PT_SECRET in prod: invalida le
+# sessioni). Per cambiare una password: editare /opt/macro/.env a mano e
+# rifare `docker compose up -d --force-recreate backend`.
+name: PT env setup (one-shot)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: [self-hosted, linux, vps-macro]
+    steps:
+      - name: Append PT env to /opt/macro/.env + recreate backend
+        env:
+          PT_ENV_BLOCK: ${{ secrets.PT_ENV_BLOCK }}
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          if [ -z "${PT_ENV_BLOCK}" ]; then
+            echo "Secret PT_ENV_BLOCK vuoto: configuralo nel repo" >&2
+            exit 1
+          fi
+          if grep -q '^PT_SECRET=' .env; then
+            echo "PT env già presenti in .env — nessun append"
+          else
+            printf '\n%s\n' "${PT_ENV_BLOCK}" >> .env
+            echo "PT env aggiunte a .env"
+          fi
+          # Il solo restart NON ricarica un .env cambiato: serve il force-recreate
+          docker compose up -d --force-recreate backend

@@ -40,6 +40,11 @@ services:
       SCHEDULER_HOUR: ${SCHEDULER_HOUR:-6}
       SCHEDULER_MINUTE: ${SCHEDULER_MINUTE:-0}
       TZ: ${TZ:-UTC}
+      # Portfolio Tracking (pt_*): tracking manuale portafogli + advisor settimanale
+      ENABLE_PORTFOLIO_TRACKING: ${ENABLE_PORTFOLIO_TRACKING:-false}
+      PT_USERS: ${PT_USERS:-}
+      PT_SECRET: ${PT_SECRET:-}
+      PT_ADMIN_TOKEN: ${PT_ADMIN_TOKEN:-}
     volumes:
       - fred-cache:/app/.cache/fred
     expose:
