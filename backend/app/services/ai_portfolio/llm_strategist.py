@@ -52,7 +52,7 @@ STRATEGY_TYPE = "llm_driven"
 # v2-independent (2026-06-13): rimossi model_scoreboard + data_scoreboard
 # dal prompt per evitare anchoring bias. Gemini analizza solo indicators
 # raw + regime come second opinion. Bump prompt_version invalida cache.
-_PROMPT_VERSION = "v2-independent"
+_PROMPT_VERSION = "v3-budget-cap"  # 2026-07-12: regola budget 100% nel prompt
 
 # Stesse soglie hard di safety (Gemini suggerisce ma noi clampiamo)
 MAX_SIZE_PCT_PER_TRANCHE = 0.08  # 8% max per tranche, anti-hallucination
@@ -101,6 +101,9 @@ factor_quality, factor_value
 4. TAKE_PROFIT è automatico a +30% PnL
 5. Massimo 12 OPEN_TRANCHE per giorno (evita overtrading)
 6. Per asset SENZA posizione e SENZA OPEN: ometti dall'output (NON serve SKIP esplicito)
+7. Il capitale è 100%: la somma dei pesi delle posizioni aperte NON può
+   superarla. Se sei già quasi full-invested, chiudi qualcosa prima di aprire
+   (gli OPEN oltre il budget residuo vengono clampati/scartati dal sistema)
 
 **OUTPUT JSON STRETTO** (NO markdown):
 {
@@ -430,6 +433,15 @@ def daily_scan(
     MAX_OPEN_PER_DAY = 12
     opens_today = 0
 
+    # AUDIT 2026-07-12 (CRITICAL): budget globale 100% del capitale. Il cap
+    # era solo per-tranche (8%) e per-giorno (12 open) — le tranche si
+    # accumulavano nei giorni oltre il capitale (live: deployed 136% = leva
+    # implicita che gonfia il NAV e falsa l'horserace a 3). Clamp di ogni
+    # OPEN al budget residuo; skip se resta < 0.5%.
+    deployed_total = sum(
+        float(p.current_weight_pct or 0.0) for p in existing.values()
+    )
+
     for raw_d in raw_decisions[:50]:
         if not isinstance(raw_d, dict):
             continue
@@ -469,6 +481,12 @@ def daily_scan(
                 continue
             if size_pct <= 0:
                 continue
+            # Budget globale: mai oltre il 100% del capitale (AUDIT 2026-07-12)
+            budget_left = 1.0 - deployed_total
+            if budget_left < 0.005:
+                continue
+            size_pct = min(size_pct, budget_left)
+            deployed_total += size_pct
             opens_today += 1
         elif action in ("CLOSE_TRANCHE", "FULL_CLOSE", "STOP_LOSS", "TAKE_PROFIT"):
             if position is None:

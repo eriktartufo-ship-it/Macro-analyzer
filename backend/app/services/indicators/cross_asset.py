@@ -4,19 +4,26 @@ Bridgewater pattern: relazioni cross-asset come **leading indicators** del
 regime macro, non solo output analitici. Tre ratio prioritari:
 
 1. **copper/gold** — cyclical commodity (Cu, industrial demand) vs safe-haven
-   metal (Au). Storicamente:
-   - 2009 bottom: 0.20 (GFC depths)
-   - 2011 peak: 0.55 (post-stimulus reflation peak)
-   - 2020 COVID: 0.18 (deflation panic)
-   - 2021-22 recovery: 0.30-0.40
+   metal (Au). Unità: raw ratio HG=F ($/lb) / GC=F ($/oz).
+   AUDIT 2026-07-12: i reference precedenti (0.20-0.55) non corrispondevano
+   a NESSUNA convenzione di unità reale (soglie ~250x fuori scala → il
+   segnale deflattivo sarebbe scattato per sempre). Ricalibrato su quantili
+   Yahoo 2000-2026 (n=6487):
+   - p25 = 0.0020 · p50 = 0.0023 · p75 = 0.0028
+   - 2009-02 GFC depth: 0.0016 (weak ✓)
+   - 2011-02 reflation peak: 0.0032 (strong ✓)
+   - 2020-03 COVID: 0.0014 (weak ✓)
    Alto = reflation/risk-on. Basso = deflation/risk-off.
 
 2. **gold/oil** — gold strong vs oil weak = deflation; gold weak vs oil
-   strong = stagflation. Storica avg ~17:
-   - 1973 oil shock: 9 (stagflation peak)
-   - 2009: 25 (gold $1000, oil $40)
-   - 2020-Q1 covid: 75 (gold $1500, oil $20)
-   - 2022: 12 (oil $120, gold $1900) → stagflation
+   strong = stagflation. Unità corrette ($/oz / $/bbl), mediana storica
+   2000-2026 = 17. Ricalibrato 2026-07-12 su quantili reali:
+   - p25 = 11.6 · p50 = 17.1 · p75 = 25.5 · p95 = 49.5
+   - 2011-02 reflation: 14.5 · 2020-03 covid: 77 (high ✓)
+   CAVEAT: il rally secolare dell'oro (2024-26) gonfia il ratio (57 nel
+   luglio 2026 con mercato CALMO): "high" può riflettere debasement-bid, non
+   collasso della domanda oil. Prima di attivare USE_CROSS_ASSET_PILLARS
+   serve un A/B backtest e valutare l'interazione col pillar dedollar.
    Alto = deflation. Basso = stagflation.
 
 3. **HY/IG spread ratio** — high-yield credit spread / investment-grade
@@ -51,14 +58,18 @@ principali. Budget totale T6.3 = ~0.15 sul fit_score.
 from __future__ import annotations
 
 
-# Threshold riferimento (basati su quantili storici 1970-2024)
+# Threshold riferimento — AUDIT 2026-07-12: ricalibrati su quantili REALI
+# Yahoo 2000-2026 (vedi docstring). I precedenti copper_gold (0.45/0.30)
+# erano ~250x fuori scala rispetto al raw ratio prodotto da
+# compute_copper_gold_ratio; gold_oil_high 30 era già oltre p75 nel 2026
+# per il solo rally secolare dell'oro.
 _THRESHOLDS = {
-    "copper_gold_strong": 0.45,   # > = reflation signal
-    "copper_gold_weak": 0.30,     # < = deflation signal
-    "gold_oil_high": 30.0,        # > = deflation pressure
-    "gold_oil_low": 15.0,         # < = stagflation pressure (oil dominates)
-    "hy_ig_stress": 5.0,          # > = credit risk-off
-    "hy_ig_tight": 3.0,           # < = credit risk-on
+    "copper_gold_strong": 0.0028,  # ~p75 → reflation signal
+    "copper_gold_weak": 0.0020,    # ~p25 → deflation signal
+    "gold_oil_high": 40.0,         # ~p90 → deflation pressure
+    "gold_oil_low": 11.5,          # ~p25 → stagflation pressure (oil dominates)
+    "hy_ig_stress": 5.0,           # > = credit risk-off
+    "hy_ig_tight": 3.0,            # < = credit risk-on
 }
 
 

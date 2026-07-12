@@ -143,9 +143,9 @@ class TestClassifierWithCrossAssetPillars:
         r_no = classify_regime(ind)
         r_extreme = classify_regime({
             **ind,
-            "copper_gold_ratio": 0.55,  # very strong cyclical
-            "gold_oil_ratio": 60.0,     # gold dominates (deflation)
-            "hy_ig_spread_ratio": 8.0,  # credit stress
+            "copper_gold_ratio": 0.0032,  # very strong cyclical (2011 peak, raw units)
+            "gold_oil_ratio": 60.0,       # gold dominates (deflation)
+            "hy_ig_spread_ratio": 8.0,    # credit stress
         })
         for k in r_no["probabilities"]:
             assert r_no["probabilities"][k] == r_extreme["probabilities"][k]
@@ -155,8 +155,9 @@ class TestClassifierWithCrossAssetPillars:
         from app.services.regime.classifier import classify_regime
 
         ind = self._base_neutral()
-        baseline = classify_regime({**ind, "copper_gold_ratio": 0.37})  # neutral
-        cyclical = classify_regime({**ind, "copper_gold_ratio": 0.55})  # strong
+        # AUDIT 2026-07-12: valori raw reali ($/lb / $/oz) — p50 e 2011 peak
+        baseline = classify_regime({**ind, "copper_gold_ratio": 0.0023})  # neutral p50
+        cyclical = classify_regime({**ind, "copper_gold_ratio": 0.0032})  # strong (2011)
 
         assert cyclical["probabilities"]["reflation"] > baseline["probabilities"]["reflation"]
 
@@ -165,8 +166,8 @@ class TestClassifierWithCrossAssetPillars:
         from app.services.regime.classifier import classify_regime
 
         ind = self._base_neutral()
-        baseline = classify_regime({**ind, "copper_gold_ratio": 0.37})
-        crash = classify_regime({**ind, "copper_gold_ratio": 0.18})  # 2020 covid
+        baseline = classify_regime({**ind, "copper_gold_ratio": 0.0023})
+        crash = classify_regime({**ind, "copper_gold_ratio": 0.0014})  # 2020 covid (raw)
 
         assert crash["probabilities"]["deflation"] > baseline["probabilities"]["deflation"]
 
@@ -220,8 +221,8 @@ class TestClassifierWithCrossAssetPillars:
             "gdp_roc": -2.0, "pmi": 42.0, "cpi_yoy": 1.0, "unrate": 6.5,
             "unrate_roc": 1.0, "yield_curve_10y2y": -0.3, "initial_claims_roc": 15.0,
             "lei_roc": -2.0, "fed_funds_rate": 1.0, "vix": 35.0, "baa_spread": 4.0,
-            # Ratios anomali pro-reflation
-            "copper_gold_ratio": 0.55, "hy_ig_spread_ratio": 2.3,
+            # Ratios anomali pro-reflation (raw units)
+            "copper_gold_ratio": 0.0032, "hy_ig_spread_ratio": 2.3,
         }
         result = classify_regime(deflation_macro)
         assert result["regime"] == "deflation"
@@ -235,7 +236,7 @@ class TestClassifierWithCrossAssetPillars:
         baseline = classify_regime(ind)  # no ratios → defaults neutri
         neutral = classify_regime({
             **ind,
-            "copper_gold_ratio": 0.37,
+            "copper_gold_ratio": 0.0023,
             "gold_oil_ratio": 17.0,
             "hy_ig_spread_ratio": 3.5,
         })

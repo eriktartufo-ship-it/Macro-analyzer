@@ -317,7 +317,7 @@ REGIME_CONDITIONS = {
         "insider_buying_strong": {"weight": 0.03, "description": "SEC Form 4 insider score > 0.3 (smart money bullish)"},
         "dedollar_low": {"weight": 0.02, "description": "Dedollar combined < 0.4 (dollar strong, risk-on global)"},
         "news_positive_strong": {"weight": 0.02, "description": "News avg sentiment > 0.3 (positive narrative)"},
-        "copper_gold_strong": {"weight": 0.03, "description": "Copper/gold ratio > 0.45 (cyclical strength)"},
+        "copper_gold_strong": {"weight": 0.03, "description": "Copper/gold ratio > 0.0028 ~p75 (cyclical strength)"},
         "hy_ig_tight": {"weight": 0.02, "description": "HY/IG spread ratio < 3 (credit risk-on)"},
     },
     "stagflation": {
@@ -339,7 +339,7 @@ REGIME_CONDITIONS = {
         "dfm_growth_weak": {"weight": 0.02, "description": "DFM nowcast GDP YoY < 1.5% (real-time slowdown signal)"},
         "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
         "dedollar_debasement": {"weight": 0.03, "description": "Dedollar combined > 0.6 (USD debasement, real assets bid)"},
-        "gold_oil_low": {"weight": 0.03, "description": "Gold/oil ratio < 15 (oil-driven inflation, stagflation 1973-style)"},
+        "gold_oil_low": {"weight": 0.03, "description": "Gold/oil ratio < 11.5 ~p25 (oil-driven inflation, stagflation 1973-style)"},
     },
     "deflation": {
         "gdp_negative_or_decelerating": {"weight": 0.14, "description": "GDP ROC < 1%"},
@@ -358,8 +358,8 @@ REGIME_CONDITIONS = {
         "breakeven_collapse": {"weight": 0.05, "description": "Breakeven 10Y < 1.5%"},
         "insider_selling_strong": {"weight": 0.03, "description": "SEC Form 4 insider score < -0.3 (smart money bearish)"},
         "news_panic": {"weight": 0.02, "description": "News avg sentiment < -0.3 (panic narrative)"},
-        "copper_gold_weak": {"weight": 0.03, "description": "Copper/gold ratio < 0.30 (cyclical collapse, deflation)"},
-        "gold_oil_high": {"weight": 0.03, "description": "Gold/oil ratio > 30 (gold strong vs oil collapse, deflation)"},
+        "copper_gold_weak": {"weight": 0.03, "description": "Copper/gold ratio < 0.0020 ~p25 (cyclical collapse, deflation)"},
+        "gold_oil_high": {"weight": 0.03, "description": "Gold/oil ratio > 40 ~p90 (gold strong vs oil collapse, deflation)"},
         "hy_ig_stress": {"weight": 0.03, "description": "HY/IG spread ratio > 5 (credit stress 2008-style)"},
     },
     "goldilocks": {
@@ -501,9 +501,10 @@ def _evaluate_condition(
     # Opt-in via USE_NEWS_PILLAR=1. Pillar è soft (peso 0.02) per gestire
     # rumorosità intraday e LLM-scoring variance.
     news_sentiment = indicators.get("news_sentiment", 0.0)
-    # Cross-asset ratios (Tier 6.3): default neutral mid-range storici.
+    # Cross-asset ratios (Tier 6.3): default neutral = mediane storiche REALI
+    # 2000-2026 (AUDIT 2026-07-12: 0.37 era ~160x fuori scala vs raw ratio).
     # Opt-in via USE_CROSS_ASSET_PILLARS. Soft pillar 0.02-0.03 each.
-    copper_gold_ratio = indicators.get("copper_gold_ratio", 0.37)
+    copper_gold_ratio = indicators.get("copper_gold_ratio", 0.0023)
     gold_oil_ratio = indicators.get("gold_oil_ratio", 17.0)
     hy_ig_spread_ratio = indicators.get("hy_ig_spread_ratio", 3.5)
 
@@ -834,22 +835,25 @@ def _evaluate_condition(
         return _sigmoid(-news_sentiment, center=0.3, scale=0.15)
     # T6.3 Cross-asset ratios pillars (opt-in USE_CROSS_ASSET_PILLARS).
     # Flag-gated pattern come T5.2/T5.3: spento → return 0.0 (zero impact).
+    # AUDIT 2026-07-12: center/scale ricalibrati su quantili Yahoo 2000-2026
+    # (cross_asset._THRESHOLDS). I vecchi center copper_gold (0.45/0.30) erano
+    # ~250x fuori scala → con flag ON il pillar deflattivo scattava sempre.
     elif condition_name == "copper_gold_strong" and regime == "reflation":
         if not use_cross_asset_pillars():
             return 0.0
-        return _sigmoid(copper_gold_ratio, center=0.45, scale=0.08)
+        return _sigmoid(copper_gold_ratio, center=0.0028, scale=0.0004)
     elif condition_name == "copper_gold_weak" and regime == "deflation":
         if not use_cross_asset_pillars():
             return 0.0
-        return _sigmoid(-copper_gold_ratio, center=-0.30, scale=0.08)
+        return _sigmoid(-copper_gold_ratio, center=-0.0020, scale=0.0004)
     elif condition_name == "gold_oil_high" and regime == "deflation":
         if not use_cross_asset_pillars():
             return 0.0
-        return _sigmoid(gold_oil_ratio, center=30.0, scale=10.0)
+        return _sigmoid(gold_oil_ratio, center=40.0, scale=8.0)
     elif condition_name == "gold_oil_low" and regime == "stagflation":
         if not use_cross_asset_pillars():
             return 0.0
-        return _sigmoid(-gold_oil_ratio, center=-15.0, scale=5.0)
+        return _sigmoid(-gold_oil_ratio, center=-11.5, scale=3.0)
     elif condition_name == "hy_ig_stress" and regime == "deflation":
         if not use_cross_asset_pillars():
             return 0.0

@@ -310,8 +310,25 @@ def compute_gdp_nowcast(
                             min(proxy_yoy + 2.0, gdp_yoy_implied_raw),
                         )
                 else:
-                    # Fallback al vecchio cap range se gdp_yoy non disponibile
+                    # Fallback al vecchio cap range se gdp_yoy non disponibile.
+                    # AUDIT 2026-07-12: il clamp era SILENZIOSO — un valore
+                    # esattamente ±5.0 in DB è la firma di questo branch, ma
+                    # senza log non si distingueva da un nowcast legittimo.
                     gdp_yoy_implied = max(-5.0, min(5.0, gdp_yoy_implied_raw))
+                    if gdp_yoy_implied != gdp_yoy_implied_raw:
+                        notes.append(
+                            f"gdp_yoy_dfm raw={gdp_yoy_implied_raw:.2f} CLAMPED "
+                            f"a {gdp_yoy_implied:.1f} (proxy gdp_yoy indisponibile)"
+                        )
+                        logger.warning(
+                            "DFM nowcast clamp fallback: raw %.2f -> %.1f "
+                            "(gdp_yoy proxy non disponibile)",
+                            gdp_yoy_implied_raw, gdp_yoy_implied,
+                        )
+                    else:
+                        notes.append(
+                            "gdp_yoy_dfm senza proxy gdp_yoy (fallback range check)"
+                        )
             else:
                 gdp_yoy_implied = None
         else:
