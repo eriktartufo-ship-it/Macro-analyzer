@@ -1614,3 +1614,450 @@ body {
     width: 100%;
   }
 }
+
+/* ============================================================
+   Portafogli personali (Portfolio Tracking, .pt-*)
+   Mobile-first: base = telefono, override desktop a 641px+
+   ============================================================ */
+
+.pt-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.pt-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.pt-topbar h2 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.pt-muted {
+  color: var(--muted);
+}
+.pt-pos {
+  color: var(--reflation);
+}
+.pt-neg {
+  color: var(--deflation);
+}
+
+/* Login */
+.pt-login-wrap {
+  display: flex;
+  justify-content: center;
+  padding-top: 8vh;
+}
+.pt-login {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pt-login h2 {
+  margin: 0;
+}
+.pt-login-sub {
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+
+/* Campi form */
+.pt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.pt-field input,
+.pt-field select {
+  font: inherit;
+  font-size: 16px; /* >=16px: evita lo zoom automatico iOS */
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 11px 12px;
+  outline: none;
+}
+html[data-theme="light"] .pt-field input,
+html[data-theme="light"] .pt-field select {
+  background: #ffffff; /* input SEMPRE bianchi in light */
+}
+.pt-field input:focus,
+.pt-field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.pt-field input:disabled {
+  opacity: 0.6;
+}
+
+.pt-btn-full {
+  width: 100%;
+  padding: 13px;
+  font-size: 16px;
+}
+.pt-add {
+  margin-top: 2px;
+}
+
+.pt-form-error {
+  background: var(--danger-bg);
+  color: var(--deflation);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
+/* Totali (hero) */
+.pt-totals {
+  text-align: center;
+}
+.pt-totals-label {
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pt-totals-value {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 2px 0 6px;
+}
+.pt-totals-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 15px;
+  color: var(--muted);
+}
+.pt-totals-sub {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--subtle);
+}
+
+/* Semaforo consigli */
+.pt-advice h3,
+.pt-strategy h3 {
+  margin-top: 0;
+}
+.pt-light-row {
+  border-top: 1px solid var(--divider);
+}
+.pt-light-row:first-of-type {
+  border-top: none;
+}
+.pt-light-row summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 2px;
+  cursor: pointer;
+  list-style: none;
+}
+.pt-light-row summary::-webkit-details-marker {
+  display: none;
+}
+.pt-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: 0 0 0 3px var(--surface-sunk);
+}
+.pt-dot-green {
+  background: var(--reflation);
+}
+.pt-dot-yellow {
+  background: var(--goldilocks);
+}
+.pt-dot-red {
+  background: var(--deflation);
+}
+.pt-light-asset {
+  font-weight: 600;
+  flex: none;
+}
+.pt-light-verdict {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: right;
+}
+.pt-light-detail {
+  padding: 0 2px 12px 24px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.pt-light-detail ul {
+  margin: 6px 0;
+  padding-left: 18px;
+}
+.pt-light-detail li {
+  margin: 3px 0;
+}
+.pt-light-headline {
+  color: var(--text);
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.pt-watch {
+  margin: 6px 0 0;
+}
+.pt-macro-summary {
+  border-top: 1px solid var(--divider);
+  padding-top: 10px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.pt-advice-meta {
+  font-size: 12px;
+  color: var(--subtle);
+  margin-top: 4px;
+}
+.pt-refresh-advice {
+  margin-top: 10px;
+}
+.pt-disclaimer {
+  font-size: 11px;
+  color: var(--subtle);
+  margin: 10px 0 0;
+}
+
+/* Strategia: barre target vs reale */
+.pt-target-row {
+  margin: 10px 0;
+}
+.pt-target-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  margin-bottom: 5px;
+}
+.pt-target-nums strong {
+  color: var(--text);
+}
+.pt-bar {
+  position: relative;
+  height: 10px;
+  border-radius: 6px;
+  background: var(--surface-sunk);
+  overflow: hidden;
+}
+.pt-bar-target {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-bg);
+  border-right: 2px solid var(--accent);
+}
+.pt-bar-actual {
+  position: absolute;
+  inset: 2px auto 2px 0;
+  border-radius: 4px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+.pt-moves {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+}
+.pt-moves li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--divider);
+  font-size: 14px;
+}
+
+/* Posizioni */
+.pt-pos-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--divider);
+}
+.pt-pos-row:first-of-type {
+  border-top: none;
+}
+.pt-pos-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.pt-pos-label {
+  font-weight: 600;
+}
+.pt-pos-qty {
+  font-size: 13px;
+  color: var(--muted);
+}
+.pt-pos-side {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-end;
+  text-align: right;
+  flex: none;
+}
+.pt-pos-value {
+  font-weight: 700;
+}
+.pt-pos-pnl {
+  font-size: 13px;
+}
+.pt-pos-alloc {
+  font-size: 12px;
+  color: var(--subtle);
+}
+
+/* Form movimento */
+.pt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pt-form h3 {
+  margin: 0;
+}
+.pt-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  background: var(--surface-sunk);
+  border-radius: 14px;
+  padding: 5px;
+}
+.pt-segmented button {
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pt-segmented button.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+.pt-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.pt-form-actions {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+}
+.pt-form-actions .btn {
+  width: 100%;
+  padding: 13px;
+}
+.pt-btn-cancel {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--deflation); /* Annulla = rosso pieno (convenzione di casa) */
+  border: none;
+  border-radius: 12px;
+  padding: 13px;
+  cursor: pointer;
+  width: 100%;
+}
+.pt-btn-cancel:hover {
+  filter: brightness(0.92);
+}
+
+/* Movimenti */
+.pt-tx-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--divider);
+}
+.pt-tx-row:first-of-type {
+  border-top: none;
+}
+.pt-tx-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.pt-tx-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+.pt-tx-detail {
+  font-size: 12px;
+  color: var(--muted);
+}
+.pt-tx-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  font-size: 14px;
+}
+.pt-tx-delete {
+  font: inherit;
+  color: var(--subtle);
+  background: transparent;
+  border: 1px solid var(--divider);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  line-height: 1;
+}
+.pt-tx-delete:hover {
+  color: var(--deflation);
+  border-color: var(--deflation);
+  background: var(--danger-bg);
+}
+
+/* Desktop */
+@media (min-width: 641px) {
+  .pt-segmented {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .pt-segmented-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pt-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pt-form-actions {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+  .pt-form-actions .btn,
+  .pt-btn-cancel {
+    width: auto;
+    min-width: 140px;
+  }
+}

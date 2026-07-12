@@ -13,6 +13,12 @@ from app.models.discretionary_overrides import DiscretionaryOverride
 from app.models.macro_indicators import MacroIndicator
 from app.models.model_snapshots import ModelSnapshot
 from app.models.news_signals import NewsSignal
+from app.models.portfolio_tracking import (
+    PtAdvice,
+    PtPriceCache,
+    PtStrategy,
+    PtTransaction,
+)
 from app.models.prediction_log import PredictionLog
 from app.models.regime_classifications import RegimeClassification
 from app.models.runtime_flag_overrides import RuntimeFlagOverride
@@ -33,6 +39,10 @@ __all__ = [
     "ModelSnapshot",
     "NewsSignal",
     "PredictionLog",
+    "PtAdvice",
+    "PtPriceCache",
+    "PtStrategy",
+    "PtTransaction",
     "RegimeClassification",
     "RuntimeFlagOverride",
     "SecularTrend",

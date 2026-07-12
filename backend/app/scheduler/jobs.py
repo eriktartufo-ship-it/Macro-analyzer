@@ -2098,6 +2098,20 @@ def start_scheduler():
         id="monthly_calibration_refresh",
         replace_existing=True,
     )
+    # Portfolio Tracking: consigli macro settimanali (lunedì 07:00 UTC, dopo
+    # il daily_refresh delle 06:00 così gli indicatori sono freschi).
+    if settings.enable_portfolio_tracking:
+        from app.services.portfolio_tracking.advisor import weekly_advice_job
+
+        scheduler.add_job(
+            weekly_advice_job,
+            "cron",
+            day_of_week="mon",
+            hour=7,
+            minute=0,
+            id="pt_weekly_advice",
+            replace_existing=True,
+        )
     scheduler.start()
     logger.info(
         f"Scheduler avviato: macro refresh alle "
