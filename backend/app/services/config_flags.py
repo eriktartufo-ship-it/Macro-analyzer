@@ -542,6 +542,34 @@ def use_nowcast_pillar() -> bool:
     return _read_flag("USE_NOWCAST_PILLAR", default=False)
 
 
+def use_level_accel_pillars() -> bool:
+    """T20 (2026-07-12 council P2): pillar livello-vs-ACCELERAZIONE.
+
+    Fix strutturale della diagnosi council 5/5: deflation overfit (40.3% vs
+    5-15% storico reale) e goldilocks blindness (accuracy 29.9%, 1995-99 e
+    2017-19 misclassificati come deflation) nascono dal confondere LIVELLI
+    con DINAMICHE: `inflation_low` (CPI < 2%) premiava deflation anche nei
+    boom disinflazionistici goldilocks.
+
+    Pacchetto:
+    - deflation: labor_collapsing (payrolls YoY < 0) + disinflation_impulse
+      (CPI in CADUTA × claims in salita, composito) — deflazione =
+      deterioramento, non livello basso. REBALANCE: inflation_low 0.12 → 0.06.
+    - goldilocks: labor_momentum_healthy (payrolls ~p50) +
+      unit_labor_costs_contained (ULC YoY < p50=2.3) + productivity_healthy.
+    - stagflation: unit_labor_costs_spiraling (ULC YoY > p90=7, wage-spiral 70s).
+
+    Soglie da QUANTILI STORICI REALI FRED 1948-2026 (regola anti-hand-tuning):
+    ULC p50=2.29 p90=7.00 · productivity p25=0.97 · payrolls p50=1.94 ·
+    cpi_chg6 p25=-0.62. Sanity su episodi veri: 1997 gold (ULC 1.68, pay 2.54)
+    vs 2008 defl (pay -2.56, cpi_chg6 -4.96) vs 1974 stag (ULC 11.2).
+
+    Serie nuove: ULCNFB + OPHNFB (trimestrali, dal 1947 — piena copertura
+    backfill). Default OFF fino a validation gate A/B sui 32 episodi.
+    """
+    return _read_flag("USE_LEVEL_ACCEL_PILLARS", default=False)
+
+
 def use_cyclical_pillar() -> bool:
     """T18 (2026-05-31 Council sessione 25): cyclical leading indicators.
 

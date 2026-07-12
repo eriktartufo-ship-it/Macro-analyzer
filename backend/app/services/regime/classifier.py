@@ -22,6 +22,7 @@ from app.services.config_flags import (
     use_freshness_weighting,
     use_gdp_collapse_override,
     use_labor_credit_pillar,
+    use_level_accel_pillars,
     use_ml_regime_blend,
     use_momentum_pillars,
     use_news_pillar,
@@ -295,6 +296,82 @@ def _merge_nowcast_pillars(base: dict) -> dict:
             merged[regime][cond_name] = dict(cond_data)
     return merged
 
+
+# T20 (2026-07-12 council P2) LIVELLO-VS-ACCELERAZIONE — fix strutturale
+# deflation overfit (40.3% vs 5-15%) e goldilocks blindness (accuracy 29.9%).
+# Diagnosi: deflation premiava LIVELLI bassi di inflazione (inflation_low 0.12)
+# anche nei boom disinflazionistici goldilocks (1995-99, 2017-19); goldilocks
+# non aveva discriminatori positivi (produttività, qualità del lavoro).
+# Deflazione VERA = DETERIORAMENTO (payrolls in contrazione, inflazione in
+# CADUTA con claims in salita), non inflazione bassa e stabile.
+# Soglie da QUANTILI STORICI REALI FRED 1948-2026 (regola anti-hand-tuning):
+# ULC YoY p50=2.29 p90=7.00 · productivity YoY p25=0.97 · payrolls YoY
+# p25=0.54 p50=1.94 · cpi_yoy_change_6m p25=-0.62.
+# Sanity su episodi veri: 1997 gold ULC 1.68/pay +2.54 · 2018 gold ULC 1.87/
+# pay +1.62 · 2008 defl pay -2.56/cpi_chg6 -4.96 · 1974 stag ULC 11.2.
+_LEVEL_ACCEL_PILLAR_ADD: dict[str, dict[str, dict]] = {
+    "deflation": {
+        "labor_collapsing": {"weight": 0.05, "description": "Payrolls YoY < 0 (contrazione occupazione, non rallentamento)"},
+        "disinflation_impulse": {"weight": 0.05, "description": "CPI YoY in CADUTA (chg 6m < p25) E claims in salita (composito)"},
+    },
+    "goldilocks": {
+        "labor_momentum_healthy": {"weight": 0.05, "description": "Payrolls YoY > ~1.2 (mid p25-p50: crescita sana, anti-deflation)"},
+        "unit_labor_costs_contained": {"weight": 0.05, "description": "ULC YoY < p50=2.3 (pressione salariale netta contenuta)"},
+        "productivity_healthy": {"weight": 0.03, "description": "Productivity YoY > p25=1.0 (peso piccolo: covid composition effect)"},
+    },
+    "stagflation": {
+        "unit_labor_costs_spiraling": {"weight": 0.03, "description": "ULC YoY > p90=7 (wage-price spiral anni 70)"},
+    },
+}
+
+_LEVEL_ACCEL_PILLAR_REBALANCE: dict[str, dict[str, float]] = {
+    "deflation": {
+        # IL fix: CPI basso da solo smette di essere forte evidenza deflation.
+        # GATE A/B 2026-07-12 sui 32 episodi arricchiti con dati FRED reali
+        # (scripts/t20_validation.py) — 2 iterazioni, entrambe FAIL:
+        # - iter0 (questa: -0.06/-0.02/-0.02): gold 73→82% ✓, defl prob
+        #   21.2→19.8% ✓, MA deflation 69→62% (2011 Eurodebt flip hairline
+        #   0.28 vs 0.30) e overall 69→67%.
+        # - iter1 (tutto -0.10 su inflation_low): deflation 69→54%, PEGGIO —
+        #   le deflazioni-scare market-driven (2011/2012/2018Q4/2023) usano
+        #   proprio il livello basso di CPI come evidenza.
+        # VERDETTO: il fix goldilocks FUNZIONA come diagnosticato, ma sul
+        # dataset n=32 va in trade-off con episodi deflation borderline le
+        # cui label sono market-driven, non macro. FLAG RESTA OFF finché una
+        # validazione più pesante (walk-forward NBER su backfill mensile, o
+        # dataset episodi esteso) non scioglie il trade-off. NON iterare
+        # ancora su questi 32 episodi = overfitting del gate.
+        "inflation_low": -0.06,
+        "breakeven_collapse": -0.02,
+        "pmi_contraction": -0.02,
+    },
+    "goldilocks": {
+        # Sposta peso dai livelli alle dinamiche
+        "inflation_low": -0.05,
+        "unemployment_very_low": -0.03,
+        "pmi_healthy": -0.03,
+        "vix_calm": -0.02,
+    },
+    "stagflation": {
+        "inflation_high": -0.03,
+    },
+}
+
+
+def _merge_level_accel_pillars(base: dict) -> dict:
+    """T20: applica rebalance + aggiunta pillar livello-vs-accelerazione."""
+    merged = {regime: {k: dict(v) for k, v in conds.items()} for regime, conds in base.items()}
+    for regime, deltas in _LEVEL_ACCEL_PILLAR_REBALANCE.items():
+        for cond_name, delta in deltas.items():
+            if cond_name in merged.get(regime, {}):
+                merged[regime][cond_name]["weight"] = max(
+                    0.0, merged[regime][cond_name]["weight"] + delta
+                )
+    for regime, adds in _LEVEL_ACCEL_PILLAR_ADD.items():
+        for cond_name, cond_data in adds.items():
+            merged[regime][cond_name] = dict(cond_data)
+    return merged
+
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
 REGIME_CONDITIONS = {
     "reflation": {
@@ -501,6 +578,15 @@ def _evaluate_condition(
     # Opt-in via USE_NEWS_PILLAR=1. Pillar è soft (peso 0.02) per gestire
     # rumorosità intraday e LLM-scoring variance.
     news_sentiment = indicators.get("news_sentiment", 0.0)
+    # T20 (2026-07-12): livello-vs-accelerazione. Default = mediane storiche
+    # 1948-2026 (neutral-at-median: sigmoid ~0.5, nessun bias su dato assente).
+    # Dual-key read: gli episodi storici usano payrolls_yoy/claims_roc,
+    # il live usa payrolls_roc_12m/initial_claims_roc.
+    ulc_yoy = indicators.get("ulc_yoy", 2.3)
+    productivity_yoy = indicators.get("productivity_yoy", 2.0)
+    payrolls_any = indicators.get("payrolls_roc_12m", indicators.get("payrolls_yoy", 1.5))
+    claims_any = indicators.get("initial_claims_roc", indicators.get("claims_roc", 0.0))
+    cpi_chg6_any = indicators.get("cpi_yoy_change_6m", 0.0)
     # Cross-asset ratios (Tier 6.3): default neutral = mediane storiche REALI
     # 2000-2026 (AUDIT 2026-07-12: 0.37 era ~160x fuori scala vs raw ratio).
     # Opt-in via USE_CROSS_ASSET_PILLARS. Soft pillar 0.02-0.03 each.
@@ -862,6 +948,36 @@ def _evaluate_condition(
         if not use_cross_asset_pillars():
             return 0.0
         return _sigmoid(-hy_ig_spread_ratio, center=-3.0, scale=0.5)
+    # T20 livello-vs-accelerazione (esistono solo con USE_LEVEL_ACCEL_PILLARS
+    # via merge). Soglie = quantili storici FRED 1948-2026, vedi
+    # _LEVEL_ACCEL_PILLAR_ADD.
+    elif condition_name == "labor_collapsing" and regime == "deflation":
+        # Payrolls YoY < 0 = contrazione vera (2008 -2.6, 2020 -13.4);
+        # 2017-19 (+1.6) e 1995-99 (+2.5) restano fuori.
+        return _sigmoid(-payrolls_any, center=0.0, scale=0.5)
+    elif condition_name == "disinflation_impulse" and regime == "deflation":
+        # Composito: inflazione in CADUTA (cpi_chg6 < p25=-0.62) E claims in
+        # salita (>5%, convenzione claims_rising esistente). Il prodotto
+        # distingue "inflazione bassa e stabile" (goldilocks) da "domanda che
+        # collassa" (deflation).
+        falling_inflation = _sigmoid(-cpi_chg6_any, center=0.62, scale=0.5)
+        deteriorating_labor = _sigmoid(claims_any, center=5.0, scale=3.0)
+        return falling_inflation * deteriorating_labor
+    elif condition_name == "labor_momentum_healthy" and regime == "goldilocks":
+        # Payrolls YoY > ~1.2 (mid p25-p50): crescita occupazione sana =
+        # evidenza POSITIVA goldilocks (2018 +1.62 → 0.70, 2008 -2.56 → 0).
+        return _sigmoid(payrolls_any, center=1.2, scale=0.5)
+    elif condition_name == "unit_labor_costs_contained" and regime == "goldilocks":
+        # ULC YoY < p50=2.3: pressione salariale netta di produttività
+        # contenuta (1997: 1.68 → 0.74; 1974: 11.2 → 0; 2021: 6.2 → 0).
+        return _sigmoid(-ulc_yoy, center=-2.3, scale=0.6)
+    elif condition_name == "productivity_healthy" and regime == "goldilocks":
+        # Productivity YoY > p25=1.0. Peso piccolo (0.03): il covid 2020 la
+        # gonfiò a +6.6 per effetto composizione (licenziati i low-wage).
+        return _sigmoid(productivity_yoy, center=1.0, scale=0.5)
+    elif condition_name == "unit_labor_costs_spiraling" and regime == "stagflation":
+        # ULC YoY > p90=7.0: wage-price spiral (1974: 11.2 → 1; 2021: 6.2 → 0.3).
+        return _sigmoid(ulc_yoy, center=7.0, scale=1.0)
 
     # Fallback
     return 0.5
@@ -941,6 +1057,11 @@ def classify_regime(
     # Highest-frequency macro signal nel modello.
     if use_nowcast_pillar():
         active_conditions = _merge_nowcast_pillars(active_conditions)
+
+    # T20 (2026-07-12 council P2): livello-vs-accelerazione — fix strutturale
+    # deflation overfit + goldilocks blindness. Default OFF fino a gate A/B.
+    if use_level_accel_pillars():
+        active_conditions = _merge_level_accel_pillars(active_conditions)
 
     for regime in REGIMES:
         regime_score = 0.0
