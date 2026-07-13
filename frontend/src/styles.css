@@ -288,7 +288,7 @@ body {
   display: none;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 899px) {
   .nav-tabs {
     display: none;
   }
@@ -2333,4 +2333,129 @@ html[data-theme="light"] .pt-field select {
 }
 .pt-tx-edit:active {
   transform: scale(0.97);
+}
+
+/* ---- prezzo: toggle unitario/totale nel form ---- */
+.pt-field-price .pt-price-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pt-price-toggle {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface-sunk);
+  border-radius: 999px;
+  padding: 2px;
+  flex: none;
+}
+.pt-price-toggle button {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.pt-price-toggle button.active {
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+
+/* ============================================================
+   Shell gestionale — sidebar desktop (≥900px), come CognitiveOS/RGV
+   ============================================================ */
+.mac-sidebar { display: none; }
+
+.mac-brand {
+  display: flex; align-items: center; gap: 11px;
+  background: transparent; border: none; cursor: pointer;
+  padding: 6px; color: var(--text); text-align: left; font-family: inherit;
+}
+.mac-mark {
+  width: 34px; height: 34px; flex: none; border-radius: 11px;
+  background: linear-gradient(140deg, var(--accent), #22d3ff);
+  box-shadow: 0 6px 18px rgba(10,132,255,0.4), inset 0 1px 0 rgba(255,255,255,0.4);
+  display: grid; place-items: center;
+}
+.mac-mark::after { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,0.92); }
+.mac-brand-txt { display: flex; flex-direction: column; min-width: 0; }
+.mac-wordmark { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.mac-brandsub { font-size: 11px; color: var(--subtle); margin-top: 1px; }
+
+.mac-nav { display: flex; flex-direction: column; gap: 3px; margin-top: 22px; }
+.mac-navlink {
+  display: flex; align-items: center; gap: 11px;
+  padding: 10px 12px; border-radius: 12px;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--muted); font-size: 14px; font-weight: 600;
+  text-align: left; font-family: inherit;
+  transition: background 0.15s, color 0.15s;
+}
+.mac-navic { font-size: 16px; line-height: 1; width: 20px; text-align: center; flex: none; }
+.mac-navlink:hover { background: var(--surface-sunk); color: var(--text); }
+.mac-navlink.on { background: var(--accent-bg); color: var(--accent); }
+.mac-navlink:active { transform: scale(0.98); }
+
+.mac-side-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 14px; }
+.mac-account { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 12px; background: var(--surface-sunk); }
+.mac-avatar {
+  width: 32px; height: 32px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 700; font-size: 14px;
+  color: #fff; background: linear-gradient(140deg, var(--accent), #22d3ff);
+}
+.mac-account-txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.mac-account-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mac-account-mail { font-size: 11px; color: var(--subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mac-logout {
+  flex: none; font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--muted); background: var(--card); border: 1px solid var(--stroke);
+  border-radius: 999px; padding: 5px 12px; cursor: pointer;
+}
+.mac-logout:hover { color: var(--deflation); border-color: var(--deflation); }
+.mac-signin {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 12px;
+  background: var(--accent-bg); border: 1px solid transparent;
+  color: var(--accent); font-size: 13px; font-weight: 600;
+  cursor: pointer; font-family: inherit;
+}
+.mac-foot-actions { display: flex; gap: 6px; }
+.mac-foot-btn {
+  flex: 1; height: 38px; display: grid; place-items: center;
+  border-radius: 10px; background: var(--surface-sunk); border: 1px solid var(--stroke);
+  color: var(--text); font-size: 15px; cursor: pointer; font-family: inherit;
+}
+.mac-foot-btn:hover { background: var(--card-hover); }
+.mac-foot-btn:disabled { opacity: 0.5; }
+
+.mac-menu-account { display: flex; align-items: center; gap: 9px; padding: 8px 10px; }
+.mac-menu-divider { height: 1px; background: var(--divider); margin: 6px 4px; }
+
+@media (min-width: 900px) {
+  .app.mac-shell {
+    max-width: none; margin: 0; padding: 0;
+    display: grid; grid-template-columns: 248px minmax(0, 1fr);
+    align-items: start; min-height: 100vh;
+  }
+  .mac-main {
+    min-width: 0; width: 100%;
+    max-width: 1120px; margin: 0 auto;
+    padding: 28px 32px 48px;
+  }
+  .mac-main > .header { display: none; }   /* topbar mobile off su desktop */
+  .mac-sidebar {
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+    padding: 22px 16px;
+    border-right: 1px solid var(--divider);
+    background: var(--card);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  }
 }

@@ -3,6 +3,8 @@ import { api } from "./api/client";
 import { useDedollarBonus } from "./hooks/useDedollarBonus";
 import type { CrisisHistory, CrisisRiskAssessment, CurrentRegime, Dedollarization, InsiderActivity, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
 import { Header, type Page, type Theme } from "./components/Header";
+import { Sidebar } from "./components/Sidebar";
+import { ptEnsureLoaded } from "./hooks/usePtSession";
 import { RegimeCard } from "./components/RegimeCard";
 import { ProbabilityBars } from "./components/ProbabilityBars";
 import { RegimeTimelineChart } from "./components/RegimeTimelineChart";
@@ -80,6 +82,11 @@ export default function App() {
     }
   }, [theme]);
 
+  // Risolve una eventuale sessione Portafogli salvata (token) → visibile nella sidebar
+  useEffect(() => {
+    ptEnsureLoaded();
+  }, []);
+
   const load = useCallback(async () => {
     setError(null);
 
@@ -145,17 +152,29 @@ export default function App() {
   const ready = regime && scoreboard;
   const fallback = <div className="loading">Caricamento…</div>;
 
+  const themeToggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
   return (
-    <div className="app">
-      <Header
+    <div className="app mac-shell">
+      <Sidebar
         date={regime?.date}
-        onRefresh={onRefresh}
-        refreshing={refreshing}
         page={page}
         onPageChange={setPage}
         theme={theme}
-        onThemeToggle={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        onThemeToggle={themeToggle}
+        onRefresh={onRefresh}
+        refreshing={refreshing}
       />
+      <div className="mac-main">
+        <Header
+          date={regime?.date}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          page={page}
+          onPageChange={setPage}
+          theme={theme}
+          onThemeToggle={themeToggle}
+        />
 
       {loading && page !== "portfolio" && <div className="loading">Loading macro data…</div>}
       {error && !loading && page !== "portfolio" && <div className="error">{error}</div>}
@@ -254,6 +273,7 @@ export default function App() {
           <PortfolioPage />
         </Suspense>
       )}
+      </div>
     </div>
   );
 }

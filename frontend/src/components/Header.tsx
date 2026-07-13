@@ -14,14 +14,14 @@ interface Props {
   onThemeToggle: () => void;
 }
 
-interface Tab {
+export interface Tab {
   id: Page;
   label: string;
   short: string;
   icon: string;
 }
 
-const TABS: Tab[] = [
+export const TABS: Tab[] = [
   { id: "dashboard", label: "Dashboard", short: "Home", icon: "▣" },
   { id: "ai-portfolio", label: "AI Portfolio", short: "AI", icon: "🤖" },
   { id: "portfolio", label: "Portafogli", short: "Miei", icon: "◆" },
@@ -31,27 +31,16 @@ const TABS: Tab[] = [
   { id: "data", label: "Data", short: "Data", icon: "▤" },
 ];
 
+/** Header MOBILE (topbar + bottom-nav). Su desktop (≥900px) lo shell usa la
+ * Sidebar e questo header è nascosto via CSS. */
 export function Header({ date, onRefresh, refreshing, page, onPageChange, theme, onThemeToggle }: Props) {
-  const [pillStyle, setPillStyle] = useState({ left: 0, width: 0, opacity: 0 });
   const [mobilePillStyle, setMobilePillStyle] = useState({ left: 0, width: 0, opacity: 0 });
-
-  const tabsRef = useRef<(HTMLButtonElement | null)[]>([]);
   const mobileTabsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // Update highlighter position when tab changes
   useEffect(() => {
     const activeIndex = TABS.findIndex((t) => t.id === page);
-    const activeTab = tabsRef.current[activeIndex];
     const activeMobileTab = mobileTabsRef.current[activeIndex];
-
     const timeout = setTimeout(() => {
-      if (activeTab) {
-        setPillStyle({
-          left: activeTab.offsetLeft,
-          width: activeTab.clientWidth,
-          opacity: 1,
-        });
-      }
       if (activeMobileTab) {
         setMobilePillStyle({
           left: activeMobileTab.offsetLeft,
@@ -73,7 +62,7 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
           </div>
         </div>
         <div className="header-actions">
-          <SettingsMenu />
+          <SettingsMenu onNavigate={onPageChange} />
           <button
             className="theme-toggle glass-active"
             onClick={onThemeToggle}
@@ -88,32 +77,7 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
         </div>
       </div>
 
-      <div className="nav-tabs" role="tablist">
-        <div
-          className="nav-tab-highlight"
-          style={{
-            left: pillStyle.left,
-            width: pillStyle.width,
-            opacity: pillStyle.opacity,
-          }}
-        />
-        {TABS.map((tab, i) => (
-          <button
-            key={tab.id}
-            ref={(el) => {
-              tabsRef.current[i] = el;
-            }}
-            role="tab"
-            aria-selected={page === tab.id}
-            className={`nav-tab ${page === tab.id ? "active" : ""}`}
-            onClick={() => onPageChange(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="nav-bottom" role="tablist" style={{ position: "fixed" }}>
+      <nav className="nav-bottom" role="tablist" style={{ position: "fixed" }}>
         <div
           className="nav-bottom-highlight"
           style={{
@@ -137,7 +101,7 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
             <span>{tab.short}</span>
           </button>
         ))}
-      </div>
+      </nav>
     </>
   );
 }
