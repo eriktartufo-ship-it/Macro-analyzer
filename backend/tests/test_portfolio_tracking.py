@@ -88,6 +88,43 @@ def test_mixed_units_grams_and_oz():
     assert pos["cost_basis_eur"] == pytest.approx(expected_cost)
 
 
+def test_purity_reduces_fine_content_and_market_value():
+    # 1 oz fisica al 900/1000 = 0.9 oz fine. Costo = quello pagato (invariato).
+    pos = compute_position([_tx("buy", 1, 2000, day=1, purity=0.9)])
+    assert pos["quantity"] == pytest.approx(1.0)          # peso fisico
+    assert pos["fine_quantity"] == pytest.approx(0.9)     # contenuto fine
+    assert pos["cost_basis_eur"] == pytest.approx(2000.0)  # il costo non cambia
+
+
+def test_pure_metal_defaults_to_full_fine_content():
+    pos = compute_position([_tx("buy", 2, 2000, day=1)])  # niente purity → 1.0
+    assert pos["fine_quantity"] == pytest.approx(2.0)
+
+
+def test_purity_valuation_in_build_portfolio():
+    # 1 oz al 900 → 0.9 oz fine × spot 2500 = 2250 di controvalore
+    result = build_portfolio([_tx("buy", 1, 2000, day=1, purity=0.9)], {"gold": 2500.0})
+    p = result["positions"][0]
+    assert p["market_value_eur"] == pytest.approx(2250.0)
+    assert p["avg_purity"] == pytest.approx(0.9)
+    assert p["pnl_eur"] == pytest.approx(250.0)
+
+
+def test_avg_purity_hidden_when_metal_is_fine():
+    result = build_portfolio([_tx("buy", 1, 2000, day=1, purity=0.9999)], {"gold": 2500.0})
+    assert result["positions"][0]["avg_purity"] is None  # ≈fine → non mostrato
+
+
+def test_mixed_purity_average():
+    # 1 oz al 999 + 1 oz al 900 → 2 oz fisiche, 1.899 oz fine
+    pos = compute_position([
+        _tx("buy", 1, 2000, day=1, purity=0.999),
+        _tx("buy", 1, 2000, day=2, purity=0.900),
+    ])
+    assert pos["quantity"] == pytest.approx(2.0)
+    assert pos["fine_quantity"] == pytest.approx(1.899)
+
+
 def test_build_portfolio_totals_and_allocation():
     txs = [
         _tx("buy", 1, 2000, day=1),
@@ -150,17 +187,25 @@ def test_check_login(monkeypatch):
 def test_validate_advice_clamps_and_defaults():
     out = validate_advice({
         "macro_summary": "x" * 900,
+        "broader_context": ["a"] * 8,
         "assets": {
             "gold": {"light": "GREEN", "headline": "ok", "reasons": ["a"] * 10},
             "silver": {"light": "viola", "headline": "h"},
+            "platinum": {"light": "yellow", "headline": "p"},
+            "palladium": {"light": "red", "headline": "pd"},
+            "bitcoin": {"light": "green", "headline": "b"},
             "junk": {"light": "green"},
         },
     })
     assert out["assets"]["gold"]["light"] == "green"
     assert len(out["assets"]["gold"]["reasons"]) == 4
     assert out["assets"]["silver"]["light"] == "yellow"  # colore ignoto → neutro
+    # i nuovi metalli sono accettati
+    assert out["assets"]["platinum"]["light"] == "yellow"
+    assert out["assets"]["palladium"]["light"] == "red"
     assert "junk" not in out["assets"]
     assert len(out["macro_summary"]) == 500
+    assert len(out["broader_context"]) == 5  # capato a 5 punti
 
 
 def test_validate_advice_rejects_empty():
@@ -200,7 +245,10 @@ def pt_client(monkeypatch):
 
     monkeypatch.setattr(
         prices, "spot_eur_for_assets",
-        lambda db, kt: {k: {"gold": 2500.0, "bitcoin": 90000.0}.get(k) for k in kt},
+        lambda db, kt: {
+            k: {"gold": 2500.0, "bitcoin": 90000.0, "platinum": 1500.0, "palladium": 1200.0}.get(k)
+            for k in kt
+        },
     )
 
     app = FastAPI()
@@ -265,6 +313,61 @@ def test_transactions_crud_and_portfolio(pt_client):
     ).status_code == 200
     txs = pt_client.get("/api/v1/pt/transactions", headers=headers).json()["transactions"]
     assert len(txs) == 1
+
+
+def test_edit_transaction(pt_client):
+    headers = _login(pt_client)
+    resp = pt_client.post("/api/v1/pt/transactions", headers=headers, json={
+        "asset_key": "gold", "side": "buy", "quantity": 1, "unit": "oz",
+        "unit_price_eur": 2000, "trade_date": "2026-01-10",
+    })
+    tx_id = resp.json()["id"]
+    # modifica: quantità e prezzo corretti + purezza 900
+    upd = pt_client.put(f"/api/v1/pt/transactions/{tx_id}", headers=headers, json={
+        "asset_key": "gold", "side": "buy", "quantity": 2, "unit": "oz",
+        "unit_price_eur": 2100, "purity": 0.9, "trade_date": "2026-01-11",
+    })
+    assert upd.status_code == 200
+    assert upd.json()["quantity"] == 2
+    assert upd.json()["purity"] == pytest.approx(0.9)
+    # portafoglio riflette la modifica (2 oz × 0.9 fine × 2500)
+    pf = pt_client.get("/api/v1/pt/portfolio", headers=headers).json()
+    assert pf["positions"][0]["market_value_eur"] == pytest.approx(2 * 0.9 * 2500)
+    # non si può modificare un movimento inesistente / di un altro
+    assert pt_client.put("/api/v1/pt/transactions/9999", headers=headers, json={
+        "asset_key": "gold", "side": "buy", "quantity": 1, "unit": "oz",
+        "unit_price_eur": 2000, "trade_date": "2026-01-10",
+    }).status_code == 404
+
+
+def test_platinum_purity_and_valuation(pt_client):
+    headers = _login(pt_client)
+    # 10 g di platino al 950/1000
+    pt_client.post("/api/v1/pt/transactions", headers=headers, json={
+        "asset_key": "platinum", "side": "buy", "quantity": 31.1034768, "unit": "g",
+        "unit_price_eur": 40, "purity": 0.95, "trade_date": "2026-03-01",
+    })
+    pf = pt_client.get("/api/v1/pt/portfolio", headers=headers).json()
+    p = pf["positions"][0]
+    assert p["ticker"] == "PL=F"
+    assert p["quantity"] == pytest.approx(1.0)          # 1 oz fisica
+    assert p["market_value_eur"] == pytest.approx(0.95 * 1500)  # 0.95 oz fine × spot
+    assert p["avg_purity"] == pytest.approx(0.95)
+    # crypto ignora la purezza (forzata a 1.0)
+    pt_client.post("/api/v1/pt/transactions", headers=headers, json={
+        "asset_key": "bitcoin", "side": "buy", "quantity": 0.1, "unit": "btc",
+        "unit_price_eur": 80000, "purity": 0.5, "trade_date": "2026-03-02",
+    })
+    txs = pt_client.get("/api/v1/pt/transactions", headers=headers).json()["transactions"]
+    btc = [t for t in txs if t["asset_key"] == "bitcoin"][0]
+    assert btc["purity"] == pytest.approx(1.0)
+
+
+def test_assets_endpoint_exposes_metals_and_purities(pt_client):
+    data = pt_client.get("/api/v1/pt/assets").json()
+    keys = {a["asset_key"] for a in data["presets"]}
+    assert {"gold", "silver", "platinum", "palladium", "bitcoin"} <= keys
+    assert "gold" in data["purities"] and "platinum" in data["purities"]
 
 
 def test_users_are_isolated(pt_client):

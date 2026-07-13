@@ -23,7 +23,11 @@ from app.services.portfolio_tracking.auth import (
     require_pt_admin,
     require_pt_user,
 )
-from app.services.portfolio_tracking.positions import PRESET_ASSETS, build_portfolio
+from app.services.portfolio_tracking.positions import (
+    METAL_PURITIES,
+    PRESET_ASSETS,
+    build_portfolio,
+)
 
 router = APIRouter(prefix="/api/v1/pt", tags=["portfolio-tracking"])
 
@@ -46,6 +50,8 @@ class TransactionIn(BaseModel):
     note: str | None = Field(None, max_length=500)
     # solo per asset_key custom (ticker libero)
     label: str | None = Field(None, max_length=64)
+    # purezza metallo (frazione 0<p<=1); ignorata per non-metalli
+    purity: float = Field(1.0, gt=0, le=1)
 
 
 class BulkTransactionIn(TransactionIn):
@@ -82,6 +88,11 @@ def _resolve_asset(tx: TransactionIn) -> dict:
     }
 
 
+def _purity_for(asset: dict, requested: float) -> float:
+    """La purezza vale solo per i metalli; per il resto è sempre 1.0."""
+    return requested if asset["asset_class"] == "metal" else 1.0
+
+
 def _tx_dict(t: PtTransaction) -> dict:
     return {
         "id": t.id,
@@ -94,6 +105,7 @@ def _tx_dict(t: PtTransaction) -> dict:
         "unit": t.unit,
         "unit_price_eur": t.unit_price_eur,
         "fee_eur": t.fee_eur,
+        "purity": t.purity,
         "trade_date": t.trade_date.isoformat(),
         "note": t.note,
     }
@@ -137,6 +149,7 @@ def list_assets():
             {"asset_key": k, **{f: v[f] for f in ("label", "asset_class", "units", "canonical_unit")}}
             for k, v in PRESET_ASSETS.items()
         ],
+        "purities": METAL_PURITIES,
     }
 
 
@@ -189,11 +202,44 @@ def add_transaction(
         unit=body.unit,
         unit_price_eur=body.unit_price_eur,
         fee_eur=body.fee_eur,
+        purity=_purity_for(asset, body.purity),
         trade_date=body.trade_date,
         note=body.note,
         **asset,
     )
     db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _tx_dict(row)
+
+
+@router.put("/transactions/{tx_id}")
+def update_transaction(
+    tx_id: int,
+    body: TransactionIn,
+    user: PtUser = Depends(require_pt_user),
+    db: Session = Depends(get_db),
+):
+    row = (
+        db.query(PtTransaction)
+        .filter(PtTransaction.id == tx_id, PtTransaction.username == user.username)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Movimento non trovato")
+    asset = _resolve_asset(body)
+    row.side = body.side
+    row.quantity = body.quantity
+    row.unit = body.unit
+    row.unit_price_eur = body.unit_price_eur
+    row.fee_eur = body.fee_eur
+    row.purity = _purity_for(asset, body.purity)
+    row.trade_date = body.trade_date
+    row.note = body.note
+    row.asset_key = asset["asset_key"]
+    row.asset_class = asset["asset_class"]
+    row.label = asset["label"]
+    row.ticker = asset["ticker"]
     db.commit()
     db.refresh(row)
     return _tx_dict(row)
@@ -281,6 +327,7 @@ def bulk_import(body: list[BulkTransactionIn], db: Session = Depends(get_db)):
             unit=item.unit,
             unit_price_eur=item.unit_price_eur,
             fee_eur=item.fee_eur,
+            purity=_purity_for(asset, item.purity),
             trade_date=item.trade_date,
             note=item.note,
             **asset,

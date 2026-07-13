@@ -2282,3 +2282,55 @@ html[data-theme="light"] .pt-field select {
     animation: none;
   }
 }
+
+/* ---- Portafogli v3: 6 preset (wrap), purezza, visione ampia, edit ---- */
+.pt-segmented-wrap {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (min-width: 641px) {
+  .pt-segmented-wrap {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+.pt-broader {
+  border-top: 1px solid var(--divider);
+  margin-top: 10px;
+  padding-top: 8px;
+}
+.pt-broader h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.pt-broader ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.pt-broader li {
+  margin: 4px 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.pt-tx-edit {
+  font: inherit;
+  color: var(--subtle);
+  background: transparent;
+  border: 1px solid var(--divider);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  line-height: 1;
+}
+.pt-tx-edit:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.pt-tx-edit:active {
+  transform: scale(0.97);
+}

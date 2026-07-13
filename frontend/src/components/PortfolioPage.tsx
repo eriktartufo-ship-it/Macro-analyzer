@@ -14,8 +14,10 @@ import {
   ptApi,
   setToken,
   type PtAdvice,
+  type PtAdviceAssetKey,
   type PtPortfolio,
   type PtPosition,
+  type PtPurityOption,
   type PtStrategy,
   type PtTransaction,
   type PtTransactionIn,
@@ -43,27 +45,44 @@ const LIGHT_LABEL: Record<string, string> = {
   red: "Meglio aspettare",
 };
 
-const ASSET_ORDER: ("gold" | "silver" | "bitcoin")[] = ["gold", "silver", "bitcoin"];
-const ASSET_LABEL = { gold: "Oro", silver: "Argento", bitcoin: "Bitcoin" } as const;
+const ASSET_ORDER: PtAdviceAssetKey[] = [
+  "gold",
+  "silver",
+  "platinum",
+  "palladium",
+  "bitcoin",
+];
+const ASSET_LABEL: Record<PtAdviceAssetKey, string> = {
+  gold: "Oro",
+  silver: "Argento",
+  platinum: "Platino",
+  palladium: "Palladio",
+  bitcoin: "Bitcoin",
+};
 
 /** Colori segmenti allocazione: semantici per metalli/crypto (token regime),
  * sfumature di accent per i ticker generici. Solo token del design system. */
-function segmentColor(p: PtPosition, tickerIndex: number): { background: string; opacity?: number } {
-  if (p.asset_key === "gold") return { background: "var(--goldilocks)" };
-  if (p.asset_key === "silver") return { background: "var(--subtle)" };
-  if (p.asset_key === "bitcoin") return { background: "var(--stagflation)" };
-  const fades = [1, 0.7, 0.45, 0.28];
-  return { background: "var(--accent)", opacity: fades[tickerIndex % fades.length] };
-}
+// Colori fissi per metalli+BTC; i ticker liberi (ETF) usano sfumature di accent.
+const METAL_COLORS: Record<string, { background: string }> = {
+  gold: { background: "var(--goldilocks)" },
+  silver: { background: "var(--subtle)" },
+  platinum: { background: "var(--reflation)" },
+  palladium: { background: "var(--stagflation)" },
+  bitcoin: { background: "var(--deflation)" },
+};
 
 function segmentStyles(positions: PtPosition[]): Map<string, { background: string; opacity?: number }> {
   const map = new Map<string, { background: string; opacity?: number }>();
+  const fades = [1, 0.7, 0.45, 0.28];
   let tickerIdx = 0;
   for (const p of positions) {
-    if (p.asset_key === "gold" || p.asset_key === "silver" || p.asset_key === "bitcoin") {
-      map.set(p.asset_key, segmentColor(p, 0));
+    if (METAL_COLORS[p.asset_key]) {
+      map.set(p.asset_key, METAL_COLORS[p.asset_key]);
     } else {
-      map.set(p.asset_key, segmentColor(p, tickerIdx));
+      map.set(p.asset_key, {
+        background: "var(--accent)",
+        opacity: fades[tickerIdx % fades.length],
+      });
       tickerIdx += 1;
     }
   }
@@ -79,9 +98,13 @@ interface Preset {
 const PRESETS: Preset[] = [
   { asset_key: "gold", label: "Oro", units: ["g", "oz"] },
   { asset_key: "silver", label: "Argento", units: ["g", "oz"] },
+  { asset_key: "platinum", label: "Platino", units: ["g", "oz"] },
+  { asset_key: "palladium", label: "Palladio", units: ["g", "oz"] },
   { asset_key: "bitcoin", label: "Bitcoin", units: ["btc"] },
   { asset_key: "custom", label: "Altro (ticker)", units: ["share"] },
 ];
+
+const METAL_KEYS = new Set(["gold", "silver", "platinum", "palladium"]);
 
 const UNIT_LABEL: Record<string, string> = {
   g: "grammi",
@@ -90,6 +113,8 @@ const UNIT_LABEL: Record<string, string> = {
   share: "quote",
   unit: "quote",
 };
+
+const purityLabel = (fraction: number) => `${Math.round(fraction * 1000)}/1000`;
 
 export function PortfolioPage() {
   const [session, setSession] = useState<{ username: string; display_name: string } | null>(null);
@@ -199,8 +224,10 @@ function PortfolioDashboard({
   const [transactions, setTransactions] = useState<PtTransaction[]>([]);
   const [advice, setAdvice] = useState<PtAdvice | null>(null);
   const [strategy, setStrategy] = useState<PtStrategy | null>(null);
+  const [purities, setPurities] = useState<Record<string, PtPurityOption[]>>({});
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<PtTransaction | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
@@ -217,6 +244,7 @@ function PortfolioDashboard({
     }
     ptApi.latestAdvice().then((r) => setAdvice(r.advice)).catch(() => undefined);
     ptApi.strategy().then((r) => setStrategy(r.strategy)).catch(() => undefined);
+    ptApi.assets().then((r) => setPurities(r.purities)).catch(() => undefined);
   }, [onLogout]);
 
   useEffect(() => {
@@ -231,6 +259,19 @@ function PortfolioDashboard({
     } catch {
       setError("Cancellazione non riuscita, riprova");
     }
+  };
+
+  const openNew = () => {
+    setEditing(null);
+    setShowForm(true);
+  };
+  const openEdit = (tx: PtTransaction) => {
+    setEditing(tx);
+    setShowForm(true);
+  };
+  const closeForm = () => {
+    setShowForm(false);
+    setEditing(null);
   };
 
   if (loading) return <div className="loading">Caricamento portafoglio…</div>;
@@ -271,14 +312,16 @@ function PortfolioDashboard({
         <div className="pt-area-form pt-rise pt-rise-3">
           {showForm ? (
             <TransactionForm
+              initial={editing}
+              purities={purities}
               onSaved={async () => {
-                setShowForm(false);
+                closeForm();
                 await load();
               }}
-              onCancel={() => setShowForm(false)}
+              onCancel={closeForm}
             />
           ) : (
-            <button className="btn pt-btn-full pt-add" onClick={() => setShowForm(true)}>
+            <button className="btn pt-btn-full pt-add" onClick={openNew}>
               + Aggiungi movimento
             </button>
           )}
@@ -286,7 +329,11 @@ function PortfolioDashboard({
 
         <div className="pt-area-tx pt-rise pt-rise-3">
           {transactions.length > 0 && (
-            <TransactionsCard transactions={transactions} onDelete={onDelete} />
+            <TransactionsCard
+              transactions={transactions}
+              onDelete={onDelete}
+              onEdit={openEdit}
+            />
           )}
         </div>
       </div>
@@ -424,6 +471,16 @@ function AdviceCard({
           {advice.macro_summary && (
             <p className="pt-macro-summary">{advice.macro_summary}</p>
           )}
+          {advice.broader_context && advice.broader_context.length > 0 && (
+            <div className="pt-broader">
+              <h4>Visione d'insieme</h4>
+              <ul>
+                {advice.broader_context.map((b, i) => (
+                  <li key={i}>{b}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="pt-advice-meta">
             Aggiornata il{" "}
             {new Date(advice.generated_at + "Z").toLocaleDateString("it-IT", {
@@ -522,6 +579,7 @@ function PositionsCard({ portfolio }: { portfolio: PtPortfolio }) {
               </span>
               <span className="pt-pos-qty">
                 {num(p.quantity)} {UNIT_LABEL[p.unit] ?? p.unit}
+                {p.avg_purity != null && ` · ${purityLabel(p.avg_purity)}`}
                 {p.avg_cost_eur > 0 && ` · PMC ${eur(p.avg_cost_eur, 2)}`}
               </span>
             </div>
@@ -551,29 +609,68 @@ function PositionsCard({ portfolio }: { portfolio: PtPortfolio }) {
   );
 }
 
+const CUSTOM_PURITY = "custom";
+
+function matchPreset(tx: PtTransaction | null): Preset {
+  if (!tx) return PRESETS[0];
+  return PRESETS.find((p) => p.asset_key === tx.asset_key) ??
+    PRESETS[PRESETS.length - 1]; // "custom"
+}
+
 function TransactionForm({
+  initial,
+  purities,
   onSaved,
   onCancel,
 }: {
+  initial: PtTransaction | null;
+  purities: Record<string, PtPurityOption[]>;
   onSaved: () => Promise<void>;
   onCancel: () => void;
 }) {
-  const [preset, setPreset] = useState<Preset>(PRESETS[0]);
-  const [ticker, setTicker] = useState("");
-  const [label, setLabel] = useState("");
-  const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [quantity, setQuantity] = useState("");
-  const [unit, setUnit] = useState(PRESETS[0].units[0]);
-  const [price, setPrice] = useState("");
-  const [fee, setFee] = useState("");
-  const [tradeDate, setTradeDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [note, setNote] = useState("");
+  const isEdit = initial != null;
+  const initialPreset = matchPreset(initial);
+  const isCustomInit = initialPreset.asset_key === "custom";
+
+  const [preset, setPreset] = useState<Preset>(initialPreset);
+  const [ticker, setTicker] = useState(isCustomInit ? initial!.asset_key : "");
+  const [label, setLabel] = useState(isCustomInit ? initial!.label : "");
+  const [side, setSide] = useState<"buy" | "sell">(initial?.side ?? "buy");
+  const [quantity, setQuantity] = useState(initial ? String(initial.quantity) : "");
+  const [unit, setUnit] = useState(initial?.unit ?? initialPreset.units[0]);
+  const [price, setPrice] = useState(initial ? String(initial.unit_price_eur) : "");
+  const [fee, setFee] = useState(initial && initial.fee_eur ? String(initial.fee_eur) : "");
+  const [tradeDate, setTradeDate] = useState(
+    initial?.trade_date ?? new Date().toISOString().slice(0, 10),
+  );
+  const [note, setNote] = useState(initial?.note ?? "");
+  // purezza: value = frazione preset OPPURE "custom" (millesimi liberi)
+  const initPurity = () => {
+    const opts = purities[initialPreset.asset_key] ?? [];
+    if (initial && initial.purity != null && METAL_KEYS.has(initialPreset.asset_key)) {
+      const match = opts.find((o) => Math.abs(o.value - initial.purity) < 1e-6);
+      if (match) return { sel: String(match.value), custom: "" };
+      return { sel: CUSTOM_PURITY, custom: String(Math.round(initial.purity * 1000)) };
+    }
+    return { sel: opts.length ? String(opts[0].value) : "", custom: "" };
+  };
+  const _p0 = initPurity();
+  const [purity, setPurity] = useState<string>(_p0.sel);
+  const [customPurity, setCustomPurity] = useState(_p0.custom);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const isMetal = METAL_KEYS.has(preset.asset_key);
+  const purityOptions = purities[preset.asset_key] ?? [];
+
+  // se il preset corrente ha opzioni e la purezza non è tra queste → default alla prima
   const pickPreset = (p: Preset) => {
     setPreset(p);
     setUnit(p.units[0]);
+    if (METAL_KEYS.has(p.asset_key)) {
+      const opts = purities[p.asset_key] ?? [];
+      setPurity(opts.length ? String(opts[0].value) : "");
+    }
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -584,6 +681,19 @@ function TransactionForm({
       setError("Inserisci il ticker (es. VUAA.DE)");
       return;
     }
+    let purityValue = 1.0;
+    if (isMetal) {
+      if (purity === CUSTOM_PURITY) {
+        const mille = parseFloat(customPurity.replace(",", "."));
+        if (!(mille > 0) || mille > 1000) {
+          setError("Purezza in millesimi non valida (es. 916)");
+          return;
+        }
+        purityValue = mille / 1000;
+      } else if (purity) {
+        purityValue = parseFloat(purity);
+      }
+    }
     const tx: PtTransactionIn = {
       asset_key: isCustom ? ticker.trim().toUpperCase() : preset.asset_key,
       side,
@@ -591,6 +701,7 @@ function TransactionForm({
       unit,
       unit_price_eur: parseFloat(price.replace(",", ".")),
       fee_eur: fee ? parseFloat(fee.replace(",", ".")) : 0,
+      purity: purityValue,
       trade_date: tradeDate,
       note: note.trim() || null,
       label: isCustom ? label.trim() || null : null,
@@ -601,7 +712,8 @@ function TransactionForm({
     }
     setBusy(true);
     try {
-      await ptApi.addTransaction(tx);
+      if (isEdit) await ptApi.updateTransaction(initial!.id, tx);
+      else await ptApi.addTransaction(tx);
       await onSaved();
     } catch (err) {
       setError(err instanceof PtApiError ? err.message : "Salvataggio non riuscito");
@@ -609,11 +721,17 @@ function TransactionForm({
     }
   };
 
+  const title = isEdit
+    ? "Modifica movimento"
+    : side === "buy"
+    ? "Nuovo acquisto"
+    : "Nuova vendita";
+
   return (
     <form className="card pt-form" onSubmit={submit}>
-      <h3>{side === "buy" ? "Nuovo acquisto" : "Nuova vendita"}</h3>
+      <h3>{title}</h3>
 
-      <div className="pt-segmented">
+      <div className="pt-segmented pt-segmented-wrap">
         {PRESETS.map((p) => (
           <button
             type="button"
@@ -692,6 +810,32 @@ function TransactionForm({
             <input value={UNIT_LABEL[unit] ?? unit} disabled />
           </label>
         )}
+        {isMetal && (
+          <>
+            <label className="pt-field">
+              <span>Purezza (titolo)</span>
+              <select value={purity} onChange={(e) => setPurity(e.target.value)}>
+                {purityOptions.map((o) => (
+                  <option key={o.value} value={String(o.value)}>
+                    {o.label}
+                  </option>
+                ))}
+                <option value={CUSTOM_PURITY}>Altro (millesimi)…</option>
+              </select>
+            </label>
+            {purity === CUSTOM_PURITY && (
+              <label className="pt-field">
+                <span>Millesimi (es. 916)</span>
+                <input
+                  inputMode="decimal"
+                  value={customPurity}
+                  onChange={(e) => setCustomPurity(e.target.value)}
+                  placeholder="999"
+                />
+              </label>
+            )}
+          </>
+        )}
         <label className="pt-field">
           <span>Prezzo per {UNIT_LABEL[unit] ?? unit} (€)</span>
           <input
@@ -730,6 +874,13 @@ function TransactionForm({
         </label>
       </div>
 
+      {isMetal && (
+        <p className="pt-disclaimer">
+          La purezza vale sul contenuto fine: es. una moneta da 1 oz al 900/1000
+          contiene 0,9 oz d'oro puro. Il costo pagato non cambia.
+        </p>
+      )}
+
       {error && <div className="pt-form-error">{error}</div>}
 
       <div className="pt-form-actions">
@@ -747,9 +898,11 @@ function TransactionForm({
 function TransactionsCard({
   transactions,
   onDelete,
+  onEdit,
 }: {
   transactions: PtTransaction[];
   onDelete: (id: number) => void;
+  onEdit: (tx: PtTransaction) => void;
 }) {
   return (
     <div className="card">
@@ -762,7 +915,9 @@ function TransactionsCard({
             </span>
             <span className="pt-tx-detail">
               {new Date(t.trade_date).toLocaleDateString("it-IT")} · {num(t.quantity)}{" "}
-              {UNIT_LABEL[t.unit] ?? t.unit} a {eur(t.unit_price_eur, 2)}
+              {UNIT_LABEL[t.unit] ?? t.unit}
+              {t.purity != null && t.purity < 0.9995 && ` (${purityLabel(t.purity)})`} a{" "}
+              {eur(t.unit_price_eur, 2)}
               {t.fee_eur > 0 && ` · fee ${eur(t.fee_eur, 2)}`}
               {t.note && ` · ${t.note}`}
             </span>
@@ -772,6 +927,14 @@ function TransactionsCard({
               {t.side === "buy" ? "-" : "+"}
               {eur(t.quantity * t.unit_price_eur + (t.side === "buy" ? t.fee_eur : -t.fee_eur), 2)}
             </span>
+            <button
+              className="pt-tx-edit"
+              onClick={() => onEdit(t)}
+              aria-label="Modifica movimento"
+              title="Modifica"
+            >
+              ✎
+            </button>
             <button
               className="pt-tx-delete"
               onClick={() => onDelete(t.id)}

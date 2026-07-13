@@ -82,6 +82,20 @@ async def lifespan(app: FastAPI):
                 PtAdvice.__table__,
                 PtStrategy.__table__,
             ])
+
+            # Lightweight migration: purezza metalli su DB creati prima della
+            # colonna (default 1.0 = nessun effetto retroattivo).
+            from sqlalchemy import text
+            with engine.connect() as conn:
+                try:
+                    conn.execute(text(
+                        "ALTER TABLE pt_transactions "
+                        "ADD COLUMN IF NOT EXISTS purity DOUBLE PRECISION NOT NULL DEFAULT 1.0"
+                    ))
+                    conn.commit()
+                except Exception:
+                    pass  # già presente o SQLite
+
             logger.info("Portfolio Tracking attivo: tabelle pt_* pronte")
         except Exception as e:
             logger.warning(f"Portfolio Tracking table init skipped: {e}")

@@ -42,6 +42,10 @@ class PtTransaction(Base):
     quantity: Mapped[float] = mapped_column(Float, nullable=False)
     # unit della quantity inserita: oz | g | btc | share
     unit: Mapped[str] = mapped_column(String(8), nullable=False, default="unit")
+    # purezza metallo come frazione 0<p<=1 (999.9/1000 = 0.9999, 22k = 0.9167).
+    # Vale solo per metalli fisici; per ETF/crypto/ticker resta 1.0 (nessun effetto).
+    # Il controvalore usa il contenuto FINE = quantità × purezza (lo spot è per oz fine).
+    purity: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     # prezzo unitario pagato/incassato in EUR, nella stessa unit della quantity
     unit_price_eur: Mapped[float] = mapped_column(Float, nullable=False)
     fee_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
