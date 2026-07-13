@@ -12,7 +12,6 @@ import {
   PtApiError,
   getToken,
   ptApi,
-  setToken,
   type PtAdvice,
   type PtAdviceAssetKey,
   type PtPortfolio,
@@ -22,6 +21,7 @@ import {
   type PtTransaction,
   type PtTransactionIn,
 } from "../api/pt";
+import { ptClearSession, ptSetSession, usePtSession } from "../hooks/usePtSession";
 
 const eur = (v: number | null | undefined, digits = 0) =>
   v == null
@@ -117,46 +117,14 @@ const UNIT_LABEL: Record<string, string> = {
 const purityLabel = (fraction: number) => `${Math.round(fraction * 1000)}/1000`;
 
 export function PortfolioPage() {
-  const [session, setSession] = useState<{ username: string; display_name: string } | null>(null);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      if (!getToken()) {
-        setChecking(false);
-        return;
-      }
-      try {
-        const me = await ptApi.me();
-        setSession(me);
-        // sessione rolling: rinnova il token a ogni apertura
-        ptApi.refreshToken().then((r) => setToken(r.token)).catch(() => undefined);
-      } catch {
-        setToken(null);
-      } finally {
-        setChecking(false);
-      }
-    })();
-  }, []);
-
-  if (checking) return <div className="loading">Caricamento…</div>;
-  if (!session) return <LoginCard onLogin={setSession} />;
-  return (
-    <PortfolioDashboard
-      displayName={session.display_name}
-      onLogout={() => {
-        setToken(null);
-        setSession(null);
-      }}
-    />
-  );
+  const user = usePtSession();
+  // token presente ma utente non ancora risolto (App.ptEnsureLoaded in corso)
+  if (!user && getToken()) return <div className="loading">Caricamento…</div>;
+  if (!user) return <LoginCard />;
+  return <PortfolioDashboard displayName={user.display_name} onLogout={ptClearSession} />;
 }
 
-function LoginCard({
-  onLogin,
-}: {
-  onLogin: (s: { username: string; display_name: string }) => void;
-}) {
+function LoginCard() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -168,8 +136,7 @@ function LoginCard({
     setError(null);
     try {
       const s = await ptApi.login(username, password);
-      setToken(s.token);
-      onLogin({ username: s.username, display_name: s.display_name });
+      ptSetSession({ username: s.username, display_name: s.display_name }, s.token);
     } catch (err) {
       setError(err instanceof PtApiError ? err.message : "Errore di rete, riprova");
     } finally {
@@ -657,6 +624,8 @@ function TransactionForm({
   const _p0 = initPurity();
   const [purity, setPurity] = useState<string>(_p0.sel);
   const [customPurity, setCustomPurity] = useState(_p0.custom);
+  // come si inserisce il prezzo: "unit" = per grammo/oz/quota · "total" = totale pagato (da fattura)
+  const [priceMode, setPriceMode] = useState<"unit" | "total">("unit");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -694,12 +663,17 @@ function TransactionForm({
         purityValue = parseFloat(purity);
       }
     }
+    const qtyNum = parseFloat(quantity.replace(",", "."));
+    const priceNum = parseFloat(price.replace(",", "."));
+    // "totale pagato" → prezzo unitario = totale / quantità (backend memorizza per unità)
+    const unitPrice =
+      priceMode === "total" ? (qtyNum > 0 ? priceNum / qtyNum : NaN) : priceNum;
     const tx: PtTransactionIn = {
       asset_key: isCustom ? ticker.trim().toUpperCase() : preset.asset_key,
       side,
-      quantity: parseFloat(quantity.replace(",", ".")),
+      quantity: qtyNum,
       unit,
-      unit_price_eur: parseFloat(price.replace(",", ".")),
+      unit_price_eur: unitPrice,
       fee_eur: fee ? parseFloat(fee.replace(",", ".")) : 0,
       purity: purityValue,
       trade_date: tradeDate,
@@ -836,13 +810,31 @@ function TransactionForm({
             )}
           </>
         )}
-        <label className="pt-field">
-          <span>Prezzo per {UNIT_LABEL[unit] ?? unit} (€)</span>
+        <label className="pt-field pt-field-price">
+          <span className="pt-price-head">
+            <span>{priceMode === "total" ? "Totale pagato (€)" : `Prezzo per ${UNIT_LABEL[unit] ?? unit} (€)`}</span>
+            <span className="pt-price-toggle">
+              <button
+                type="button"
+                className={priceMode === "unit" ? "active" : ""}
+                onClick={() => setPriceMode("unit")}
+              >
+                unitario
+              </button>
+              <button
+                type="button"
+                className={priceMode === "total" ? "active" : ""}
+                onClick={() => setPriceMode("total")}
+              >
+                totale
+              </button>
+            </span>
+          </span>
           <input
             inputMode="decimal"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            placeholder="es. 75,50"
+            placeholder={priceMode === "total" ? "es. 1.850,00 (da fattura)" : "es. 75,50"}
             required
           />
         </label>
