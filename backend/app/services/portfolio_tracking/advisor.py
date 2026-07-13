@@ -32,7 +32,7 @@ _GEMINI_URL_TPL = (
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 _GROQ_MODEL = "llama-3.3-70b-versatile"
 
-ADVICE_ASSETS = ("gold", "silver", "bitcoin")
+ADVICE_ASSETS = ("gold", "silver", "platinum", "palladium", "bitcoin")
 _LIGHTS = {"green", "yellow", "red"}
 
 # Indicatori più rilevanti per metalli preziosi + BTC (subset del set completo)
@@ -49,11 +49,14 @@ _RELEVANT_INDICATORS = [
 
 _SYSTEM_PROMPT = (
     "Sei un analista macro. Aiuti un risparmiatore NON esperto che accumula "
-    "oro fisico, argento e Bitcoin nel lungo periodo (niente trading, mai leva). "
+    "metalli preziosi (oro, argento, platino, palladio) e Bitcoin nel lungo "
+    "periodo (niente trading, mai leva). "
     "Per ogni asset dai un semaforo di ACCUMULO: green=momento favorevole per "
     "comprare, yellow=neutro/comprare con moderazione, red=caro o rischioso, "
-    "meglio aspettare. Linguaggio semplice, niente jargon, frasi brevi. "
-    "Rispondi SOLO JSON."
+    "meglio aspettare. Oltre ai singoli asset, dai una VISIONE PIÙ AMPIA del "
+    "quadro macro (dollaro, tassi reali, azionario, cosa significa per un "
+    "risparmiatore) così che capisca il contesto, non solo i semafori. "
+    "Linguaggio semplice, niente jargon, frasi brevi. Rispondi SOLO JSON."
 )
 
 
@@ -69,7 +72,10 @@ def _market_stats(db: Session) -> dict:
         end = date.today()
         start = end - timedelta(days=420)
         series = {}
-        for key, ticker in (("gold", "GC=F"), ("silver", "SI=F"), ("bitcoin", "BTC-USD")):
+        for key, ticker in (
+            ("gold", "GC=F"), ("silver", "SI=F"), ("platinum", "PL=F"),
+            ("palladium", "PA=F"), ("bitcoin", "BTC-USD"),
+        ):
             try:
                 s = fetcher.fetch(ticker, start, end)
                 if s is None or len(s) < 30:
@@ -88,6 +94,11 @@ def _market_stats(db: Session) -> dict:
         if "gold" in series and "silver" in series:
             stats["gold_silver_ratio"] = round(
                 float(series["gold"].iloc[-1]) / float(series["silver"].iloc[-1]), 1,
+            )
+        if "platinum" in series and "gold" in series:
+            # platino storicamente ~oro; sotto 1 = platino a sconto sull'oro
+            stats["platinum_gold_ratio"] = round(
+                float(series["platinum"].iloc[-1]) / float(series["gold"].iloc[-1]), 2,
             )
     except Exception as e:
         logger.warning(f"pt advisor market stats failed: {e}")
@@ -130,18 +141,23 @@ Regime classifier: {macro['regime'].upper()} (confidence {macro['confidence']:.0
 {json.dumps(market, indent=1)}
 
 ## RICHIESTA
-Per ognuno di: gold, silver, bitcoin → semaforo di ACCUMULO di lungo periodo.
-Il lettore compra poco alla volta ogni mese e vuole solo sapere se questo è un
-momento buono, normale o cattivo per la sua prossima tranche.
+Per ognuno di: gold, silver, platinum, palladium, bitcoin → semaforo di ACCUMULO
+di lungo periodo. Il lettore compra poco alla volta ogni mese e vuole solo sapere
+se questo è un momento buono, normale o cattivo per la sua prossima tranche.
+Aggiungi anche una VISIONE PIÙ AMPIA (broader_context): 3-4 punti sul quadro
+generale (dollaro, tassi reali, azionario, rischi) per dare contesto ai semafori.
 
 Output JSON:
 {{
  "macro_summary": "2-3 frasi semplici sul quadro macro attuale (max 400 char)",
+ "broader_context": ["3-4 punti sulla visione d'insieme, 1 frase ciascuno: dollaro, tassi reali, azionario, rischio principale"],
  "assets": {{
   "gold": {{"light": "green|yellow|red", "headline": "1 frase (max 90 char)",
             "reasons": ["2-4 motivi, 1 frase ciascuno, citando i numeri sopra"],
             "what_to_watch": "1 cosa concreta da tenere d'occhio"}},
   "silver": {{...}},
+  "platinum": {{...}},
+  "palladium": {{...}},
   "bitcoin": {{...}}
  }}
 }}"""
@@ -244,8 +260,13 @@ def validate_advice(data: dict) -> dict | None:
         }
     if not assets_out:
         return None
+    broader = data.get("broader_context", [])
+    if not isinstance(broader, list):
+        broader = []
+    broader = [str(b)[:200] for b in broader][:5]
     return {
         "macro_summary": str(data.get("macro_summary", ""))[:500],
+        "broader_context": broader,
         "assets": assets_out,
     }
 

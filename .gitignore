@@ -57,3 +57,8 @@ backend/T10c_*.md
 backend/T10c_*.json
 backend/Paper_Trading_Report*.json
 backend/Paper_Trading_Dynamic*.json
+
+# graphify local artifacts + UI shots
+graphify-out/
+.ui-shots/
+backend/pt_ui_dev.db

@@ -13,8 +13,36 @@ from typing import Any
 
 GRAMS_PER_TROY_OZ = 31.1034768
 
+# Metalli preziosi: la purezza (millesimi) si applica al contenuto fine.
+# Titoli comuni per metallo → l'UI ne fa un picker (default = 999 fine).
+METAL_PURITIES: dict[str, list[dict[str, Any]]] = {
+    "gold": [
+        {"label": "999.9 (lingotto)", "value": 0.9999},
+        {"label": "999 (fine)", "value": 0.999},
+        {"label": "916.7 (22k · Krugerrand)", "value": 0.9167},
+        {"label": "900 (Marengo · 20$)", "value": 0.900},
+        {"label": "750 (18k)", "value": 0.750},
+    ],
+    "silver": [
+        {"label": "999 (fine)", "value": 0.999},
+        {"label": "925 (sterling)", "value": 0.925},
+        {"label": "900 (monete)", "value": 0.900},
+        {"label": "835", "value": 0.835},
+        {"label": "800", "value": 0.800},
+    ],
+    "platinum": [
+        {"label": "999.5 (fine)", "value": 0.9995},
+        {"label": "950 (gioielleria)", "value": 0.950},
+        {"label": "900", "value": 0.900},
+    ],
+    "palladium": [
+        {"label": "999.5 (fine)", "value": 0.9995},
+        {"label": "950", "value": 0.950},
+    ],
+}
+
 # Asset preset (per l'UI picker e il pricing). Ticker Yahoo:
-# - GC=F / SI=F: futures front-month, proxy spot USD/oz
+# - GC=F / SI=F / PL=F / PA=F: futures front-month, proxy spot USD/oz fine
 # - BTC-EUR: quotazione diretta in EUR
 PRESET_ASSETS: dict[str, dict[str, Any]] = {
     "gold": {
@@ -28,6 +56,20 @@ PRESET_ASSETS: dict[str, dict[str, Any]] = {
         "label": "Argento",
         "asset_class": "metal",
         "ticker": "SI=F",
+        "canonical_unit": "oz",
+        "units": ["oz", "g"],
+    },
+    "platinum": {
+        "label": "Platino",
+        "asset_class": "metal",
+        "ticker": "PL=F",
+        "canonical_unit": "oz",
+        "units": ["oz", "g"],
+    },
+    "palladium": {
+        "label": "Palladio",
+        "asset_class": "metal",
+        "ticker": "PA=F",
         "canonical_unit": "oz",
         "units": ["oz", "g"],
     },
@@ -56,32 +98,44 @@ def compute_position(transactions: list[dict]) -> dict:
     """Riduce i movimenti di UN asset a una posizione (average cost).
 
     transactions: dict con side, quantity, unit, unit_price_eur, fee_eur,
-    trade_date (usato solo per l'ordinamento, con id come tie-break).
-    Ritorna quantity/avg_cost in unità canonica + cost_basis/realized in EUR.
+    purity (frazione 0-1, default 1.0), trade_date (ordinamento, id tie-break).
+    Ritorna:
+    - quantity: peso FISICO posseduto (unità canonica) — quanto hai in mano
+    - fine_quantity: contenuto FINE per la valorizzazione (quantity × purezza);
+      per ETF/crypto (purezza 1.0) coincide con quantity
+    - avg_cost/cost_basis/realized in EUR (il costo NON dipende dalla purezza:
+      è quanto hai pagato per l'oggetto fisico)
     Una sell oltre la quantità posseduta viene clampata (dati manuali: meglio
     degradare che esplodere).
     """
     txs = sorted(transactions, key=lambda t: (t.get("trade_date"), t.get("id", 0)))
     qty = 0.0
+    fine = 0.0
     cost_basis = 0.0
     realized = 0.0
     for t in txs:
         q, price = to_canonical(
             float(t["quantity"]), float(t["unit_price_eur"]), t.get("unit", "unit"),
         )
+        purity = float(t.get("purity") if t.get("purity") is not None else 1.0)
         fee = float(t.get("fee_eur") or 0.0)
         if t.get("side", "buy") == "buy":
             cost_basis += q * price + fee
             qty += q
+            fine += q * purity
         else:
             q = min(q, qty)  # clamp: non si vende più di quanto si ha
             avg = cost_basis / qty if qty > 0 else 0.0
+            # riduzione fine proporzionale alla purezza media del posseduto
+            fine_ratio = fine / qty if qty > 1e-12 else 0.0
             realized += q * (price - avg) - fee
             cost_basis -= q * avg
+            fine -= q * fine_ratio
             qty -= q
     avg_cost = cost_basis / qty if qty > 1e-12 else 0.0
     return {
         "quantity": qty,
+        "fine_quantity": fine,
         "avg_cost_eur": avg_cost,
         "cost_basis_eur": cost_basis,
         "realized_pnl_eur": realized,
@@ -114,7 +168,8 @@ def build_portfolio(
         if pos["quantity"] <= 1e-12 and abs(pos["realized_pnl_eur"]) < 0.005:
             continue  # asset mai posseduto davvero (o dati nulli)
         spot = spot_eur_by_key.get(key)
-        market_value = pos["quantity"] * spot if spot is not None else None
+        # valorizzazione sul contenuto FINE (per i metalli impuri < peso fisico)
+        market_value = pos["fine_quantity"] * spot if spot is not None else None
         pnl = (market_value - pos["cost_basis_eur"]) if market_value is not None else None
         pnl_pct = (
             pnl / pos["cost_basis_eur"] * 100
@@ -122,6 +177,9 @@ def build_portfolio(
             else None
         )
         preset = PRESET_ASSETS.get(key, {})
+        avg_purity = (
+            pos["fine_quantity"] / pos["quantity"] if pos["quantity"] > 1e-12 else 1.0
+        )
         positions.append({
             "asset_key": key,
             "label": meta[key]["label"],
@@ -129,6 +187,9 @@ def build_portfolio(
             "ticker": meta[key]["ticker"],
             "unit": preset.get("canonical_unit", "unit"),
             "quantity": round(pos["quantity"], 8),
+            "fine_quantity": round(pos["fine_quantity"], 8),
+            # purezza media mostrata solo se il metallo non è fine (≈1.0)
+            "avg_purity": round(avg_purity, 4) if avg_purity < 0.9995 else None,
             "avg_cost_eur": round(pos["avg_cost_eur"], 4),
             "invested_eur": round(pos["cost_basis_eur"], 2),
             "realized_pnl_eur": round(pos["realized_pnl_eur"], 2),

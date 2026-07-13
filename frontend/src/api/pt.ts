@@ -16,6 +16,8 @@ export interface PtPosition {
   ticker: string;
   unit: string;
   quantity: number;
+  fine_quantity: number;
+  avg_purity: number | null;
   avg_cost_eur: number;
   invested_eur: number;
   realized_pnl_eur: number;
@@ -50,6 +52,7 @@ export interface PtTransaction {
   unit: string;
   unit_price_eur: number;
   fee_eur: number;
+  purity: number;
   trade_date: string;
   note: string | null;
 }
@@ -61,9 +64,26 @@ export interface PtTransactionIn {
   unit: string;
   unit_price_eur: number;
   fee_eur: number;
+  purity?: number;
   trade_date: string;
   note?: string | null;
   label?: string | null;
+}
+
+export interface PtPurityOption {
+  label: string;
+  value: number;
+}
+
+export interface PtAssetsInfo {
+  presets: {
+    asset_key: string;
+    label: string;
+    asset_class: "metal" | "crypto" | "ticker";
+    units: string[];
+    canonical_unit: string;
+  }[];
+  purities: Record<string, PtPurityOption[]>;
 }
 
 export interface PtAdviceAsset {
@@ -73,15 +93,18 @@ export interface PtAdviceAsset {
   what_to_watch: string;
 }
 
+export type PtAdviceAssetKey = "gold" | "silver" | "platinum" | "palladium" | "bitcoin";
+
 export interface PtAdvice {
   id: number;
   generated_at: string;
   trigger: string;
   provider: string;
   macro_summary: string;
+  broader_context?: string[];
   regime?: string;
   regime_confidence?: number;
-  assets: Partial<Record<"gold" | "silver" | "bitcoin", PtAdviceAsset>>;
+  assets: Partial<Record<PtAdviceAssetKey, PtAdviceAsset>>;
 }
 
 export interface PtStrategyTarget {
@@ -153,10 +176,13 @@ export const ptApi = {
     }),
   me: () => request<{ username: string; display_name: string }>("/me"),
   refreshToken: () => request<{ token: string }>("/refresh-token", { method: "POST" }),
+  assets: () => request<PtAssetsInfo>("/assets"),
   portfolio: () => request<PtPortfolio>("/portfolio"),
   transactions: () => request<{ transactions: PtTransaction[] }>("/transactions"),
   addTransaction: (tx: PtTransactionIn) =>
     request<PtTransaction>("/transactions", { method: "POST", body: JSON.stringify(tx) }),
+  updateTransaction: (id: number, tx: PtTransactionIn) =>
+    request<PtTransaction>(`/transactions/${id}`, { method: "PUT", body: JSON.stringify(tx) }),
   deleteTransaction: (id: number) =>
     request<{ deleted: number }>(`/transactions/${id}`, { method: "DELETE" }),
   latestAdvice: () => request<{ advice: PtAdvice | null }>("/advice/latest"),
