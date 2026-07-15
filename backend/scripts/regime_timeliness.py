@@ -62,11 +62,11 @@ EPISODES = {
 }
 
 
-def _stress_prob(frame: pd.DataFrame) -> pd.Series:
+def stress_prob(frame: pd.DataFrame) -> pd.Series:
     return frame[[f"p_{r}" for r in STRESS_REGIMES]].sum(axis=1)
 
 
-def _nber_spans(start_year: int) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+def nber_spans(start_year: int) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     usrec = FredFetcher().fetch_series(
         "nber_recession", start_date=date(start_year, 1, 1)
     )
@@ -84,7 +84,7 @@ def _nber_spans(start_year: int) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     return spans
 
 
-def _on_episodes(sig: pd.Series) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
+def on_episodes(sig: pd.Series) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     """Intervalli contigui in cui il segnale è acceso."""
     out, start, prev = [], None, None
     for d, v in sig.items():
@@ -112,7 +112,7 @@ def main() -> None:
 
     series = preload_walk_forward_series(S, E)
     grid = build_weekly_grid(series, S, E).frame
-    stress = _stress_prob(grid)
+    stress = stress_prob(grid)
     sig = stress >= args.threshold
 
     # --- 1. base rate: quanto sta acceso? -----------------------------------
@@ -125,8 +125,8 @@ def main() -> None:
           f"min {stress.min():.3f} · max {stress.max():.3f}")
 
     # --- 2/3. lead NBER + falsi allarmi -------------------------------------
-    spans = [(s, e) for s, e in _nber_spans(args.start_year) if s >= pd.Timestamp(S)]
-    on_eps = _on_episodes(sig)
+    spans = [(s, e) for s, e in nber_spans(args.start_year) if s >= pd.Timestamp(S)]
+    on_eps = on_episodes(sig)
     print("\n" + "=" * 74)
     print("2. LEAD TIME vs recessioni NBER (positivo = anticipa)")
     leads = []

@@ -341,6 +341,57 @@ _LEVEL_ACCEL_PILLAR_REBALANCE: dict[str, dict[str, float]] = {
         # validazione più pesante (walk-forward NBER su backfill mensile, o
         # dataset episodi esteso) non scioglie il trade-off. NON iterare
         # ancora su questi 32 episodi = overfitting del gate.
+        #
+        # ── S42 2026-07-15: la validazione "pesante" è stata TENTATA. INCONCLUSIVA. ──
+        # `scripts/t20_walkforward_nber.py`: walk-forward 1995-2025 (griglia
+        # settimanale no-leak), confronto OFF vs ON **a parità di base rate**
+        # (confrontarli alla stessa soglia sarebbe un inganno: T20 abbassa
+        # p_deflation di ~2pp, quindi a soglia fissa si accende meno e "sembra"
+        # più preciso — una soglia severa travestita da feature).
+        #   base rate 10%: precisione 50→67% (+17) · lead 0.0→0.0 · uscita +0gg
+        #   base rate 15%: precisione 67→75% (+8)  · lead 2.4→2.2 · uscita +0gg
+        #   base rate 20%: precisione 27→26% (-1)  · lead 2.5→2.5 · uscita +0gg
+        #   base rate 30%: precisione 30→28% (-2)  · lead 8.2→8.1 · uscita +0gg
+        #   base rate 40%: precisione 22→20% (-2)  · lead 9.6→9.6 · uscita +0gg
+        #
+        # ⚠️ PERCHÉ QUESTO NON BASTA A CHIUDERE LA PISTA (audit raydalio, verificato):
+        # 1. Lo strumento non può vedere l'effetto. Gap medio T20 OFF-ON sulla serie
+        #    di stress = 1.51pp; salto settimanale MEDIANO della serie = 1.18pp →
+        #    rapporto 1.28x. Misurare "in che settimana si spegne" un effetto grande
+        #    quanto un passo settimanale, su N=3 episodi, dà "+0 giorni" quasi a
+        #    prescindere da quanto T20 sia buono: è un PAVIMENTO DI RISOLUZIONE,
+        #    non un'assenza di effetto.
+        # 2. Il gate misura un PROXY BINARIO (P(defl)+P(stag) ≥ soglia) che il
+        #    sistema reale non usa: `scoring/engine.py:calculate_final_scores` pesa
+        #    il VETTORE CONTINUO di probabilità. T20 sposta quel vettore su 1617/1617
+        #    settimane e cambia il regime TOP in 92/1617 (5.7%) — informazione che il
+        #    proxy binario butta via.
+        # 3. N=3 recessioni NBER (1995-2025), e i "10 allarmi utili" non sono 10
+        #    eventi indipendenti: sono flicker attorno alle stesse 3 recessioni.
+        #    Estendere pre-1995 non si può senza dare al classifier default fake
+        #    (VIX dal 1990, breakeven dal 2003) = "default fake è un bug categorico".
+        #
+        # ── S42: fatto ANCHE il test sull'oggetto vero (l'alpha). Δ ≈ 0. ──
+        # `horserace_backtest.py` (rigioca _decide/sizer reali), USE_LEVEL_ACCEL_PILLARS
+        # via env, 15 sim × 3 seed, alpha vs 60/40:
+        #   seed 42: -3.73 → -3.66  (Δ +0.07pp)
+        #   seed  7: -0.58 → -1.11  (Δ -0.53pp)
+        #   seed 99: +3.15 → +3.09  (Δ -0.06pp)
+        #   Δ medio -0.173pp · std 0.316pp → |Δ| < std e IL SEGNO CAMBIA fra i seed
+        #   = indistinguibile da zero (regola: giudica il Δ multi-seed, non i livelli).
+        #
+        # ⛔ VICOLO CIECO STRUTTURALE — questo è il motivo per cui la pista si chiude,
+        # e non è "T20 fa male": T20 sposta le probabilità di ~1.5pp medi, mentre il
+        # backtest mensile ha ±7pp di rumore-fortuna (S39b) → un effetto 40x più piccolo
+        # del rumore NON è dimostrabile con gli strumenti che abbiamo. E l'unico modo di
+        # renderlo dimostrabile sarebbe rafforzare i pesi finché l'effetto emerge = esattamente
+        # l'hand-tuning vietato da .claude/rules/macro-no-hand-tuning.md. Quindi: non
+        # riaprire T20 con altri gate — 3 tentativi (S33 32-episodi, S42 walk-forward NBER,
+        # S42 alpha multi-seed) hanno esaurito lo spazio dei test possibili su questa
+        # ipotesi. Riaprire solo con un'IPOTESI NUOVA che produca un effetto di magnitudo
+        # misurabile sopra il rumore, non con un peso nuovo.
+        # (Limiti dichiarati: 3 seed × 15 sim; max-DD raccolto solo su seed 42, dove
+        # migliorava -2.22% → -1.92%, dato singolo e quindi non conclusivo.)
         "inflation_low": -0.06,
         "breakeven_collapse": -0.02,
         "pmi_contraction": -0.02,
