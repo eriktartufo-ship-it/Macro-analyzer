@@ -105,11 +105,11 @@ export const api = {
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),
-  aiPortfolioPositions: (strategy: "model_driven" | "llm_driven" = "model_driven") =>
+  aiPortfolioPositions: (strategy: "model_driven" | "llm_driven" | "risk_managed_sp" = "model_driven") =>
     request<AiPortfolioPosition[]>(`/ai-portfolio/positions?strategy=${strategy}`),
-  aiPortfolioDecisions: (days = 30, strategy: "model_driven" | "llm_driven" = "model_driven") =>
+  aiPortfolioDecisions: (days = 30, strategy: "model_driven" | "llm_driven" | "risk_managed_sp" = "model_driven") =>
     request<AiPortfolioDecision[]>(`/ai-portfolio/decisions?days=${days}&strategy=${strategy}`),
-  aiPortfolioPerformance: (days = 180, strategy: "model_driven" | "llm_driven" = "model_driven") =>
+  aiPortfolioPerformance: (days = 180, strategy: "model_driven" | "llm_driven" | "risk_managed_sp" = "model_driven") =>
     request<AiPortfolioPerformanceResponse>(`/ai-portfolio/performance?days=${days}&strategy=${strategy}`),
   aiPortfolioLeaderboard: () =>
     request<{
@@ -119,13 +119,13 @@ export const api = {
         spy?: { price: number | null; daily_change_pct: number | null };
       };
     }>("/ai-portfolio/leaderboard"),
-  aiPortfolioReasoning: (forceRefresh = false, strategy: "model_driven" | "llm_driven" = "model_driven") =>
+  aiPortfolioReasoning: (forceRefresh = false, strategy: "model_driven" | "llm_driven" | "risk_managed_sp" = "model_driven") =>
     request<AiPortfolioReasoning>(
       `/ai-portfolio/reasoning?strategy=${strategy}${forceRefresh ? "&force_refresh=true" : ""}`,
       undefined,
       { retries: 0 },
     ),
-  aiPortfolioLearnings: (limit = 20, strategy: "model_driven" | "llm_driven" = "model_driven") =>
+  aiPortfolioLearnings: (limit = 20, strategy: "model_driven" | "llm_driven" | "risk_managed_sp" = "model_driven") =>
     request<AiPortfolioLearning[]>(`/ai-portfolio/learnings?limit=${limit}&strategy=${strategy}`),
   aiPortfolioManualScan: () =>
     request<{ scan_summary: Record<string, unknown>; performance: unknown }>(

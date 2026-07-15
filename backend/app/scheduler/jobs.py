@@ -2021,17 +2021,19 @@ def ai_portfolio_daily_scan():
     from app.services.ai_portfolio import (
         strategist,
         llm_strategist,
+        risk_managed_sp,
         performance as perf,
         llm_reasoner,
     )
 
     logger.info("AI portfolio HORSERACE daily scan starting...")
     with SessionLocal() as db:
-        # 2 strategie indipendenti — capitale $100k cadauno
-        # (data_driven rimosso 2026-07-15, decisione Erik: design non interessante)
+        # 3 strategie indipendenti — capitale $100k cadauno
+        # (data_driven rimosso 2026-07-15; risk_managed_sp aggiunto 2026-07-15)
         for strategist_mod, label in (
             (strategist, "model_driven"),
             (llm_strategist, "llm_driven"),
+            (risk_managed_sp, "risk_managed_sp"),
         ):
             try:
                 summary = strategist_mod.daily_scan(db)

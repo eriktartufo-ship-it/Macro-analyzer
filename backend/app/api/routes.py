@@ -1443,6 +1443,7 @@ def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
     from app.services.ai_portfolio import (
         strategist,
         llm_strategist,
+        risk_managed_sp,
         performance as perf,
         llm_reasoner,
     )
@@ -1451,6 +1452,7 @@ def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
     for mod, label in (
         (strategist, "model_driven"),
         (llm_strategist, "llm_driven"),
+        (risk_managed_sp, "risk_managed_sp"),
     ):
         try:
             summary = mod.daily_scan(db)
@@ -1581,11 +1583,11 @@ def reset_ai_portfolio(
 
 @router.get("/ai-portfolio/leaderboard")
 def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
-    """Confronto head-to-head: model vs LLM (NAV + alpha vs benchmarks)."""
+    """Confronto 3-way: model vs LLM vs S&P-a-rischio-gestito (NAV + alpha vs benchmarks)."""
     from app.models.ai_portfolio import AiPortfolioPerformance
 
     out = {}
-    for strategy in ("model_driven", "llm_driven"):
+    for strategy in ("model_driven", "llm_driven", "risk_managed_sp"):
         latest = (
             db.query(AiPortfolioPerformance)
             .filter(AiPortfolioPerformance.strategy_type == strategy)
