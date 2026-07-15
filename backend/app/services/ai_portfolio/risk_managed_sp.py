@@ -101,14 +101,23 @@ def decide_target(
     price_history: dict[str, pd.Series],
     window: int = TREND_WINDOW,
     use_best_refuge: bool = USE_BEST_REFUGE,
-) -> tuple[str, str]:
-    """Ritorna (asset_target, motivo). Default prudente: se non so, resto in cash."""
+) -> tuple[Optional[str], str]:
+    """Ritorna (asset_target, motivo). `None` = DATI INSUFFICIENTI, non decidere.
+
+    ⚠️ Il target None NON è "vai in cash": è "non lo so". Sono cose diverse e
+    confonderle è un bug (bugtracker 2026-07-15: il primo scan in prod prese una
+    serie corta, cadde su "cash prudenziale" e sembrava una scelta di de-risk
+    mentre era un dato mancante). Su None il chiamante deve SALTARE il giorno e
+    lasciare le posizioni invariate, non aprire cash.
+    """
     sp = price_history.get(SP_ASSET)
     if sp is None or sp.empty:
-        return (CASH_ASSET, "prezzi S&P non disponibili -> cash prudenziale")
+        return (None, "prezzi S&P non disponibili -> nessuna decisione (giorno saltato)")
     above = is_above_trend(sp, window)
     if above is None:
-        return (CASH_ASSET, f"storia < MA{window} -> cash prudenziale")
+        n = len(sp.dropna())
+        return (None, f"storia insufficiente per MA{window} ({n} giorni) "
+                      f"-> nessuna decisione (giorno saltato)")
     if above:
         return (SP_ASSET, f"S&P sopra MA{window}: resto sul beta azionario")
     refuge = pick_refuge(price_history, use_best=use_best_refuge)
@@ -120,10 +129,16 @@ def decide_target(
 # ---------------------------------------------------------------------------
 
 def _fetch_prices() -> dict[str, pd.Series]:
-    """Serve solo l'S&P + i candidati rifugio: 4 fetch invece di 24."""
+    """Serve solo l'S&P + i candidati rifugio: 4 fetch invece di 24.
+
+    Finestra 3 anni: la MA200 richiede 200 giorni di BORSA (~290 di calendario) e
+    una finestra stretta lascia zero margine per festivi/buchi/dati parziali. In
+    prod il primo scan (2026-07-15) prese una serie corta e il bot cadde nel
+    fallback "cash prudenziale" — che sembrava una decisione ma era un dato mancante.
+    """
     fetcher = YahooFetcher()
     end = date.today()
-    start = end - timedelta(days=420)  # ~14 mesi: copre la MA200 con margine
+    start = end - timedelta(days=3 * 365)
     out: dict[str, pd.Series] = {}
     from app.services.ai_portfolio import momentum as _m
     for asset in (SP_ASSET, *REFUGE_CANDIDATES):
@@ -152,6 +167,13 @@ def daily_scan(db: Session, target_date: date | None = None) -> dict:
 
     price_history = _fetch_prices()
     target_asset, reason = decide_target(price_history)
+
+    # Dati insufficienti != "vai in cash": non si scommette su un dato mancante.
+    # Si salta il giorno lasciando le posizioni invariate (fail-safe, non fail-silent).
+    if target_asset is None:
+        logger.warning(f"risk_managed_sp: {reason}")
+        return {"skipped": reason, "n_decisions": 0,
+                "n_open_tranches": 0, "n_closures": 0}
 
     positions = (
         db.query(AiPortfolioPosition)
