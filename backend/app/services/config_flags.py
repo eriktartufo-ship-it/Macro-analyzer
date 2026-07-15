@@ -109,6 +109,8 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_LABOR_CREDIT_PILLAR": True,        # T17 Council 2026-05-31 sessione 23: wage/quits/hours/HY spread
         "USE_CYCLICAL_PILLAR": True,            # T18 Council 2026-05-31 sessione 25: heavy truck/permits/credit/durable
         "USE_NOWCAST_PILLAR": False,            # T19 council expected +1pp but validation -0.22pp drag, demoted opt-in
+        "USE_AI_PORTFOLIO_CASH_OVERNIGHT": True, # 2026-07-13: cash idle horserace rende overnight (BIL/€STR) non 0%
+        "USE_AI_PORTFOLIO_DEPLOY_BOOST": True,  # 2026-07-13: combo deadband+fastramp+floor PROMOSSO (walk-forward 2008/2020/all_crisis: α +1.2/+7.9/+2.2pp, severe 2020 30→11)
     }
     # Add new flags to known list below
     pass  # marker
@@ -144,6 +146,8 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_LABOR_CREDIT_PILLAR",
         "USE_CYCLICAL_PILLAR",
         "USE_NOWCAST_PILLAR",
+        "USE_AI_PORTFOLIO_CASH_OVERNIGHT",
+        "USE_AI_PORTFOLIO_DEPLOY_BOOST",
     ]
     out = {}
     for name in known:
@@ -468,6 +472,58 @@ def use_liquidity_surge_override() -> bool:
     Default: True (council priority CRITICAL per fix 2020 disaster).
     """
     return _read_flag("USE_LIQUIDITY_SURGE_OVERRIDE", default=True)
+
+
+def use_ai_portfolio_cash_overnight() -> bool:
+    """AI Portfolio horserace: il capitale NON schierato rende l'overnight.
+
+    2026-07-13 (insight Erik): tenere liquidità è già un posizionamento macro,
+    ma il residuo non allocato rendeva 0% mentre i benchmark (SPY, 60/40) sono
+    full-invested → doppia penalità (niente upside E niente risk-free), che
+    falsava l'horserace svantaggiando le AI del ~risk-free × frazione idle.
+
+    Con flag ON: idle = max(0, 1 - deployed) rende il daily return di BIL
+    (SPDR 1-3M T-Bill, l'equivalente USD di XEON/€STR). Fix di FAIRNESS del
+    confronto, non un cambio di strategia (i gate di entry restano invariati).
+
+    Default: True. Disattivabile per riprodurre la vecchia contabilità a 0%.
+    """
+    return _read_flag("USE_AI_PORTFOLIO_CASH_OVERNIGHT", default=True)
+
+
+def use_ai_portfolio_deploy_boost() -> bool:
+    """AI Portfolio: combo "deploy-boost" (deadband + fastramp + floor).
+
+    2026-07-13: la strategia model/data-driven deploya troppo poco capitale
+    (~20% nei mercati normali) e cede l'edge del motore macro. La causa non sono
+    i gate d'ingresso (abbassarli non aiuta) ma la MECCANICA del ramp. Questa
+    combo schiera meglio il capitale già approvato:
+    - banda-morta: add-tranche a score≥ENTRY (55) non ≥60
+    - fast-ramp: max 2 tranche invece di 2-5
+    - floor: deployment minimo 30% sui top del regime
+
+    Backtest A/B (`horserace_ab_matrix.py`): deployed 21→48%, alpha 60/40
+    −3.0→−0.9pp (bull) e +8.4→+10.1pp (crisi), severe 30→17%. Migliora ENTRAMBI
+    i regimi (non baratta uno per l'altro).
+
+    **2026-07-13 PROMOSSO DEFAULT-ON** (Erik authorized), numeri RICONCILIATI dopo
+    audit raydalio + robustezza multi-seed (`scripts/deployboost_robustness.py`,
+    5 seed × 4 finestre, 40 sim). Il Δ vs 60/40 (combo − baseline) è ROBUSTO e
+    positivo su ogni seed/finestra, ANCHE cost-adjusted (10bps turnover):
+      - broad 1995-2023: Δ **+1.8±0.5pp**  (cost-adj +1.6)
+      - 2008:            Δ **+0.6±0.3pp**  (cost-adj +0.4)   ← modesto ma stabile
+      - 2020 (V-shape):  Δ **+8.0±0.5pp**  (cost-adj +7.7)   ← il caso decisivo
+      - all_crisis:      Δ **+2.0±0.3pp**  (cost-adj +1.8)
+    ⚠️ COSTO REALE: il max-DD ~RADDOPPIA (broad −2.1→−3.1%, 2008 −2.9→−5.0%,
+    2020 −3.6→−6.5%, all_crisis −3.9→−5.5%) — più capitale schierato = più rischio.
+    ⚠️ `apply_deployment_floor` NON applica il momentum gate (può schierare su asset
+    regime-favorevoli ma BEARISH). Nota: i livelli ASSOLUTI di alpha sono
+    seed-sensibili (il broad resta sotto 60/40 di ~5-8pp); è il Δ a essere stabile.
+    Reversibile via env=0.
+
+    Default: **True**. Disattivabile con `USE_AI_PORTFOLIO_DEPLOY_BOOST=0`.
+    """
+    return _read_flag("USE_AI_PORTFOLIO_DEPLOY_BOOST", default=True)
 
 
 def use_uncertainty_gate() -> bool:

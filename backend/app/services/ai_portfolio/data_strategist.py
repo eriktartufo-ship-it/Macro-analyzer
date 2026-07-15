@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.models.ai_portfolio import AiPortfolioDecision, AiPortfolioPosition
 from app.models.regime_classifications import RegimeClassification
-from app.services.ai_portfolio import learning, momentum, pnl_tracker, sizer
+from app.services.ai_portfolio import deploy_boost, learning, momentum, pnl_tracker, sizer
 from app.services.scoring.engine import ASSET_CLASSES
 
 logger = logging.getLogger(__name__)
@@ -305,7 +305,8 @@ def daily_scan(
 
     # Confidence proxy: numero trigger fired / 10 (capped)
     confidence = min(0.95, max(0.30, len(fired_names) / 10.0))
-    n_tranches_default = sizer.dynamic_n_tranches(confidence)
+    # fastramp (deploy-boost): cap tranche a 2 quando ON
+    n_tranches_default = deploy_boost.cap_n_tranches(sizer.dynamic_n_tranches(confidence))
 
     # Price history per momentum
     price_history = _fetch_price_history_for_universe()
@@ -375,6 +376,11 @@ def daily_scan(
         _apply(db, asset, position, action, target, size, score,
                latest.regime, n_tranches_default, target_date, summary)
 
+    # floor (deploy-boost): data-driven non ha regime_top → eleggibili = top per score
+    deploy_boost.apply_deployment_floor(
+        db, STRATEGY_TYPE, scores, list(scores.keys()), target_date, latest.regime,
+    )
+
     db.commit()
     summary["n_positions_after"] = (
         db.query(AiPortfolioPosition)
@@ -417,7 +423,8 @@ def _decide(
         return ("TAKE_PROFIT", f"full TP {pnl*100:.1f}%", 0.0)
     if pnl >= PARTIAL_TP_PCT and not position.took_partial_tp:
         return ("CLOSE_TRANCHE", f"partial TP {pnl*100:.1f}%", 0.0)
-    if position.tranches_filled < position.tranches_total and score >= INCREMENTAL_SCORE_THRESHOLD:
+    incr_threshold = deploy_boost.incremental_threshold(INCREMENTAL_SCORE_THRESHOLD, ENTRY_SCORE_THRESHOLD)
+    if position.tranches_filled < position.tranches_total and score >= incr_threshold:
         size = target / position.tranches_total
         return ("OPEN_TRANCHE", f"data score strong {score:.1f}, add tranche {position.tranches_filled+1}/{position.tranches_total}", size)
     return ("HOLD", "no trigger", 0.0)

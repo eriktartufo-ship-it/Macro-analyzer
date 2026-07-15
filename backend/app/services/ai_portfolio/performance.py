@@ -22,6 +22,7 @@ from app.models.ai_portfolio import (
 )
 from app.models.daily_signals import DailySignal
 from app.models.regime_classifications import RegimeClassification
+from app.services import config_flags
 from app.services.ai_portfolio import pnl_tracker
 from app.services.scoring.engine import ASSET_REGIME_DATA
 
@@ -31,6 +32,10 @@ STARTING_NAV = 100_000.0
 # Tickers benchmark esterni all'universe interno (SPY puro per S&P500, non QQQ).
 SP500_BENCHMARK_TICKER = "SPY"
 BONDS_LONG_BENCHMARK_TICKER = "TLT"
+# Cash idle "parcheggiato" all'overnight: BIL (SPDR 1-3M T-Bill TR) = proxy
+# risk-free USD, equivalente di XEON/€STR in EUR. Vedi config_flags
+# use_ai_portfolio_cash_overnight (fix bias horserace 2026-07-13).
+CASH_OVERNIGHT_TICKER = "BIL"
 
 
 def _estimate_daily_return_from_regime(
@@ -92,6 +97,22 @@ def _benchmark_60_40_daily_return() -> float:
     return 0.6 * sp + 0.4 * bo
 
 
+def _cash_overnight_daily_return() -> float:
+    """Daily return del cash idle parcheggiato all'overnight (BIL). 0 se Yahoo fail."""
+    dr = pnl_tracker.get_daily_return_for_ticker(CASH_OVERNIGHT_TICKER)
+    return dr if dr is not None else 0.0
+
+
+def idle_cash_contribution(deployed: float, overnight_dr: float) -> float:
+    """Contributo al daily return del capitale NON schierato, remunerato overnight.
+
+    idle = max(0, 1 - deployed) → deployed>1 (leva) non genera cash idle né
+    contributo negativo. Ritorna idle * overnight_dr.
+    """
+    idle = max(0.0, 1.0 - deployed)
+    return idle * overnight_dr
+
+
 def snapshot(
     db: Session,
     target_date: date | None = None,
@@ -143,6 +164,11 @@ def snapshot(
 
     # Daily returns — prezzi REALI Yahoo (refactor 2026-06-17)
     portfolio_dr = _real_portfolio_daily_return(weights, probabilities)
+    # Cash idle non schierato: remunerato all'overnight (BIL/€STR) invece di 0%,
+    # per non penalizzare le AI del risk-free vs benchmark full-invested
+    # (fix fairness horserace 2026-07-13, opt-out via flag).
+    if config_flags.use_ai_portfolio_cash_overnight():
+        portfolio_dr += idle_cash_contribution(deployed, _cash_overnight_daily_return())
     b60_dr = _benchmark_60_40_daily_return()
     sp_dr = _benchmark_sp500_daily_return()
 

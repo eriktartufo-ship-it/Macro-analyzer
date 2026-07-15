@@ -37,7 +37,7 @@ from app.models.ai_portfolio import (
 )
 from app.models.daily_signals import DailySignal
 from app.models.regime_classifications import RegimeClassification
-from app.services.ai_portfolio import sizer, momentum, pnl_tracker, learning
+from app.services.ai_portfolio import sizer, momentum, pnl_tracker, learning, deploy_boost
 
 STRATEGY_TYPE = "model_driven"
 from app.services.prices.yahoo_fetcher import YahooFetcher
@@ -167,7 +167,8 @@ def daily_scan(
         raw_weights[asset] = sizer.raw_target_weight(score, vol) if asset in regime_top else 0.0
 
     targets_normalized = sizer.normalize_and_cap(raw_weights)
-    n_tranches_default = sizer.dynamic_n_tranches(confidence)
+    # fastramp (deploy-boost): cap tranche a 2 quando il flag è ON
+    n_tranches_default = deploy_boost.cap_n_tranches(sizer.dynamic_n_tranches(confidence))
 
     # 5. Load existing positions (filter per strategy) + PnL reale
     existing_positions = {}
@@ -232,6 +233,11 @@ def daily_scan(
         # Apply action to position
         _apply(db, asset, position, action, target, size, score, dominant_regime, n_tranches_default, target_date, summary)
 
+    # floor (deploy-boost): se sotto il minimo, schiera il deficit sui top del regime
+    deploy_boost.apply_deployment_floor(
+        db, STRATEGY_TYPE, scoreboard, regime_top, target_date, dominant_regime,
+    )
+
     db.commit()
 
     summary["n_positions_after"] = (
@@ -294,8 +300,9 @@ def _decide(
     if not in_favor:
         return ("FULL_CLOSE", "regime shift adverse (out of top-12)", 0.0)
 
-    # Incremental tranche
-    if position.tranches_filled < position.tranches_total and score >= INCREMENTAL_SCORE_THRESHOLD:
+    # Incremental tranche — deadband (deploy-boost): soglia add = ENTRY quando ON
+    incr_threshold = deploy_boost.incremental_threshold(INCREMENTAL_SCORE_THRESHOLD, ENTRY_SCORE_THRESHOLD)
+    if position.tranches_filled < position.tranches_total and score >= incr_threshold:
         size = target / position.tranches_total
         return ("OPEN_TRANCHE", f"score {score:.1f} strong, add tranche {position.tranches_filled + 1}/{position.tranches_total}", size)
 

@@ -239,12 +239,35 @@ export function AiPortfolioPage() {
             })}
           </div>
         )}
-        {lbHead && (
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, textAlign: "center" }}>
-            Spread top-bottom: <strong style={{ color: "var(--text)" }}>{lbHead.spread_text}</strong>
-            {lbHead.winner && ` · 🏆 ${STRATEGY_META[lbHead.winner as StrategyType]?.label || lbHead.winner}`}
-          </div>
-        )}
+        {lbHead && (() => {
+          // Quante delle 3 strategie battono ciascun benchmark (cum > benchmark cum)
+          const beats = (key: "benchmark_sp500_return_pct" | "benchmark_60_40_return_pct") =>
+            STRATEGY_ORDER.filter((s) => {
+              const c = perfByStrat[s]?.current;
+              return c != null && c.cumulative_return_pct > (c[key] ?? 0);
+            }).length;
+          const withPerf = STRATEGY_ORDER.filter((s) => perfByStrat[s]?.current != null).length;
+          const nSp = beats("benchmark_sp500_return_pct");
+          const n60 = beats("benchmark_60_40_return_pct");
+          const verdict = (label: string, n: number) => (
+            <span style={{ color: n > withPerf / 2 ? "var(--reflation)" : "var(--deflation)", fontWeight: 600 }}>
+              {n > withPerf / 2 ? "✅" : "❌"} {label} {n}/{withPerf}
+            </span>
+          );
+          return (
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8, textAlign: "center" }}>
+              <div>
+                Spread top-bottom: <strong style={{ color: "var(--text)" }}>{lbHead.spread_text}</strong>
+                {lbHead.winner && ` · 🏆 ${STRATEGY_META[lbHead.winner as StrategyType]?.label || lbHead.winner}`}
+              </div>
+              {withPerf > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  Le AI battono: {verdict("S&P 500", nSp)} · {verdict("60/40", n60)}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Equity chart 5-line */}
         {perfByStrat.model_driven && perfByStrat.data_driven && (
@@ -494,6 +517,25 @@ function LeaderCard({
       <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 4 }}>
         {current.n_positions} posizioni · DD {pct(current.drawdown_pct, 1)}
       </div>
+      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--stroke)" }}>
+        <AlphaRow label="S&P 500" alpha={current.cumulative_return_pct - (current.benchmark_sp500_return_pct ?? 0)} />
+        <AlphaRow label="60/40" alpha={current.cumulative_return_pct - (current.benchmark_60_40_return_pct ?? 0)} />
+      </div>
+    </div>
+  );
+}
+
+/** Riga alpha vs un benchmark: verde+✅ se la strategia batte, rosso+❌ se sotto.
+ * `alpha` = cumulative_return della strategia − cumulative_return del benchmark. */
+function AlphaRow({ label, alpha }: { label: string; alpha: number }) {
+  const beats = alpha >= 0;
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 3 }}>
+      <span style={{ color: "var(--muted)" }}>vs {label}</span>
+      <span style={{ color: beats ? "var(--reflation)" : "var(--deflation)", fontWeight: 600 }}>
+        {beats ? "✅ +" : "❌ "}
+        {(alpha * 100).toFixed(1)}pp
+      </span>
     </div>
   );
 }
