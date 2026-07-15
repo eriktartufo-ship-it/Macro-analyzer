@@ -52,7 +52,13 @@ STRATEGY_TYPE = "llm_driven"
 # v2-independent (2026-06-13): rimossi model_scoreboard + data_scoreboard
 # dal prompt per evitare anchoring bias. Gemini analizza solo indicators
 # raw + regime come second opinion. Bump prompt_version invalida cache.
-_PROMPT_VERSION = "v4-p1-data"  # 2026-07-12: budget 100% + indicator P1 (net liquidity, ZQ, COT, MOVE, survey Fed)
+# v5-roc-forecast (2026-07-15, richiesta Erik): il bot guardava i dati come una
+# FOTOGRAFIA (livelli) e giustificava solo le APERTURE. Ora: (a) gli si insegna
+# livello-vs-ROC — il livello è già nei prezzi, la derivata è il segnale predittivo
+# (stessa lezione strutturale del T20 livello-vs-accelerazione del classifier);
+# (b) campo `outlook` = previsione esplicita 3-6m su cui le decisioni devono essere
+# coerenti; (c) giustificazione obbligatoria anche sulle CHIUSURE.
+_PROMPT_VERSION = "v5-roc-forecast"
 
 # Stesse soglie hard di safety (Gemini suggerisce ma noi clampiamo)
 MAX_SIZE_PCT_PER_TRANCHE = 0.08  # 8% max per tranche, anti-hallucination
@@ -76,7 +82,31 @@ Fai la TUA analisi INDIPENDENTE dei dati macro raw: niente segnali pre-masticati
 niente scoreboard di altri sistemi. Ti diamo solo gli indicators FRED + un regime
 classifier come second opinion (che puoi ignorare se la tua tesi lo giustifica).
 
-**LINGUA**: campo `reason` SEMPRE in italiano professionale, breve (max 150 char).
+**IL TUO LAVORO È PREVEDERE, NON FOTOGRAFARE IL PRESENTE.**
+I mercati prezzano già ciò che è successo. Il tuo edge sta nell'anticipare dove
+i dati stanno ANDANDO nei prossimi 3-6 mesi.
+
+**COME SI LEGGE UN DATO: LIVELLO vs ROC (regola non negoziabile)**
+Ogni indicator ha due letture, e sono cose DIVERSE:
+- il **LIVELLO** (`cpi_yoy`, `unrate`, `vix`) dice DOVE SEI OGGI → è già nei prezzi;
+- il **ROC / la variazione** (`_roc`, `_roc_12m`, `_change_3m`, `_change_6m`, `_yoy`)
+  dice DOVE STAI ANDANDO e a che VELOCITÀ → è lì che sta l'informazione predittiva.
+
+Esempi del ragionamento che ci aspettiamo:
+- `cpi_yoy` 4.0 con `cpi_yoy_change_6m` **negativo** = inflazione ALTA ma in
+  DECELERAZIONE → disinflazione in arrivo, NON stagflazione persistente.
+- `unrate` basso ma `unrate_roc` e `initial_claims_roc` in SALITA = il mercato del
+  lavoro sta girando ORA; il livello basso è storia vecchia.
+- `gdp_roc_change_6m`, `payrolls_roc_12m`, `lei_roc`, `building_permits_yoy`,
+  `heavy_truck_sales_yoy` sono LEADING: girano PRIMA del ciclo. `unrate` e `cpi_yoy`
+  in livello sono LAGGING: confermano ciò che è già accaduto.
+- Concordanza di più ROC nella stessa direzione = conviction alta. ROC in conflitto
+  = dati ambigui → prudenza, non forzare una tesi.
+
+Un livello senza la sua derivata NON è una previsione. Se citi solo livelli, stai
+guardando nello specchietto retrovisore.
+
+**LINGUA**: campi `reason` SEMPRE in italiano professionale, brevi (max 180 char).
 
 **UNIVERSE FISSO** (24 asset). Puoi decidere solo su questi:
 us_equities_growth, us_equities_value, us_bonds_long, us_bonds_short,
@@ -107,18 +137,28 @@ factor_quality, factor_value
 
 **OUTPUT JSON STRETTO** (NO markdown):
 {
-  "thesis": "1 frase italiana riassuntiva della tua tesi macro oggi (max 250 char)",
+  "thesis": "1 frase: dove siamo OGGI secondo i dati (max 250 char)",
+  "outlook": "1 frase: dove stiamo ANDANDO nei prossimi 3-6 mesi e QUALI ROC te lo dicono (max 250 char)",
   "decisions": [
     {"asset": "us_equities_growth", "action": "OPEN_TRANCHE", "score": 65,
-     "confidence": 0.7, "size_pct": 4.5, "reason": "tech leadership + momentum confermato"},
-    ...
+     "confidence": 0.7, "size_pct": 4.5,
+     "reason": "cpi_yoy_change_6m -0.8 + payrolls_roc_12m 1.4 in tenuta -> disinflazione senza recessione, growth beneficia"},
+    {"asset": "gold", "action": "FULL_CLOSE", "score": 40, "confidence": 0.6,
+     "reason": "real_rate_change_3m +0.9 e breakeven_10y_change_3m -0.3 -> tesi inflazionistica rotta, esco"}
   ]
 }
 
-Decidi come Soros: forma la TUA tesi macro leggendo gli indicators raw, poi
-costruisci il portafoglio coerente. Aggressivo dove hai conviction analitica,
-prudente dove i dati sono ambigui. Non delegare il pensiero al regime
-classifier — quella è una baseline, non la verità."""
+**OGNI decisione va giustificata — APERTURE E CHIUSURE allo stesso modo.**
+Il `reason` deve dire *perché ORA* citando gli indicator SPECIFICI (col nome) e
+soprattutto i loro ROC/variazioni. Vale per OPEN_TRANCHE quanto per FULL_CLOSE,
+CLOSE_TRANCHE, STOP_LOSS, TAKE_PROFIT: una chiusura senza motivo è un errore.
+Le decisioni devono essere COERENTI con il tuo `outlook`: se prevedi X, il
+portafoglio deve esprimere X.
+
+Decidi come Soros: forma la TUA tesi macro leggendo gli indicators raw e le loro
+derivate, poi costruisci il portafoglio coerente con dove i dati stanno ANDANDO.
+Aggressivo dove i ROC concordano, prudente dove sono in conflitto. Non delegare il
+pensiero al regime classifier — quella è una baseline, non la verità."""
 
 
 def _compute_input_hash(
@@ -258,14 +298,20 @@ degli indicators sopra ti porta a una conclusione diversa, fidati dei tuoi numer
 
 ## RICHIESTA
 
-1. Forma la TUA tesi macro leggendo gli indicators raw. In 1 frase (max 250 char).
-2. Per ogni asset dell'universo (24) su cui hai conviction, emetti una decision.
-   Asset SENZA conviction: ometti (non serve SKIP esplicito).
-3. Justifica ogni OPEN con un `reason` di 1 frase italiana che cita gli indicators
-   specifici della tua tesi (es. "CPI 4.27 + sticky 2.87 + payrolls 0.32 → stagflation,
-   gold overweight").
+1. `thesis`: dove siamo OGGI secondo i dati. 1 frase (max 250 char).
+2. `outlook`: **dove stanno ANDANDO i dati nei prossimi 3-6 mesi**, e quali ROC te lo
+   dicono. 1 frase (max 250 char). Guarda le derivate (`_roc`, `_change_3m/6m`, `_yoy`)
+   e i leading (lei_roc, building_permits_yoy, heavy_truck_sales_yoy, gdp_roc_change_6m,
+   initial_claims_roc), non i livelli lagging. Questa è la previsione su cui scommetti.
+3. Per ogni asset dell'universo (24) su cui hai conviction, emetti una decision
+   COERENTE con l'`outlook`. Asset senza conviction: ometti (non serve SKIP esplicito).
+4. Giustifica OGNI decisione — **aperture E chiusure** — con un `reason` di 1 frase
+   italiana che cita gli indicator per nome e la loro DIREZIONE, non solo il livello.
+   - buono: "cpi_yoy_change_6m -0.8 + lei_roc in ripresa -> disinflazione, duration ok"
+   - inutile: "CPI alto -> compro oro" (livello senza derivata = nessuna previsione)
+   Se chiudi, di' cosa ha ROTTO la tesi d'ingresso.
 
-Output JSON: {{ "thesis": "...", "decisions": [...] }}
+Output JSON: {{ "thesis": "...", "outlook": "...", "decisions": [...] }}
 """
 
 
@@ -438,6 +484,8 @@ def daily_scan(
     summary = {
         "n_decisions": 0, "n_open_tranches": 0, "n_closures": 0,
         "thesis": str(parsed.get("thesis", ""))[:300],
+        # v5: la PREVISIONE 3-6m su cui il bot scommette (non solo la foto di oggi)
+        "outlook": str(parsed.get("outlook", ""))[:300],
     }
 
     # Cap totale OPEN al giorno (anti-overtrading)
