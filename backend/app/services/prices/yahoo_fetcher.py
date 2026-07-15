@@ -51,13 +51,19 @@ class YahooFetcher:
 
     def _load_disk(
         self, ticker: str, want_end: Optional[date] = None,
+        want_start: Optional[date] = None,
     ) -> Optional[pd.Series]:
-        """Carica serie da disco se fresca E con dati fino a want_end - 2 trading days.
+        """Carica la serie da disco se è fresca IN AVANTI e copre IN INDIETRO.
 
         AUDIT 2026-06-19 bughunter #1 residuo: TTL file (6h) non garantiva
         freshness dei DATI dentro. Se SPY.parquet ha max_date Jun 16 e age 2h,
         viene servito comunque per richieste end=Jun 19 → daily_change stale.
         Fix: se max(disk.index) < (want_end - 2 days) → invalida e re-fetch.
+
+        AUDIT 2026-07-15: si validava solo la freschezza (fine serie), MAI la
+        COPERTURA (inizio serie) → un file troncato da un consumer con finestra
+        corta veniva servito a chi chiedeva 3 anni. Ora: se il disco non arriva
+        abbastanza indietro rispetto a `want_start` → re-fetch (che poi UNISCE).
         """
         path = _cache_path(ticker)
         if not _is_fresh(path):
@@ -76,16 +82,50 @@ class YahooFetcher:
                         f"forcing re-fetch"
                     )
                     return None
+            if want_start is not None and not s.empty:
+                # Tolleranza 7 gg: l'asset può semplicemente non esistere prima
+                # (IPO/ETF giovane) — in quel caso il re-fetch non aggiungerebbe
+                # nulla e il disco è già il massimo disponibile.
+                need = pd.Timestamp(want_start) + pd.Timedelta(days=7)
+                if s.index.min() > need:
+                    logger.info(
+                        f"Yahoo disk cache for {ticker} non copre l'inizio: "
+                        f"min={s.index.min().date()} > want_start={want_start}, "
+                        f"forcing re-fetch"
+                    )
+                    return None
             return s
         except Exception as e:
             logger.warning(f"Yahoo disk cache read failed for {ticker}: {e}")
             return None
 
     def _save_disk(self, ticker: str, s: pd.Series) -> None:
+        """Salva su disco UNENDO alla storia già presente (mai sovrascrivendo).
+
+        AUDIT 2026-07-15 (BUG DI DATA INTEGRITY): prima faceva `to_parquet` secco,
+        cioè SOSTITUIVA il file con la serie appena scaricata. Un consumer con una
+        finestra corta (llm_strategist: 200 giorni) DISTRUGGEVA la storia lunga sul
+        disco → tutti gli altri consumer ricevevano poi 135 righe. Il disco è
+        condiviso: la cache deve solo CRESCERE, mai regredire.
+        I dati nuovi vincono sui vecchi a parità di data (prezzi adjusted rivisti).
+        """
         path = _cache_path(ticker)
         try:
-            df = s.to_frame(name="close")
-            df.to_parquet(path)
+            s = s[~s.index.duplicated(keep="last")].sort_index()
+            existing = None
+            if path.exists():
+                try:
+                    old = pd.read_parquet(path)["close"]
+                    old.index = pd.to_datetime(old.index)
+                    existing = old[~old.index.duplicated(keep="last")]
+                except Exception as e:
+                    logger.warning(f"Yahoo disk cache read-before-merge failed {ticker}: {e}")
+            if existing is not None and not existing.empty:
+                merged = s.combine_first(existing).sort_index()  # `s` (nuovo) vince
+            else:
+                merged = s
+            merged.name = "close"
+            merged.to_frame(name="close").to_parquet(path)
         except Exception as e:
             logger.warning(f"Yahoo disk cache write failed for {ticker}: {e}")
 
@@ -127,7 +167,9 @@ class YahooFetcher:
             self._mem_cache.pop(cache_key, None)
 
         if not force_refresh:
-            disk = self._load_disk(ticker, want_end=end_date or date.today())
+            disk = self._load_disk(
+                ticker, want_end=end_date or date.today(), want_start=start_date,
+            )
             if disk is not None:
                 # Filtra alla data richiesta per coerenza con il cache_key
                 if end_date is not None:
