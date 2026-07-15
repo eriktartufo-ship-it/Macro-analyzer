@@ -1,4 +1,4 @@
-"""LLM strategist v5-roc-forecast (2026-07-15, richiesta Erik).
+"""LLM strategist v6-market-aware (2026-07-15, richiesta Erik).
 
 Il bot leggeva i dati come una fotografia (livelli) e giustificava solo le
 aperture. Qui si blinda il contratto del prompt: insegna livello-vs-ROC, chiede
@@ -14,7 +14,7 @@ from app.services.ai_portfolio import llm_strategist as S
 
 def test_prompt_version_bumped_invalidates_cache():
     # Il bump è ciò che invalida la cache: se resta v4 il nuovo prompt non gira.
-    assert S._PROMPT_VERSION == "v5-roc-forecast"
+    assert S._PROMPT_VERSION == "v6-market-aware"
 
 
 def test_hash_includes_prompt_version():
