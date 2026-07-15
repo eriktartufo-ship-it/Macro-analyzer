@@ -170,17 +170,27 @@ def classify_at(
 
 
 class WalkForwardCache:
-    """Cache classifications per (as_of, flag_snapshot_key) durante un batch.
+    """Cache classifications per (as_of, configurazione-classifier) durante un batch.
 
     Quando si testa lo stesso flag su 15 sim, molte date target sono ricalcolate.
-    Cache le riusa. Quando il flag cambia, snapshot_key cambia → cache miss.
+    Cache le riusa. Quando un flag del classifier cambia, la chiave cambia → miss.
+
+    S42 — `flag_key` era opzionale con default "" e NESSUNO dei call-site lo passava
+    (unico uso: horserace_backtest.py:271, senza argomento) → cambiare un flag del
+    classifier nello stesso processo restituiva le classificazioni della config
+    precedente. Ora il default è il fingerprint REALE: protegge senza che il
+    chiamante debba ricordarsene. Un default che va ricordato non viene applicato.
     """
 
     def __init__(self, series: dict[str, pd.Series]):
         self.series = series
         self._cache: dict[tuple[date, str], Optional[dict]] = {}
 
-    def get(self, as_of: date, flag_key: str = "") -> Optional[dict]:
+    def get(self, as_of: date, flag_key: str | None = None) -> Optional[dict]:
+        if flag_key is None:
+            from app.services.config_flags import classifier_flags_fingerprint
+
+            flag_key = classifier_flags_fingerprint()
         cache_key = (as_of, flag_key)
         if cache_key in self._cache:
             return self._cache[cache_key]

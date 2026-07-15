@@ -8,6 +8,12 @@ e lookup daily = ultima griglia con data ≤ giorno (ffill).
 
 NO FUTURE LEAK: `get(day)` usa searchsorted side="right"-1 → prende solo la
 classificazione del venerdì PRECEDENTE o uguale, mai una futura.
+
+S42 — LA CACHE È PER (data, configurazione-classifier). Prima era per SOLA DATA:
+cambiando un flag del classifier i venerdì risultavano già calcolati e si riceveva
+in silenzio la griglia di un ALTRO set di flag → ogni A/B su una feature del
+classifier misurava Δ=0 (falso negativo). Il file è ora suffissato col fingerprint
+dei flag: griglie di configurazioni diverse coesistono senza mescolarsi.
 """
 from __future__ import annotations
 
@@ -20,6 +26,19 @@ from loguru import logger
 
 _REGIMES = ("reflation", "stagflation", "deflation", "goldilocks")
 _DEFAULT_CACHE = Path(__file__).resolve().parents[3] / ".cache" / "backtest" / "weekly_regime_grid.parquet"
+
+
+def _cache_path_for_flags(cache_path: Path) -> Path:
+    """`grid.parquet` → `grid__<fingerprint-flag>.parquet` (S42).
+
+    Il file NON suffissato di S41 resta a disco ma non viene più letto: nessuno sa
+    con quali flag fu costruito, quindi è inutilizzabile per un A/B onesto.
+    """
+    from app.services.config_flags import classifier_flags_fingerprint
+
+    return cache_path.with_name(
+        f"{cache_path.stem}__{classifier_flags_fingerprint()}{cache_path.suffix}"
+    )
 
 
 class WeeklyRegimeGrid:
@@ -97,12 +116,14 @@ def build_weekly_grid(
 ) -> WeeklyRegimeGrid:
     """Griglia settimanale su [start, end] usando classify_at(series, as_of).
 
-    Cache incrementale su disco: carica il parquet esistente, calcola SOLO i
-    venerdì mancanti nella finestra, unisce e risalva.
+    Cache incrementale su disco, per (data, configurazione-classifier): carica il
+    parquet della config CORRENTE, calcola SOLO i venerdì mancanti, unisce, risalva.
     """
     from app.services.backtest.walk_forward import classify_at
 
     want = _grid_fridays(start, end)
+    # S42: mai leggere/scrivere la griglia di un'ALTRA configurazione di flag.
+    cache_path = _cache_path_for_flags(cache_path)
     cached = pd.DataFrame()
     if use_cache and cache_path.exists():
         try:

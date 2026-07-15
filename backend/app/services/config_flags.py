@@ -160,6 +160,53 @@ def get_all_flags_state() -> dict[str, dict]:
     return out
 
 
+# Flag che NON possono cambiare l'output del classifier: vivono interamente in
+# `services/ai_portfolio/` (verificato via grep S42: zero occorrenze in regime/).
+# Escluderli evita di invalidare una griglia di regimi quando cambia solo una leva
+# di portafoglio — l'harness daily forza deploy_boost=0 mentre il live lo ha a 1.
+# Tutto il resto è INCLUSO per default: un flag nuovo entra nel fingerprint da solo.
+_NON_CLASSIFIER_FLAGS: frozenset[str] = frozenset({
+    "use_ai_portfolio_cash_overnight",
+    "use_ai_portfolio_deploy_boost",
+})
+
+
+def classifier_flags_fingerprint() -> str:
+    """Hash corto della configurazione che può cambiare l'output del classifier.
+
+    Serve come CHIAVE DI CACHE per tutto ciò che memorizza classificazioni di
+    regime (griglia settimanale su disco, WalkForwardCache in memoria).
+
+    S42 — perché esiste: la griglia settimanale era cachata per SOLA DATA. Cambiando
+    un flag del classifier, i venerdì risultavano "già calcolati" e si riceveva la
+    classificazione di un ALTRO set di flag, in silenzio → ogni A/B su una feature
+    del classifier misurava Δ=0 (falso negativo indistinguibile da un vero zero).
+    Stessa famiglia del bug cache Yahoo di S41b: *chiave di cache incompleta*.
+
+    Fail-safe per costruzione: i flag sono enumerati per INTROSPEZIONE delle
+    `use_*()` di questo modulo, non da una lista a mano. Aggiungere un flag nuovo
+    lo include automaticamente. (Le liste a mano si disallineano: quelle di
+    `get_all_flags_state()` hanno già perso USE_LEVEL_ACCEL_PILLARS.)
+    """
+    import hashlib
+    import inspect
+    import sys
+
+    module = sys.modules[__name__]
+    parts: list[str] = []
+    for name, fn in inspect.getmembers(module, inspect.isfunction):
+        if not name.startswith("use_") or name in _NON_CLASSIFIER_FLAGS:
+            continue
+        if inspect.signature(fn).parameters:
+            continue  # non è un getter di flag semplice
+        try:
+            parts.append(f"{name}={int(bool(fn()))}")
+        except Exception:  # pragma: no cover - un getter rotto non deve rompere la cache
+            parts.append(f"{name}=?")
+    digest = hashlib.sha256("|".join(sorted(parts)).encode()).hexdigest()
+    return digest[:12]
+
+
 def use_calibrated_scoring() -> bool:
     """Se True, scoring engine usa calibrated_asset_regime.json (Bayesian shrinkage).
 
