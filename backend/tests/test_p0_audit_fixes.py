@@ -3,19 +3,18 @@
 Coprono:
 1. Boundary bug dynamic_n_tranches (confidence esattamente 0.30 → deadlock
    Data-Driven: 0 posizioni per 3 settimane in produzione).
-2. data_strategist._decide apre con confidence al floor 0.30.
-3. Soglie cross-asset in unità raw coerenti con compute_copper_gold_ratio.
-4. PMI proxy nel feature extractor ML (NAPM discontinuato → live senza `pmi`).
+2. Soglie cross-asset in unità raw coerenti con compute_copper_gold_ratio.
+3. PMI proxy nel feature extractor ML (NAPM discontinuato → live senza `pmi`).
+
+NOTA 2026-07-15: i test su `data_strategist._decide` sono stati rimossi con il
+bot Data-Driven (decisione Erik). Il boundary di `dynamic_n_tranches` resta
+coperto qui: il floor 0.30 è usato anche dalle altre strategie.
 """
 from __future__ import annotations
 
 import numpy as np
 
 from app.services.ai_portfolio import sizer
-from app.services.ai_portfolio.data_strategist import (
-    ENTRY_SCORE_THRESHOLD,
-    _decide,
-)
 from app.services.indicators.cross_asset import (
     compute_copper_gold_ratio,
     get_threshold,
@@ -40,35 +39,6 @@ class TestDynamicNTranchesBoundary:
         assert sizer.dynamic_n_tranches(0.51) == 4
         assert sizer.dynamic_n_tranches(0.66) == 3
         assert sizer.dynamic_n_tranches(0.81) == 2
-
-
-class TestDataStrategistDecideAtFloor:
-    """Con confidence 0.30 (floor), score sopra soglia, momentum BULLISH e
-    target > 0 la strategia DEVE aprire (era il deadlock live)."""
-
-    def test_opens_at_confidence_floor(self):
-        n_tranches = sizer.dynamic_n_tranches(0.30)
-        action, reason, size = _decide(
-            position=None,
-            score=ENTRY_SCORE_THRESHOLD + 5.0,
-            target=0.10,
-            confidence=0.30,
-            momentum_sig="BULLISH",
-            n_tranches_default=n_tranches,
-        )
-        assert action == "OPEN_TRANCHE"
-        assert size > 0
-
-    def test_still_skips_below_gate(self):
-        action, _, _ = _decide(
-            position=None,
-            score=99.0,
-            target=0.10,
-            confidence=0.29,
-            momentum_sig="BULLISH",
-            n_tranches_default=0,
-        )
-        assert action == "SKIP_NO_SIGNAL"
 
 
 class TestCrossAssetThresholdUnits:
