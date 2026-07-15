@@ -1536,12 +1536,16 @@ def get_ai_portfolio_learnings(
 @router.post("/ai-portfolio/reset")
 def reset_ai_portfolio(
     confirm: str = Query(default=""),
+    strategy: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    """DESTRUCTIVE: wipe positions/decisions/performance/learnings/reasoning per
-    tutte le 3 strategie. Riparte da $100k pulito. Richiede `?confirm=YES_WIPE_ALL`.
+    """DESTRUCTIVE: wipe positions/decisions/performance/learnings/reasoning.
 
-    Usato per allineare la baseline 3-way prima di un nuovo run a confronto pari.
+    Richiede `?confirm=YES_WIPE_ALL`.
+    - senza `strategy`: wipa TUTTE le strategie (baseline pari prima di un run).
+    - con `?strategy=<tipo>`: wipa SOLO quella strategia — usato per ripulire i
+      dati orfani di un bot dismesso (es. `data_driven`, rimosso il 2026-07-15)
+      senza toccare il track record delle altre.
     """
     if confirm != "YES_WIPE_ALL":
         raise HTTPException(
@@ -1565,11 +1569,14 @@ def reset_ai_portfolio(
         AiPortfolioDecision,
         AiPortfolioPosition,
     ):
-        n = db.query(model).count()
-        db.query(model).delete()
+        q = db.query(model)
+        if strategy:
+            q = q.filter(model.strategy_type == strategy)
+        n = q.count()
+        q.delete(synchronize_session=False)
         counts[model.__tablename__] = n
     db.commit()
-    return {"status": "reset_complete", "deleted": counts}
+    return {"status": "reset_complete", "scope": strategy or "ALL", "deleted": counts}
 
 
 @router.get("/ai-portfolio/leaderboard")
