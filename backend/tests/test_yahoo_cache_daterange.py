@@ -94,3 +94,68 @@ def test_ticker_diverso_non_collide(fetcher, monkeypatch):
     fetcher.fetch("SPY", start_date=start, end_date=end)
     fetcher.fetch("GLD", start_date=start, end_date=end)
     assert len(calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# La cache su DISCO: deve solo CRESCERE, mai regredire.
+# BUG 2026-07-15 (il vero colpevole in prod): `_save_disk` faceva `to_parquet`
+# secco → un consumer con finestra corta (llm_strategist, 200gg) SOVRASCRIVEVA la
+# storia lunga sul disco, e `_load_disk` validava solo la freschezza, mai la
+# copertura → chi chiedeva 3 anni riceveva 135 righe.
+# ---------------------------------------------------------------------------
+
+class TestDiskCacheNonRegredisce:
+    def _f(self, tmp_path, monkeypatch):
+        import app.services.prices.yahoo_fetcher as YF
+        monkeypatch.setattr(YF, "_cache_path", lambda t: tmp_path / f"{t}.parquet")
+        monkeypatch.setattr(YF, "_is_fresh", lambda p: p.exists())
+        return YF.YahooFetcher()
+
+    def test_save_unisce_invece_di_sovrascrivere(self, tmp_path, monkeypatch):
+        f = self._f(tmp_path, monkeypatch)
+        lunga = pd.Series(
+            [100.0] * 500, index=pd.bdate_range("2024-01-01", periods=500), name="close")
+        f._save_disk("SPY", lunga)
+        # arriva un consumer con finestra CORTA (come llm_strategist)
+        corta = pd.Series(
+            [200.0] * 10, index=pd.bdate_range("2025-11-25", periods=10), name="close")
+        f._save_disk("SPY", corta)
+
+        on_disk = f._load_disk("SPY")
+        assert len(on_disk) >= 500, (
+            "una finestra corta NON deve distruggere la storia lunga sul disco "
+            f"(righe rimaste: {len(on_disk)})")
+
+    def test_i_dati_nuovi_vincono_a_parita_di_data(self, tmp_path, monkeypatch):
+        f = self._f(tmp_path, monkeypatch)
+        idx = pd.bdate_range("2025-01-01", periods=5)
+        f._save_disk("SPY", pd.Series([100.0] * 5, index=idx, name="close"))
+        f._save_disk("SPY", pd.Series([111.0] * 5, index=idx, name="close"))
+        s = f._load_disk("SPY")
+        assert s.iloc[-1] == 111.0, "il prezzo adjusted rivisto deve vincere"
+
+    def test_load_rifiuta_il_disco_che_non_copre_lo_start(self, tmp_path, monkeypatch):
+        f = self._f(tmp_path, monkeypatch)
+        # disco con solo 6 mesi
+        f._save_disk("SPY", pd.Series(
+            [100.0] * 130, index=pd.bdate_range("2026-01-01", periods=130), name="close"))
+        # chiedo 3 anni indietro → il disco NON copre → deve dire None (→ re-fetch)
+        got = f._load_disk("SPY", want_end=date(2026, 7, 1), want_start=date(2023, 7, 1))
+        assert got is None
+
+    def test_load_accetta_il_disco_che_copre(self, tmp_path, monkeypatch):
+        f = self._f(tmp_path, monkeypatch)
+        f._save_disk("SPY", pd.Series(
+            [100.0] * 700, index=pd.bdate_range("2023-01-02", periods=700), name="close"))
+        got = f._load_disk("SPY", want_end=date(2025, 9, 1), want_start=date(2023, 6, 1))
+        assert got is not None and len(got) == 700
+
+    def test_asset_giovane_non_va_in_refetch_loop(self, tmp_path, monkeypatch):
+        """ETF nato ieri: il disco NON può coprire il 1970, ma è già il massimo
+        disponibile → tolleranza, non re-fetch infinito."""
+        f = self._f(tmp_path, monkeypatch)
+        idx = pd.bdate_range("2026-01-01", periods=100)
+        f._save_disk("NEW", pd.Series([10.0] * 100, index=idx, name="close"))
+        got = f._load_disk("NEW", want_end=date(2026, 5, 20),
+                           want_start=date(2026, 1, 1))
+        assert got is not None, "start uguale al primo dato disponibile → accetta"
