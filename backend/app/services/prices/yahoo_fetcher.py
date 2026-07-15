@@ -103,9 +103,21 @@ class YahooFetcher:
 
         AUDIT 2026-06-19: cache_key include end_date (default oggi) per evitare
         di restituire serie stale tra giorni diversi. Mem-cache TTL 1h.
+
+        AUDIT 2026-07-15 (BUG SILENZIOSO): la chiave aveva end_date ma NON
+        start_date → chi chiedeva PIÙ storia di un chiamante precedente (stesso
+        ticker, stessa TTL) riceveva la serie CORTA di quello, senza errore.
+        Caso reale: `llm_strategist` fetcha SPY su 200 giorni di calendario (~135
+        di borsa) e mette in cache; poi `risk_managed_sp` chiede 3 anni per la
+        MA200 → cache HIT → 135 righe → MA200 impossibile → il bot saltava ogni
+        giorno. La regola era già in memoria (`feedback_cache_key_include_daterange`:
+        "key con DATE RANGE, mai solo per nome risorsa"): era applicata a metà.
+        Ora la chiave include anche lo start. Servire un SOVRAinsieme è innocuo
+        (il chiamante fa tail()); servire un SOTTOinsieme è il bug.
         """
         end_for_key = (end_date or date.today()).isoformat()
-        cache_key = f"{ticker}|{end_for_key}"
+        start_for_key = (start_date or date(1970, 1, 1)).isoformat()
+        cache_key = f"{ticker}|{start_for_key}|{end_for_key}"
 
         if not force_refresh and cache_key in self._mem_cache:
             ts, s = self._mem_cache[cache_key]
