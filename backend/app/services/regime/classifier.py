@@ -1178,12 +1178,37 @@ def classify_regime(
         # Trigger flag se severity > 0.55 (conservativo: evita falsi positivi
         # borderline su baseline neutri che producono ~0.52)
         gdp_collapse_triggered = gdp_collapse_severity > 0.55
-        # Scaling moltiplicatori:
-        # severity 0 → no shift (×1.0 / ×1.0)
-        # severity 0.5 → mild (stag ×0.6, defl ×1.5)
-        # severity 1.0 → max (stag ×0.25, defl ×2.2) come pre-T9
-        stag_mult = 1.0 - 0.75 * gdp_collapse_severity  # 1.0 → 0.25
-        defl_mult = 1.0 + 1.2 * gdp_collapse_severity  # 1.0 → 2.2
+
+        # ── S42 2026-07-15 — FIX del PAVIMENTO STRUTTURALE ──────────────────────
+        # BUG: i moltiplicatori usavano `gdp_collapse_severity` (la sigmoid) diretta,
+        # ma **sigmoid(0) = 0.5, non 0** → il commento sotto dichiarava "severity 0 →
+        # no shift (×1.0)" ed era IRRAGGIUNGIBILE per costruzione. Il commento del
+        # trigger lo sapeva già ("baseline neutri producono ~0.52") ma
+        # `gdp_collapse_triggered` non gattava nulla: era solo output.
+        # Effetto misurato su dati NEUTRI (CPI 2.0 = target Fed, PMI 50, GDP 2.0):
+        #     deflation ×1.655 (+65% PERMANENTE) · stagflation ×0.591 (-41% PERMANENTE)
+        #   → il top regime diventava `deflation` su dati che sono goldilocks da manuale
+        #   → spiega deflation al 40.5% del tempo sul walk-forward 1995-2025 e il
+        #     "regala l'edge nei bull" (deployed ~20%, -3.51pp vs 60/40, S38).
+        # Peggio: con severity_raw NEGATIVO (economia FORTE) la sigmoid resta > 0 →
+        # deflation veniva PREMIATA ×1.36 proprio mentre l'economia andava benissimo.
+        # È [[feedback-scoring-contesto-moltiplica-non-somma]]: la forma moltiplicativa
+        # era giusta, ma un moltiplicatore che non vale MAI 1 nel caso neutro è un
+        # offset costante = pavimento. Quella memoria elencava già "Macro Analyzer
+        # (regime detection)" fra i sospetti DA VERIFICARE.
+        #
+        # `gdp_collapse_severity` NON cambia scala: è output diagnostico e i test la
+        # verificano su >0.7 / >0.80. Si corregge solo l'INTENSITÀ dello shift, che
+        # ora vale davvero 0 nel neutro → `0 × k = 0`: il contesto non può creare un
+        # segnale dal nulla, può solo inclinarne uno che i dati hanno già prodotto.
+        shift_intensity = max(0.0, 2.0 * (gdp_collapse_severity - 0.5))
+
+        # Scaling moltiplicatori (shift_intensity ∈ [0, 1]):
+        # neutro (sigmoid 0.5)      → intensity 0.0 → no shift (×1.0 / ×1.0)
+        # economia forte (sig <0.5) → intensity 0.0 → no shift (era ×1.36 su deflation!)
+        # collasso pieno (sig →1.0) → intensity 1.0 → stag ×0.25, defl ×2.2 (come pre-T9)
+        stag_mult = 1.0 - 0.75 * shift_intensity  # 1.0 → 0.25
+        defl_mult = 1.0 + 1.2 * shift_intensity  # 1.0 → 2.2
         raw_scores["stagflation"] *= stag_mult
         raw_scores["deflation"] *= defl_mult
 
