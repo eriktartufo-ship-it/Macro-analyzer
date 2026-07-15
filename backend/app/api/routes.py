@@ -1439,10 +1439,9 @@ def get_ai_portfolio_performance(
 
 @router.post("/ai-portfolio/manual-scan")
 def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
-    """Trigger manuale daily scan TUTTE LE 3 strategie + performance + LLM reasoning."""
+    """Trigger manuale daily scan di TUTTE le strategie + performance + LLM reasoning."""
     from app.services.ai_portfolio import (
         strategist,
-        data_strategist,
         llm_strategist,
         performance as perf,
         llm_reasoner,
@@ -1451,7 +1450,6 @@ def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
     results = {}
     for mod, label in (
         (strategist, "model_driven"),
-        (data_strategist, "data_driven"),
         (llm_strategist, "llm_driven"),
     ):
         try:
@@ -1576,11 +1574,11 @@ def reset_ai_portfolio(
 
 @router.get("/ai-portfolio/leaderboard")
 def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
-    """Confronto 3-way: model vs data vs LLM (NAV + alpha vs benchmarks)."""
+    """Confronto head-to-head: model vs LLM (NAV + alpha vs benchmarks)."""
     from app.models.ai_portfolio import AiPortfolioPerformance
 
     out = {}
-    for strategy in ("model_driven", "data_driven", "llm_driven"):
+    for strategy in ("model_driven", "llm_driven"):
         latest = (
             db.query(AiPortfolioPerformance)
             .filter(AiPortfolioPerformance.strategy_type == strategy)

@@ -517,7 +517,7 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         # nome canonico atteso da financial_stress_veto.py.
         if hy is not None:
             indicators["hy_oas"] = hy
-            # AUDIT 2026-06-13 bughunter: data_strategist.py legge `hy_credit_spread`,
+            # AUDIT 2026-06-13 bughunter: alcuni consumer leggono `hy_credit_spread`,
             # propaghiamo lo stesso valore con entrambi i nomi.
             indicators["hy_credit_spread"] = hy
 
@@ -653,7 +653,7 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
         logger.warning(f"Momentum derivatives skipped: {e}")
 
     # AUDIT 2026-06-13 bughunter: 7 indicators T17/T18 calcolati in backfill ma
-    # NON nel daily refresh. Senza questi, `data_strategist.py` e `llm_strategist.py`
+    # NON nel daily refresh. Senza questi, `llm_strategist.py`
     # usano default fallback fake (es. wage_growth_atlanta=3.0, sticky_cpi=2.5,
     # m2_yoy=5.0), bloccando trigger INFLATION_HEDGE/INFLATION_PEAK/RISK_ON/etc.
     # Stessa logica di backfill._build_indicators_as_of righe 195-229.
@@ -2020,7 +2020,6 @@ def ai_portfolio_daily_scan():
     from app.database import SessionLocal
     from app.services.ai_portfolio import (
         strategist,
-        data_strategist,
         llm_strategist,
         performance as perf,
         llm_reasoner,
@@ -2028,10 +2027,10 @@ def ai_portfolio_daily_scan():
 
     logger.info("AI portfolio HORSERACE daily scan starting...")
     with SessionLocal() as db:
-        # 3 strategie indipendenti — capitale $100k cadauno
+        # 2 strategie indipendenti — capitale $100k cadauno
+        # (data_driven rimosso 2026-07-15, decisione Erik: design non interessante)
         for strategist_mod, label in (
             (strategist, "model_driven"),
-            (data_strategist, "data_driven"),
             (llm_strategist, "llm_driven"),
         ):
             try:

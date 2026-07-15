@@ -22,8 +22,9 @@ from app.database import Base
 
 
 class AiPortfolioPosition(Base):
-    """Posizione corrente per (asset, strategy). 2 strategie indipendenti:
-    `model_driven` (classifier regime) e `data_driven` (raw indicators rule-based).
+    """Posizione corrente per (asset, strategy). Strategie indipendenti:
+    `model_driven` (classifier regime) e `llm_driven` (Gemini decisore).
+    (`data_driven` rimosso il 2026-07-15.)
     """
 
     __tablename__ = "ai_portfolio_positions"
