@@ -96,3 +96,77 @@ def asset_to_ticker(asset_class: str) -> Optional[str]:
     """Mapping asset interno → Yahoo ticker."""
     cfg = ASSET_TICKERS.get(asset_class, {})
     return cfg.get("ticker")
+
+
+# ---------------------------------------------------------------------------
+# Lettura di mercato per il decisore LLM (v6, 2026-07-15)
+# Fino alla v5 il bot Gemini decideva CIECO sui prezzi: il price_history veniva
+# fetchato DOPO la chiamata e usato solo per loggare la decisione. Questi helper
+# trasformano i prezzi Yahoo (che già scarichiamo) in un blocco leggibile.
+# ---------------------------------------------------------------------------
+
+def trailing_return(prices: pd.Series, days: int) -> Optional[float]:
+    """Rendimento cumulato degli ultimi `days` giorni di borsa. None se dati insuff."""
+    s = prices.dropna()
+    if len(s) < days + 1:
+        return None
+    return float(s.iloc[-1] / s.iloc[-(days + 1)] - 1.0)
+
+
+def dist_from_ma_pct(prices: pd.Series, window: int = 50) -> Optional[float]:
+    """Distanza % del prezzo dalla sua MA(window). Positiva = sopra la media.
+
+    Più informativo del booleano `compute_ma_cross`: dice QUANTO sopra/sotto,
+    non solo da che parte.
+    """
+    s = prices.dropna()
+    if len(s) < window:
+        return None
+    ma = s.rolling(window=window).mean().iloc[-1]
+    if pd.isna(ma) or float(ma) == 0.0:
+        return None
+    return float(s.iloc[-1] / float(ma) - 1.0)
+
+
+def relative_strength(
+    prices: pd.Series, benchmark: pd.Series, days: int = 63,
+) -> Optional[float]:
+    """Forza relativa vs benchmark = ret(asset, days) − ret(benchmark, days).
+
+    È la misura OPERATIVA della "rotazione": i flussi veri dei fondi non sono
+    osservabili gratis, ma quando il capitale ruota da un'asset class a un'altra
+    lo si vede nella performance RELATIVA. >0 = sta sovraperformando il benchmark.
+    """
+    a = trailing_return(prices, days)
+    b = trailing_return(benchmark, days)
+    if a is None or b is None:
+        return None
+    return a - b
+
+
+def market_snapshot(
+    asset_class: str,
+    price_history: dict[str, pd.Series],
+    benchmark: Optional[pd.Series] = None,
+) -> dict:
+    """Fotografia di mercato di un asset dai prezzi Yahoo.
+
+    Ritorna dict con: signal, rsi, dist_ma50, vol_60d, ret_1m/3m/6m e (se dato
+    un benchmark) rel_strength_3m. Valori None = dati insufficienti (il consumer
+    li omette invece di inventare default).
+    """
+    s = price_history.get(asset_class)
+    if s is None or s.empty:
+        return {}
+    out = {
+        "signal": momentum_signal(s),
+        "rsi": compute_rsi(s, period=14),
+        "dist_ma50": dist_from_ma_pct(s, window=50),
+        "vol_60d": compute_vol_annualized(s, window=60),
+        "ret_1m": trailing_return(s, 21),
+        "ret_3m": trailing_return(s, 63),
+        "ret_6m": trailing_return(s, 126),
+    }
+    if benchmark is not None and not benchmark.empty:
+        out["rel_strength_3m"] = relative_strength(s, benchmark, days=63)
+    return out

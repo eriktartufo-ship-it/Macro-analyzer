@@ -58,7 +58,19 @@ STRATEGY_TYPE = "llm_driven"
 # (stessa lezione strutturale del T20 livello-vs-accelerazione del classifier);
 # (b) campo `outlook` = previsione esplicita 3-6m su cui le decisioni devono essere
 # coerenti; (c) giustificazione obbligatoria anche sulle CHIUSURE.
-_PROMPT_VERSION = "v5-roc-forecast"
+#
+# v6-market-aware (2026-07-15, richiesta Erik): FIX STRUTTURALE — il bot sceglieva
+# 24 asset SENZA VEDERE UN PREZZO. Il `price_history` veniva fetchato DOPO la
+# chiamata a Gemini e usato solo per LOGGARE la decisione (momentum_signal/vol_60d).
+# Decideva su macro pura, cieco a momentum/RSI/vol/rendimenti degli asset che
+# comprava. Ora: (a) fetch prezzi PRIMA del prompt + blocco "lettura di mercato"
+# (momentum, RSI, dist MA50, vol, ret 1/3/6m, **rel_3m = forza relativa vs S&P**);
+# (b) regime da "second opinion ignorabile" a INPUT DI PRIMA CLASSE con dissenso
+# ammesso ma MOTIVATO (campo `regime_dissent`) — scelta Erik, tempera l'anti-anchoring
+# di S31 senza perdere il regime-challenge; (c) le reason devono incrociare macro E
+# prezzo. rel_3m è la traccia operativa della ROTAZIONE (i flussi veri non sono
+# osservabili gratis; la performance relativa e' la loro ombra).
+_PROMPT_VERSION = "v6-market-aware"
 
 # Stesse soglie hard di safety (Gemini suggerisce ma noi clampiamo)
 MAX_SIZE_PCT_PER_TRANCHE = 0.08  # 8% max per tranche, anti-hallucination
@@ -135,10 +147,26 @@ factor_quality, factor_value
    superarla. Se sei già quasi full-invested, chiudi qualcosa prima di aprire
    (gli OPEN oltre il budget residuo vengono clampati/scartati dal sistema)
 
+**LE DUE FONTI: MACRO E PREZZI (v6)**
+Hai DUE corpi di evidenza e devi usarli ENTRAMBI:
+1. **Macro** (indicators FRED + i loro ROC + il regime): dice DOVE DOVREBBE andare il capitale.
+2. **Prezzi reali** (Yahoo: momentum, RSI, distanza MA50, vol, rendimenti 1/3/6m,
+   forza relativa vs S&P): dice dove il capitale sta ANDANDO DAVVERO, adesso.
+
+La macro senza i prezzi ti fa comprare tesi che il mercato smentisce da mesi.
+I prezzi senza la macro ti fanno inseguire rally già finiti. **Quando le due fonti
+CONCORDANO hai la conviction più alta**; quando confliggono, dillo e riduci la size:
+o sei presto, o una delle due letture è sbagliata.
+
+**ROTAZIONE**: `rel_3m` (forza relativa vs S&P) è la traccia di dove si sposta il
+capitale. Non esiste un dato gratis dei flussi veri dei fondi, ma la rotazione la
+LEGGI nella performance relativa: chi sovraperforma sta attirando capitale.
+
 **OUTPUT JSON STRETTO** (NO markdown):
 {
   "thesis": "1 frase: dove siamo OGGI secondo i dati (max 250 char)",
   "outlook": "1 frase: dove stiamo ANDANDO nei prossimi 3-6 mesi e QUALI ROC te lo dicono (max 250 char)",
+  "regime_dissent": "vuoto se concordi col regime; se dissenti, i dati che lo giustificano (max 250 char)",
   "decisions": [
     {"asset": "us_equities_growth", "action": "OPEN_TRANCHE", "score": 65,
      "confidence": 0.7, "size_pct": 4.5,
@@ -181,6 +209,56 @@ def _compute_input_hash(
     return hashlib.md5(json.dumps(canonical, sort_keys=True).encode()).hexdigest()
 
 
+# Asset a rendimento monotòno (liquidità / T-bill): il prezzo accumula interessi e
+# non "fa trend". Momentum/RSI sono DEGENERI (sempre BULLISH, RSI saturo ~95-100) e
+# un LLM li legge come conviction fortissima → sovrappeso del cash per la ragione
+# sbagliata. Osservato sul probe reale 2026-07-15: Gemini scrisse "cash_money_market
+# ... RSI a 95, perfetto". Per questi asset mostriamo solo vol/rendimenti, MAI il
+# segnale di trend.
+_MONOTONE_YIELD_ASSETS = {"cash_money_market", "us_bonds_short"}
+
+
+def _build_market_block(price_history: dict, benchmark_key: str = "us_equities_growth") -> str:
+    """Blocco 'lettura di mercato' dai prezzi Yahoo (v6).
+
+    FIX STRUTTURALE 2026-07-15: fino alla v5 Gemini sceglieva 24 asset senza
+    vedere UN SOLO PREZZO (il price_history veniva fetchato DOPO la chiamata e
+    usato solo per loggare). Qui i prezzi che già scarichiamo diventano input.
+    `rel_3m` (forza relativa vs S&P) è la misura operativa della ROTAZIONE.
+    """
+    bench = price_history.get(benchmark_key)
+    rows = []
+    for asset in ASSET_CLASSES:
+        snap = momentum.market_snapshot(asset, price_history, benchmark=bench)
+        if not snap:
+            continue
+
+        def f(key, pct=True):
+            v = snap.get(key)
+            if v is None:
+                return "n/d"
+            return f"{v*100:+.1f}%" if pct else f"{v:.0f}"
+
+        if asset in _MONOTONE_YIELD_ASSETS:
+            # niente momentum/RSI: su questi è rumore che sembra segnale
+            rows.append(
+                f"  - {asset}: [strumento a rendimento: accumula interessi, "
+                f"NON fa trend -> indicatori di trend omessi perche' non "
+                f"significativi. Non trattarlo come un momentum play] | "
+                f"vol {f('vol_60d')} | "
+                f"ret 1m {f('ret_1m')} 3m {f('ret_3m')} 6m {f('ret_6m')}"
+            )
+            continue
+
+        rows.append(
+            f"  - {asset}: {snap.get('signal', 'n/d')} | RSI {f('rsi', pct=False)} | "
+            f"vs MA50 {f('dist_ma50')} | vol {f('vol_60d')} | "
+            f"ret 1m {f('ret_1m')} 3m {f('ret_3m')} 6m {f('ret_6m')} | "
+            f"rel_3m vs S&P {f('rel_strength_3m')}"
+        )
+    return "\n".join(rows) if rows else "  (prezzi non disponibili)"
+
+
 def _build_user_prompt(
     target_date: date,
     regime: str,
@@ -189,6 +267,7 @@ def _build_user_prompt(
     indicators: dict,
     positions: list[AiPortfolioPosition],
     learnings: list[dict],
+    price_history: dict | None = None,
 ) -> str:
     probs_str = ", ".join(
         f"{k}={v:.0%}" for k, v in sorted(probabilities.items(), key=lambda x: -x[1])
@@ -277,18 +356,37 @@ def _build_user_prompt(
             f"(win_rate {L['win_rate']:.0%}, shift {L['entry_threshold_shift']:+.1f})"
         )
 
+    market_block = _build_market_block(price_history or {})
+
     return f"""## CONTESTO — {target_date}
 
 ## INDICATORS MACRO RAW (FRED, valori veri di oggi)
 {chr(10).join(indicator_blocks) if indicator_blocks else "  (nessun indicator disponibile)"}
 
-## SECOND OPINION — classifier macro regime (puoi ignorare)
-Regime classifier dice: **{regime.upper()}** (confidence {confidence:.0%})
+## LETTURA DI MERCATO (prezzi REALI Yahoo, i 24 asset dell'universo)
+Per ogni asset: segnale momentum | RSI14 | distanza dalla MA50 | volatilità annua |
+rendimenti 1m/3m/6m | **rel_3m = forza relativa vs S&P a 3 mesi**.
+
+{market_block}
+
+**Come usarli**: la macro ti dice DOVE dovrebbe andare il capitale, questi prezzi ti
+dicono dove sta ANDANDO davvero. `rel_3m` è la tua misura di **ROTAZIONE**: se un
+asset ha rel_3m molto positiva mentre l'S&P arranca, il capitale si sta spostando lì.
+NON comprare una tesi macro che i prezzi smentiscono da mesi (rel_3m negativa e
+momentum BEARISH = il mercato non è d'accordo con te: o sei presto, o hai torto).
+Viceversa: momentum forte senza supporto macro = rischio di inseguire un rally finito.
+
+## REGIME MACRO — classifier proprietario (input di prima classe)
+Regime: **{regime.upper()}** (confidence {confidence:.0%})
 Probabilità: {probs_str}
 
-(Questa è la lettura di un modello a soglie. Spesso ha ragione, a volte ha torto.
-Usalo come benchmark cognitivo, non come istruzione. Se la tua analisi indipendente
-degli indicators sopra ti porta a una conclusione diversa, fidati dei tuoi numeri.)
+**DEVI considerarlo** nella tua tesi: è il nostro modello a soglie sul quadro macro
+completo, ed è la baseline con cui il resto del sistema ragiona. Non ignorarlo.
+**PUOI dissentire**, ma solo motivando coi dati: se dissenti, dillo ESPLICITAMENTE nel
+campo `regime_dissent` citando gli indicator/ROC che ti portano altrove (es. "dissento:
+lei_roc +0.3 e building_permits_yoy in ripresa → vedo reflation, non stagflation").
+Se concordi, lascia `regime_dissent` vuoto. Un dissenso non motivato dai numeri è
+rumore, non conviction.
 
 ## TUE POSIZIONI APERTE ({len(positions)})
 {chr(10).join(pos_lines) if pos_lines else "  (nessuna posizione)"}
@@ -303,15 +401,19 @@ degli indicators sopra ti porta a una conclusione diversa, fidati dei tuoi numer
    dicono. 1 frase (max 250 char). Guarda le derivate (`_roc`, `_change_3m/6m`, `_yoy`)
    e i leading (lei_roc, building_permits_yoy, heavy_truck_sales_yoy, gdp_roc_change_6m,
    initial_claims_roc), non i livelli lagging. Questa è la previsione su cui scommetti.
-3. Per ogni asset dell'universo (24) su cui hai conviction, emetti una decision
+3. `regime_dissent`: vuoto se concordi col regime del classifier; se dissenti, cita i
+   dati che ti portano altrove. Mai dissentire "a sensazione".
+4. Per ogni asset dell'universo (24) su cui hai conviction, emetti una decision
    COERENTE con l'`outlook`. Asset senza conviction: ometti (non serve SKIP esplicito).
-4. Giustifica OGNI decisione — **aperture E chiusure** — con un `reason` di 1 frase
-   italiana che cita gli indicator per nome e la loro DIREZIONE, non solo il livello.
-   - buono: "cpi_yoy_change_6m -0.8 + lei_roc in ripresa -> disinflazione, duration ok"
-   - inutile: "CPI alto -> compro oro" (livello senza derivata = nessuna previsione)
-   Se chiudi, di' cosa ha ROTTO la tesi d'ingresso.
+5. Giustifica OGNI decisione — **aperture E chiusure** — con un `reason` di 1 frase
+   che incroci **MACRO e PREZZO**: cita gli indicator per nome con la loro DIREZIONE,
+   E cosa dicono i prezzi (momentum / rel_3m / distanza MA50).
+   - ottimo: "cpi_yoy_change_6m -0.8 + lei_roc in ripresa -> disinflazione; e i prezzi
+     confermano: rel_3m +6.2% e sopra MA50"
+   - debole: "CPI alto -> compro oro" (livello senza derivata, e nessuno sguardo al prezzo)
+   Se chiudi, di' cosa ha ROTTO la tesi d'ingresso (macro girata? prezzo che smentisce?).
 
-Output JSON: {{ "thesis": "...", "outlook": "...", "decisions": [...] }}
+Output JSON: {{ "thesis": "...", "outlook": "...", "regime_dissent": "...", "decisions": [...] }}
 """
 
 
@@ -454,7 +556,10 @@ def daily_scan(
         logger.warning("LLM Strategist: no Gemini key, skipping day")
         return {"skipped": "no api key"}
 
-    # 7. Prompt + call
+    # 7. Prezzi PRIMA della chiamata (v6 FIX): fino alla v5 il fetch stava DOPO e
+    # Gemini decideva cieco sui prezzi — li usavamo solo per loggare la decisione.
+    price_history = _fetch_price_history_for_universe()
+
     prompt = _build_user_prompt(
         target_date=target_date,
         regime=regime,
@@ -463,6 +568,7 @@ def daily_scan(
         indicators=indicators,
         positions=list(existing.values()),
         learnings=learnings,
+        price_history=price_history,
     )
     raw = _call_gemini(prompt, api_key=api_key, model=model)
     if raw is None:
@@ -478,14 +584,15 @@ def daily_scan(
     if not isinstance(raw_decisions, list):
         return {"skipped": "decisions not list"}
 
-    # 8. Price history per momentum + sizing
-    price_history = _fetch_price_history_for_universe()
+    # 8. (price_history già fetchato al punto 7: serve al prompt, non solo al log)
 
     summary = {
         "n_decisions": 0, "n_open_tranches": 0, "n_closures": 0,
         "thesis": str(parsed.get("thesis", ""))[:300],
         # v5: la PREVISIONE 3-6m su cui il bot scommette (non solo la foto di oggi)
         "outlook": str(parsed.get("outlook", ""))[:300],
+        # v6: se dissente dal regime del classifier, DEVE dire con quali dati
+        "regime_dissent": str(parsed.get("regime_dissent", ""))[:300],
     }
 
     # Cap totale OPEN al giorno (anti-overtrading)
