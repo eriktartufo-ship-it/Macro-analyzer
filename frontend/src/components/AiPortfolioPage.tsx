@@ -9,9 +9,9 @@ import type {
   AiPortfolioReasoning,
 } from "../types";
 
-type StrategyType = "model_driven" | "llm_driven";
+type StrategyType = "model_driven" | "llm_driven" | "risk_managed_sp";
 
-const STRATEGY_ORDER: StrategyType[] = ["model_driven", "llm_driven"];
+const STRATEGY_ORDER: StrategyType[] = ["model_driven", "llm_driven", "risk_managed_sp"];
 
 const STRATEGY_META: Record<StrategyType, { label: string; emoji: string; subtitle: string; color: string }> = {
   model_driven: {
@@ -19,6 +19,12 @@ const STRATEGY_META: Record<StrategyType, { label: string; emoji: string; subtit
     emoji: "🧠",
     subtitle: "Classifier regime + score + momentum",
     color: "var(--reflation)",
+  },
+  risk_managed_sp: {
+    label: "S&P a rischio gestito",
+    emoji: "🛡️",
+    subtitle: "S&P sopra MA200, de-risk quando il trend gira",
+    color: "var(--goldilocks)",
   },
   llm_driven: {
     label: "LLM-Driven",
@@ -66,22 +72,27 @@ export function AiPortfolioPage() {
   const [posByStrat, setPosByStrat] = useState<Record<StrategyType, AiPortfolioPosition[]>>({
     model_driven: [],
     llm_driven: [],
+    risk_managed_sp: [],
   });
   const [decByStrat, setDecByStrat] = useState<Record<StrategyType, AiPortfolioDecision[]>>({
     model_driven: [],
     llm_driven: [],
+    risk_managed_sp: [],
   });
   const [perfByStrat, setPerfByStrat] = useState<Record<StrategyType, AiPortfolioPerformanceResponse | null>>({
     model_driven: null,
     llm_driven: null,
+    risk_managed_sp: null,
   });
   const [reasoningByStrat, setReasoningByStrat] = useState<Record<StrategyType, AiPortfolioReasoning | null>>({
     model_driven: null,
     llm_driven: null,
+    risk_managed_sp: null,
   });
   const [learnByStrat, setLearnByStrat] = useState<Record<StrategyType, AiPortfolioLearning[]>>({
     model_driven: [],
     llm_driven: [],
+    risk_managed_sp: [],
   });
 
   const loadFor = async (strategy: StrategyType) => {
@@ -258,19 +269,20 @@ export function AiPortfolioPage() {
           );
         })()}
 
-        {/* Equity chart: 2 strategie + 2 benchmark */}
+        {/* Equity chart: 3 strategie + 2 benchmark */}
         {perfByStrat.model_driven && (
           <div style={{ marginTop: 16 }}>
-            <EquityChart4
+            <EquityChart5
               model={perfByStrat.model_driven.history}
               llm={perfByStrat.llm_driven?.history || []}
+              riskSp={perfByStrat.risk_managed_sp?.history || []}
             />
           </div>
         )}
       </div>
 
       {/* Strategy selector tabs */}
-      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
         {STRATEGY_ORDER.map((s) => {
           const m = STRATEGY_META[s];
           const active = activeStrategy === s;
@@ -555,22 +567,25 @@ function RegimeChallengeBadge({ agree, alt }: { agree: string; alt: string | nul
   );
 }
 
-function EquityChart4({
+function EquityChart5({
   model,
   llm,
+  riskSp,
 }: {
   model: AiPortfolioPerformanceResponse["history"];
   llm: AiPortfolioPerformanceResponse["history"];
+  riskSp: AiPortfolioPerformanceResponse["history"];
 }) {
   const W = 720;
   const H = 240;
   const PAD = 30;
 
   // Use the longer history for x axis
-  const len = Math.max(model.length, llm.length);
+  const len = Math.max(model.length, llm.length, riskSp.length);
   const allVals = [
     ...model.flatMap((h) => [h.cumulative_return_pct, h.benchmark_60_40_return_pct ?? 0, h.benchmark_sp500_return_pct ?? 0]),
     ...llm.flatMap((h) => [h.cumulative_return_pct]),
+    ...riskSp.flatMap((h) => [h.cumulative_return_pct]),
   ];
   const minV = Math.min(0, ...allVals);
   const maxV = Math.max(0.001, ...allVals);
@@ -601,16 +616,19 @@ function EquityChart4({
       <path d={linePath(model, "benchmark_60_40_return_pct")} fill="none" stroke="var(--muted)" strokeWidth={1.5} strokeDasharray="2 3" />
       <path d={linePath(model, "cumulative_return_pct")} fill="none" stroke="var(--reflation)" strokeWidth={2.5} />
       <path d={linePath(llm, "cumulative_return_pct")} fill="none" stroke="var(--stagflation)" strokeWidth={2.5} />
+      <path d={linePath(riskSp, "cumulative_return_pct")} fill="none" stroke="var(--goldilocks)" strokeWidth={2.5} />
 
       <g transform={`translate(${PAD}, 10)`} fontSize={11}>
         <rect width={12} height={3} y={0} fill="var(--reflation)" />
         <text x={18} y={6} fill="var(--text)">🧠 Model</text>
         <rect width={12} height={3} y={14} fill="var(--stagflation)" />
         <text x={18} y={20} fill="var(--text)">🤖 LLM</text>
-        <rect width={12} height={3} y={28} fill="var(--muted)" />
-        <text x={18} y={34} fill="var(--text)">60/40</text>
-        <rect width={12} height={3} y={42} fill="var(--deflation)" />
-        <text x={18} y={48} fill="var(--text)">S&amp;P 500</text>
+        <rect width={12} height={3} y={28} fill="var(--goldilocks)" />
+        <text x={18} y={34} fill="var(--text)">🛡️ S&amp;P risk-managed</text>
+        <rect width={12} height={3} y={42} fill="var(--muted)" />
+        <text x={18} y={48} fill="var(--text)">60/40</text>
+        <rect width={12} height={3} y={56} fill="var(--deflation)" />
+        <text x={18} y={62} fill="var(--text)">S&amp;P 500</text>
       </g>
     </svg>
   );
