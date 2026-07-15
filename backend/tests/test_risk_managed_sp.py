@@ -51,18 +51,35 @@ def test_bear_esce_dal_sp():
     assert target != SP_ASSET
 
 
-def test_default_prudente_senza_prezzi():
-    """Se Yahoo è giù NON deve restare a caso sull'azionario."""
+def test_senza_prezzi_non_decide_invece_di_fingere_cash():
+    """DATI MANCANTI != "vai in cash". Bug reale del 2026-07-15: in prod il primo
+    scan prese una serie corta e apri' una posizione cash che SEMBRAVA un de-risk
+    deliberato mentre era un dato mancante. Ora deve dire "non so"."""
     target, reason = decide_target({})
-    assert target == CASH_ASSET
-    assert "non disponibili" in reason
+    assert target is None
+    assert "nessuna decisione" in reason
 
 
-def test_default_prudente_con_storia_corta():
+def test_storia_corta_non_decide():
     hist = {SP_ASSET: _s([100.0] * 30)}
     target, reason = decide_target(hist)
+    assert target is None
+    assert "storia insufficiente" in reason
+    assert "30 giorni" in reason  # dice QUANTI dati ha, per il debug
+
+
+def test_cash_resta_una_scelta_possibile_ma_solo_coi_dati():
+    """Il cash deve poter essere scelto DAVVERO (bear + rifugio=cash), non solo
+    come fallback: qui i dati ci sono e il cash e' il miglior rifugio."""
+    hist = {
+        SP_ASSET: _s([100.0] * 200 + [70.0]),
+        "gold": _s([100.0] * 200 + [80.0]),        # anche l'oro scende
+        "us_bonds_long": _s([100.0] * 200 + [85.0]),
+        CASH_ASSET: _s([100.0] * 201),             # il cash tiene
+    }
+    target, reason = decide_target(hist, use_best_refuge=True)
     assert target == CASH_ASSET
-    assert "prudenziale" in reason
+    assert "de-risk" in reason
 
 
 # ---------- pick_refuge ----------
