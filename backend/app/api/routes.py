@@ -3487,3 +3487,74 @@ def get_flows_timeline(
     result = compute_flow_timeline(dm, n_weeks=n_weeks, flow_lookback=flow_lookback)
     _TIMELINE_CACHE[key] = (now, result)
     return result
+
+
+_CYCLE_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+@router.get("/cycle/clock")
+def get_cycle_clock(
+    n_weeks: int = Query(default=52, ge=8, le=156),
+    db: Session = Depends(get_db),
+):
+    """Orologio del ciclo (Investment Clock, S46): proietta le probabilita' dei 4
+    regimi su assi crescita x inflazione + termometro del ciclo del debito (Dalio).
+
+    VISTA INFORMATIVA (non trader). Fonde: (1) storico regime LIVE (RegimeClassification,
+    resample settimanale W-FRI, coerente col dashboard) -> lancetta+fase; (2) flow
+    timeline (RRG) -> leader OSSERVATI per confronto teoria<->osservato; (3) termometro
+    strutturale del debito. Cache 1h."""
+    import time
+
+    import pandas as pd
+    from loguru import logger
+
+    from app.services.backtest.cycle_clock import compute_cycle_timeline
+    from app.services.backtest.daily_returns_matrix import build_daily_returns_matrix
+    from app.services.backtest.debt_cycle import debt_thermometer
+    from app.services.backtest.flow_timeline import compute_flow_timeline
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    key = str(n_weeks)
+    now = time.time()
+    hit = _CYCLE_CACHE.get(key)
+    if hit and now - hit[0] < 3600.0:
+        return hit[1]
+
+    # (1) storico regime LIVE -> frame settimanale W-FRI con p_<regime> + confidence
+    lookback_days = n_weeks * 7 + 40
+    records = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .limit(lookback_days)
+        .all()
+    )
+    regime_frame = pd.DataFrame()
+    if records:
+        rows = [{
+            "date": pd.Timestamp(r.date),
+            "p_reflation": r.probability_reflation or 0.0,
+            "p_stagflation": r.probability_stagflation or 0.0,
+            "p_deflation": r.probability_deflation or 0.0,
+            "p_goldilocks": r.probability_goldilocks or 0.0,
+            "confidence": r.confidence,
+        } for r in records]
+        df = pd.DataFrame(rows).set_index("date").sort_index()
+        # resample settimanale (ultimo valore del venerdi'), stessa griglia dei flussi
+        regime_frame = df.resample("W-FRI").last().dropna(how="all")
+
+    # (2) leader OSSERVATI per settimana dal RRG (quadrante 'leading')
+    observed: dict[str, list[str]] = {}
+    try:
+        from app.services.backtest.rrg import EXTRA_FLOW_ASSETS
+        dm = build_daily_returns_matrix(list(ASSET_REGIME_DATA.keys()) + EXTRA_FLOW_ASSETS)
+        ftl = compute_flow_timeline(dm, n_weeks=n_weeks)
+        for f in ftl.get("frames", []):
+            observed[f["week"]] = [p["a"] for p in f.get("rrg", []) if p.get("q") == "leading"]
+    except Exception as e:
+        logger.warning(f"cycle/clock: observed leaders (RRG) failed: {e}")
+
+    timeline = compute_cycle_timeline(regime_frame, observed, n_weeks=n_weeks)
+    result = {**timeline, "debt": debt_thermometer()}
+    _CYCLE_CACHE[key] = (now, result)
+    return result

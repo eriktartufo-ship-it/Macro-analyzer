@@ -19,6 +19,7 @@ const DedollarizationPage = lazy(() => import("./components/DedollarizationPage"
 const AssetRankingTable = lazy(() => import("./components/AssetRankingTable").then(m => ({ default: m.AssetRankingTable })));
 const DataPage = lazy(() => import("./components/DataPage").then(m => ({ default: m.DataPage })));
 const FlowsPage = lazy(() => import("./components/FlowsPage").then(m => ({ default: m.FlowsPage })));
+const CyclePage = lazy(() => import("./components/CyclePage").then(m => ({ default: m.CyclePage })));
 const AiPortfolioPage = lazy(() => import("./components/AiPortfolioPage").then(m => ({ default: m.AiPortfolioPage })));
 const NewsPanel = lazy(() => import("./components/NewsPanel").then(m => ({ default: m.NewsPanel })));
 const AnalysisPanel = lazy(() => import("./components/AnalysisPanel").then(m => ({ default: m.AnalysisPanel })));
@@ -265,6 +266,12 @@ export default function App() {
       {ready && page === "flows" && (
         <Suspense fallback={fallback}>
           <FlowsPage />
+        </Suspense>
+      )}
+
+      {ready && page === "cycle" && (
+        <Suspense fallback={fallback}>
+          <CyclePage />
         </Suspense>
       )}
 
