@@ -14,6 +14,7 @@ import type {
   EnsembleResult,
   FactorRegimeReport,
   FlowNetwork,
+  FlowTimeline,
   FOMCReport,
   HMMPrediction,
   AiPortfolioDecision,
@@ -111,6 +112,8 @@ export const api = {
     request<FlowNetwork>(`/flows/network?lookback_weeks=${lookbackWeeks}&max_edges=${maxEdges}`),
   flowsRiskOnOff: (lookbackWeeks = 13) =>
     request<RiskOnOff>(`/flows/risk-onoff?lookback_weeks=${lookbackWeeks}`),
+  flowsTimeline: (nWeeks = 52, flowLookback = 8) =>
+    request<FlowTimeline>(`/flows/timeline?n_weeks=${nWeeks}&flow_lookback=${flowLookback}`),
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),

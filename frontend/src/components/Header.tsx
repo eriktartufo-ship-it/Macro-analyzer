@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { SettingsMenu } from "./SettingsMenu";
 
-export type Page = "dashboard" | "ai-portfolio" | "portfolio" | "sentiment" | "dedollar" | "assets" | "data";
+export type Page = "dashboard" | "ai-portfolio" | "flows" | "portfolio" | "sentiment" | "dedollar" | "assets" | "data";
 export type Theme = "light" | "dark";
 
 interface Props {
@@ -24,6 +24,7 @@ export interface Tab {
 export const TABS: Tab[] = [
   { id: "dashboard", label: "Dashboard", short: "Home", icon: "▣" },
   { id: "ai-portfolio", label: "AI Portfolio", short: "AI", icon: "🤖" },
+  { id: "flows", label: "Flussi", short: "Flussi", icon: "⇄" },
   { id: "portfolio", label: "Portafogli", short: "Miei", icon: "◆" },
   { id: "sentiment", label: "Sentiment", short: "News", icon: "◈" },
   { id: "dedollar", label: "Dedollarizzazione", short: "USD", icon: "◉" },

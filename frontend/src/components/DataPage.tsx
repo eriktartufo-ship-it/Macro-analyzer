@@ -4,9 +4,6 @@ import { AssetCalibrationPanel } from "./AssetCalibrationPanel";
 import { BacktestPanel } from "./BacktestPanel";
 import { DedollarComparisonPanel } from "./DedollarComparisonPanel";
 import { FactorRegimePanel } from "./FactorRegimePanel";
-import { CrossAssetRiskPanel } from "./CrossAssetRiskPanel";
-import { FlowNetworkPanel } from "./FlowNetworkPanel";
-import { FlowsRrgPanel } from "./FlowsRrgPanel";
 import { FOMCSentimentPanel } from "./FOMCSentimentPanel";
 import { MonteCarloPanel } from "./MonteCarloPanel";
 import { RegimeDynamicsPanel } from "./RegimeDynamicsPanel";
@@ -372,12 +369,6 @@ export function DataPage() {
       </div>
 
       <RegimeEnsemblePanel />
-
-      <FlowsRrgPanel />
-
-      <FlowNetworkPanel />
-
-      <CrossAssetRiskPanel />
 
       <FOMCSentimentPanel />
 
