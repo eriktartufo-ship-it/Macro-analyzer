@@ -757,3 +757,80 @@ export interface ActiveModelInfo {
   current_classifier_hash: string;
   snapshots: ModelSnapshotInfo[];
 }
+
+export type RrgQuadrant = "leading" | "weakening" | "lagging" | "improving";
+
+export interface RrgTailPoint {
+  date: string;
+  ratio: number;
+  momentum: number;
+}
+
+export interface RrgPoint {
+  asset: string;
+  label: string;
+  quadrant: RrgQuadrant;
+  ratio: number;
+  momentum: number;
+  tail: RrgTailPoint[];
+}
+
+export interface RrgResult {
+  as_of: string;
+  benchmark: string;
+  window_weeks: number;
+  tail: number;
+  points: RrgPoint[];
+  reliability?: Reliability;
+}
+
+export interface FlowNode {
+  asset: string;
+  label: string;
+  role: "winner" | "loser" | "flat";
+  extra_pp: number;
+}
+
+export interface FlowEdge {
+  source: string;
+  target: string;
+  weight_pp: number;
+  share: number;
+}
+
+export interface FlowNetwork {
+  as_of: string;
+  lookback_weeks: number;
+  rotated_pp: number;
+  edges_shown: number;
+  edges_total: number;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+  reliability?: Reliability;
+}
+
+export interface RiskClass {
+  asset: string;
+  label: string;
+  role: "risk" | "safe";
+  momentum_pct: number | null;
+  weeks_available: number;
+}
+
+export interface RiskOnOff {
+  as_of: string;
+  lookback_weeks: number;
+  gauge: number;
+  regime: "risk_on" | "risk_off" | "neutral";
+  best_refuge: string | null;
+  best_refuge_label: string | null;
+  classes: RiskClass[];
+  reliability?: Reliability;
+}
+
+export interface Reliability {
+  reliable: boolean | null;
+  stress: boolean | null;
+  dist_pct: number | null;
+  sma_days: number;
+}

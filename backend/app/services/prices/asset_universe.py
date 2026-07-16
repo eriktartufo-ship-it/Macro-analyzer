@@ -125,6 +125,11 @@ ASSET_TICKERS: dict[str, dict[str, str | None]] = {
         "backfill_proxy": None,
         "description": "Consumer Staples Select Sector SPDR",
     },
+    "sector_semiconductors": {
+        "ticker": "SOXX",  # iShares Semiconductor ETF, 2001+
+        "backfill_proxy": "^SOX",  # PHLX Semiconductor Index, 1993+
+        "description": "iShares Semiconductor ETF / PHLX SOX (settore semiconduttori)",
+    },
     # T16 — Factor ETFs (iShares MSCI USA series, 2013+ inception)
     "factor_momentum": {
         "ticker": "MTUM",
