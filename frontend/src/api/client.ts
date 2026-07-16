@@ -15,6 +15,7 @@ import type {
   FactorRegimeReport,
   FlowNetwork,
   FlowTimeline,
+  CycleClock,
   FOMCReport,
   HMMPrediction,
   AiPortfolioDecision,
@@ -114,6 +115,7 @@ export const api = {
     request<RiskOnOff>(`/flows/risk-onoff?lookback_weeks=${lookbackWeeks}`),
   flowsTimeline: (nWeeks = 52, flowLookback = 8) =>
     request<FlowTimeline>(`/flows/timeline?n_weeks=${nWeeks}&flow_lookback=${flowLookback}`),
+  cycleClock: (nWeeks = 52) => request<CycleClock>(`/cycle/clock?n_weeks=${nWeeks}`),
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),

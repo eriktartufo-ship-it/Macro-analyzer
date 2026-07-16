@@ -864,3 +864,57 @@ export interface FlowTimeline {
   rrg_window: number;
   frames: FlowFrame[];
 }
+
+// --- Cycle Clock / Investment Clock (S46) ---
+export interface CycleLeader { asset: string; label: string; }
+export interface CyclePhaseMeta {
+  key: string;
+  regime: string;
+  ml_name: string;
+  it: string;
+  quadrant: "tl" | "tr" | "br" | "bl";
+  corner: [number, number];
+  desc: string;
+  leaders: CycleLeader[];
+}
+export interface CycleFrame {
+  week: string;
+  x: number;
+  y: number;
+  angle: number;
+  radius: number;
+  phase: string;
+  phase_ml: string;
+  top_regime: string;
+  top_prob: number;
+  sharpness: number;
+  confidence: number;
+  transition: boolean;
+  probs: Record<string, number>;
+  observed_leaders: CycleLeader[];
+  agreement: CycleLeader[];
+  anomalies: CycleLeader[];
+}
+export interface DebtComponent {
+  key: string;
+  label: string;
+  unit: string;
+  value: number | null;
+  score: number | null;
+  available: boolean;
+}
+export interface DebtThermometer {
+  composite: number | null;
+  stage: string;
+  stage_label: string;
+  components: DebtComponent[];
+  used: string[];
+  missing: string[];
+  as_of: string;
+}
+export interface CycleClock {
+  weeks: string[];
+  frames: CycleFrame[];
+  phase_meta: CyclePhaseMeta[];
+  debt: DebtThermometer;
+}
