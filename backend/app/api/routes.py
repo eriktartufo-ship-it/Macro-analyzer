@@ -3458,3 +3458,32 @@ def get_flows_risk_onoff(
     result["reliability"] = market_stress_state(dm)
     _RISKOFF_CACHE[key] = (now, result)
     return result
+
+
+_TIMELINE_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+@router.get("/flows/timeline")
+def get_flows_timeline(
+    n_weeks: int = Query(default=52, ge=8, le=156),
+    flow_lookback: int = Query(default=8, ge=2, le=26),
+):
+    """Serie storica settimanale dei flussi (RRG + rete + spettro + affidabilita') su 25 asset,
+    per la pagina Flussi con slider temporale globale. Vedi scripts/RRG_SPEC.md sezione timeline."""
+    import time
+
+    from app.services.backtest.daily_returns_matrix import build_daily_returns_matrix
+    from app.services.backtest.flow_timeline import compute_flow_timeline
+    from app.services.backtest.rrg import EXTRA_FLOW_ASSETS
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    key = f"{n_weeks}|{flow_lookback}"
+    now = time.time()
+    hit = _TIMELINE_CACHE.get(key)
+    if hit and now - hit[0] < 3600.0:
+        return hit[1]
+
+    dm = build_daily_returns_matrix(list(ASSET_REGIME_DATA.keys()) + EXTRA_FLOW_ASSETS)
+    result = compute_flow_timeline(dm, n_weeks=n_weeks, flow_lookback=flow_lookback)
+    _TIMELINE_CACHE[key] = (now, result)
+    return result

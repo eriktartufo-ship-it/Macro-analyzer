@@ -834,3 +834,33 @@ export interface Reliability {
   dist_pct: number | null;
   sma_days: number;
 }
+
+export type FlowArea = "usa" | "world" | "em" | "global";
+
+export interface FlowAssetMeta {
+  asset: string;
+  label: string;
+  area: FlowArea;
+  risk: number;
+}
+
+export interface FlowFrameRrg { a: string; ratio: number; mom: number; q: RrgQuadrant; }
+export interface FlowFrameFlow { a: string; extra: number; cand: boolean; }
+export interface FlowFrameEdge { s: string; t: string; w: number; sh: number; }
+
+export interface FlowFrame {
+  week: string;
+  rrg: FlowFrameRrg[];
+  flows: FlowFrameFlow[];
+  edges: FlowFrameEdge[];
+  rotated_pp: number;
+  sp_vs_sma_pct: number | null;
+}
+
+export interface FlowTimeline {
+  weeks: string[];
+  assets: FlowAssetMeta[];
+  flow_lookback: number;
+  rrg_window: number;
+  frames: FlowFrame[];
+}
