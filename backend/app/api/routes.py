@@ -3356,3 +3356,105 @@ def get_news(
         )
         for n in news_items
     ]
+
+
+# --- Flows / RRG (Relative Rotation Graph) ---
+
+_RRG_CACHE: dict[str, tuple[float, dict]] = {}
+_RRG_TTL = 3600.0  # 1h
+
+
+@router.get("/flows/rrg")
+def get_flows_rrg(
+    window_weeks: int = Query(default=52, ge=8, le=104),
+    tail: int = Query(default=8, ge=2, le=20),
+):
+    """Relative Rotation Graph dei flussi settoriali/asset-class.
+
+    RS-Ratio (forza relativa) x RS-Momentum, centrati a 100, benchmark = basket equal-weight
+    dell'universo. 4 quadranti: leading/weakening/lagging/improving. Vedi scripts/RRG_SPEC.md.
+    Il segnale flussi e' informativo (NON batte l'S&P long-only: FLOW_TRADER_CRITERIA.md).
+    """
+    import time
+
+    from app.services.backtest.daily_returns_matrix import build_daily_returns_matrix
+    from app.services.backtest.rrg import EXTRA_FLOW_ASSETS, compute_rrg
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    key = f"{window_weeks}|{tail}"
+    now = time.time()
+    hit = _RRG_CACHE.get(key)
+    if hit and now - hit[0] < _RRG_TTL:
+        return hit[1]
+
+    dm = build_daily_returns_matrix(list(ASSET_REGIME_DATA.keys()) + EXTRA_FLOW_ASSETS)
+    result = compute_rrg(dm, window_weeks=window_weeks, tail=tail).to_dict()
+    from app.services.backtest.market_state import market_stress_state
+    result["reliability"] = market_stress_state(dm)
+    _RRG_CACHE[key] = (now, result)
+    return result
+
+
+_FLOWNET_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+@router.get("/flows/network")
+def get_flows_network(
+    lookback_weeks: int = Query(default=8, ge=2, le=52),
+    max_edges: int = Query(default=14, ge=4, le=40),
+):
+    """Rete di rotazione: frecce (perdente -> vincitore) pesate dalla rotazione relativa.
+
+    Extra-performance e_i = r_i - media(universo) sul lookback (SOMMA e_i = 0 = conservazione).
+    Portata in punti percentuali di rotazione, NON dollari (i flussi netti $ non sono misurabili
+    dai prezzi, vedi FLOW_TRADER/RRG_SPEC). Vedi scripts/RRG_SPEC.md sezione rete.
+    """
+    import time
+
+    from app.services.backtest.daily_returns_matrix import build_daily_returns_matrix
+    from app.services.backtest.flow_network import compute_flow_network
+    from app.services.backtest.rrg import EXTRA_FLOW_ASSETS
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    key = f"{lookback_weeks}|{max_edges}"
+    now = time.time()
+    hit = _FLOWNET_CACHE.get(key)
+    if hit and now - hit[0] < 3600.0:
+        return hit[1]
+
+    dm = build_daily_returns_matrix(list(ASSET_REGIME_DATA.keys()) + EXTRA_FLOW_ASSETS)
+    result = compute_flow_network(dm, lookback_weeks=lookback_weeks, max_edges=max_edges).to_dict()
+    from app.services.backtest.market_state import market_stress_state
+    result["reliability"] = market_stress_state(dm)
+    _FLOWNET_CACHE[key] = (now, result)
+    return result
+
+
+_RISKOFF_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+@router.get("/flows/risk-onoff")
+def get_flows_risk_onoff(
+    lookback_weeks: int = Query(default=13, ge=2, le=52),
+):
+    """Cross-asset risk-on/off: posizionamento a macro-classi (azioni/cripto vs oro/bond/cash),
+    gauge risk-on<->off e rifugio corrente. Momentum reale sul lookback (fotografia). Vedi
+    scripts/RRG_SPEC.md sezione cross-asset."""
+    import time
+
+    from app.services.backtest.daily_returns_matrix import build_daily_returns_matrix
+    from app.services.backtest.risk_onoff import compute_risk_onoff
+    from app.services.scoring.engine import ASSET_REGIME_DATA
+
+    key = str(lookback_weeks)
+    now = time.time()
+    hit = _RISKOFF_CACHE.get(key)
+    if hit and now - hit[0] < 3600.0:
+        return hit[1]
+
+    dm = build_daily_returns_matrix(list(ASSET_REGIME_DATA.keys()))
+    result = compute_risk_onoff(dm, lookback_weeks=lookback_weeks).to_dict()
+    from app.services.backtest.market_state import market_stress_state
+    result["reliability"] = market_stress_state(dm)
+    _RISKOFF_CACHE[key] = (now, result)
+    return result

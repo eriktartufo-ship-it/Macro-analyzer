@@ -13,6 +13,7 @@ import type {
   Dedollarization,
   EnsembleResult,
   FactorRegimeReport,
+  FlowNetwork,
   FOMCReport,
   HMMPrediction,
   AiPortfolioDecision,
@@ -37,6 +38,8 @@ import type {
   ActiveModelInfo,
   RegimeExplain,
   RegimeHistoryItem,
+  RiskOnOff,
+  RrgResult,
   Scoreboard,
   SignalsHistoryItem,
   TransitionMatrix,
@@ -102,6 +105,12 @@ function withDedollar(qs: string): string {
 
 export const api = {
   currentRegime: () => request<CurrentRegime>("/regime/current"),
+  flowsRrg: (windowWeeks = 52, tail = 8) =>
+    request<RrgResult>(`/flows/rrg?window_weeks=${windowWeeks}&tail=${tail}`),
+  flowsNetwork: (lookbackWeeks = 8, maxEdges = 14) =>
+    request<FlowNetwork>(`/flows/network?lookback_weeks=${lookbackWeeks}&max_edges=${maxEdges}`),
+  flowsRiskOnOff: (lookbackWeeks = 13) =>
+    request<RiskOnOff>(`/flows/risk-onoff?lookback_weeks=${lookbackWeeks}`),
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),
