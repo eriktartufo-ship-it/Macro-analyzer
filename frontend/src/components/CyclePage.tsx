@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { CycleClock, CycleFrame, CyclePhaseMeta, DebtThermometer } from "../types";
+import type {
+  CycleClock, CycleFrame, CyclePhaseMeta, DebtThermometer,
+  DebasementRegime, DebasementIntensityPoint,
+} from "../types";
 
 const EASE = "cubic-bezier(.23,1,.32,1)";
 const POS = "#10b981";
 const NEG = "#ef4444";
 const AMBER = "#f59e0b";
 const BLUE = "#3f82ff";
+const GOLD = "#e0a82e";
 
 // colore per fase (quadrante). Coerente con la palette app: crescita=verde/ambra, stress=rosso, bond=blu.
 const PHASE_COLOR: Record<string, string> = {
@@ -182,6 +186,146 @@ function LeadershipOverlay({ frame, phaseMeta }: { frame: CycleFrame; phaseMeta:
   );
 }
 
+// ---------- Meta-regime Debasement (DREAM): sparkline intensità + isteresi ----------
+function IntensitySpark({ points, on }: { points: DebasementIntensityPoint[]; on: number }) {
+  const W = 520, H = 60, PAD = 4;
+  if (points.length < 2) return null;
+  const n = points.length;
+  const xS = (i: number) => PAD + (i / (n - 1)) * (W - 2 * PAD);
+  const yS = (v: number) => H - PAD - Math.max(0, Math.min(1, v)) * (H - 2 * PAD);
+  const line = points.map((p, i) => `${xS(i)},${yS(p.intensity)}`).join(" ");
+  // segmenti "acceso" (debasement confermato) ombreggiati
+  const rects: { x: number; w: number }[] = [];
+  let start = -1;
+  points.forEach((p, i) => {
+    if (p.state && start < 0) start = i;
+    if (start >= 0 && (!p.state || i === n - 1)) {
+      const end = p.state ? i : i - 1;
+      rects.push({ x: xS(start), w: Math.max(1.5, xS(end) - xS(start)) });
+      start = -1;
+    }
+  });
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }} aria-hidden>
+      {rects.map((r, i) => <rect key={i} x={r.x} y={0} width={r.w} height={H} fill={GOLD} opacity={0.13} />)}
+      <line x1={PAD} y1={yS(on)} x2={W - PAD} y2={yS(on)} stroke="var(--muted)" strokeDasharray="3 3" opacity={0.55} />
+      <polyline points={line} fill="none" stroke={GOLD} strokeWidth={1.8} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={xS(n - 1)} cy={yS(points[n - 1].intensity)} r={3.2} fill={GOLD} stroke="var(--bg)" strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+function ScoreBar({ label, value, color, suffix }: { label: string; value: number; color: string; suffix: string }) {
+  const pct = Math.max(0, Math.min(100, value * 100));
+  return (
+    <div style={{ display: "grid", gap: 3 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+        <span style={{ color: "var(--text)" }}>{label}</span>
+        <strong style={{ color, fontVariantNumeric: "tabular-nums" }}>{Math.round(pct)}{suffix}</strong>
+      </div>
+      <div style={{ height: 6, borderRadius: 999, background: "var(--surface-2, rgba(127,127,127,.14))" }}>
+        <div style={{ width: `${pct}%`, height: "100%", borderRadius: 999, background: color, transition: `width .5s ${EASE}` }} />
+      </div>
+    </div>
+  );
+}
+
+function DebasementPanel({ deb }: { deb: DebasementRegime }) {
+  if (!deb.available || !deb.meta || !deb.scores || !deb.divergence) {
+    return (
+      <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
+        Segnale non disponibile: il feed oro / tassi reali è momentaneamente irraggiungibile.
+      </div>
+    );
+  }
+  const { meta, scores, divergence } = deb;
+  const on = meta.active === "debasement";
+  const gap = divergence.gap_pct ?? 0;
+  const LO = -30, HI = 60; // range barra divergenza
+  const gapPos = Math.max(0, Math.min(100, ((gap - LO) / (HI - LO)) * 100));
+  const zeroPos = ((0 - LO) / (HI - LO)) * 100;
+  const subColor = meta.sub_phase === "Late" ? NEG : meta.sub_phase === "Early" ? POS : GOLD;
+  const subLabelIt: Record<string, string> = { Early: "iniziale", Mature: "matura", Late: "tardiva" };
+  const onThr = deb.thresholds?.on ?? 0.6;
+
+  return (
+    <div style={{ display: "grid", gap: 16 }}>
+      {/* Badge stato meta-regime */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+        padding: "12px 14px", borderRadius: 12,
+        background: on ? "color-mix(in srgb, #e0a82e 12%, transparent)" : "var(--surface-2, rgba(127,127,127,.08))",
+        border: `1px solid ${on ? GOLD : "var(--border)"}`,
+      }}>
+        <span style={{ fontSize: 22 }}>{on ? "🔶" : "🕐"}</span>
+        <div style={{ display: "grid", gap: 2 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: on ? GOLD : "var(--text)" }}>
+            {on ? "Debasement monetario ATTIVO" : "Prevale il ciclo economico"}
+            {on && meta.sub_phase && (
+              <span style={{ fontSize: 13, fontWeight: 700, color: subColor }}> · fase {subLabelIt[meta.sub_phase] ?? meta.sub_phase.toLowerCase()}</span>
+            )}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)" }}>
+            {on
+              ? `Il mercato prezza il ciclo monetario più di quello economico da ${meta.months_in} mesi (intensità ${(meta.intensity * 100).toFixed(0)}/100).`
+              : `Intensità debasement ${(meta.intensity * 100).toFixed(0)}/100: sotto la soglia di conferma, il ciclo economico resta dominante.`}
+          </div>
+        </div>
+      </div>
+
+      {/* Gauge divergenza oro vs tassi reali */}
+      <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 6 }}>
+          <span style={{ fontSize: 12.5, color: "var(--muted)" }}>Divergenza oro / tassi reali (rolling 60 mesi)</span>
+          <strong style={{ fontSize: 20, fontWeight: 800, color: gap >= 0 ? GOLD : POS, fontVariantNumeric: "tabular-nums" }}>
+            {gap >= 0 ? "+" : ""}{gap.toFixed(1)}%
+          </strong>
+        </div>
+        <div style={{ position: "relative", height: 16, borderRadius: 999,
+          background: `linear-gradient(90deg, ${POS} 0%, var(--surface-2, rgba(127,127,127,.2)) ${zeroPos}%, ${GOLD} 100%)`, opacity: 0.85 }}>
+          {/* tacca zero (fair value) */}
+          <div style={{ position: "absolute", left: `${zeroPos}%`, top: -4, bottom: -4, width: 2, transform: "translateX(-50%)",
+            background: "var(--muted)", opacity: 0.7 }} />
+          {/* marker oro attuale */}
+          <div style={{ position: "absolute", left: `${gapPos}%`, top: -3, bottom: -3, width: 3, transform: "translateX(-50%)",
+            background: "var(--text)", borderRadius: 2, boxShadow: "0 0 0 2px var(--bg)", transition: `left .5s ${EASE}` }} />
+        </div>
+        <div style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.45 }}>
+          L'oro quota <strong>{gap >= 0 ? "sopra" : "sotto"}</strong> il livello implicito dalla sua relazione storica con i
+          tassi reali (10Y reale: <strong>{divergence.real_yield?.toFixed(2)}%</strong>). Un gap alto e persistente è il
+          segnale-firma del <em>debasement</em>: il mercato "sente puzza di bruciato" sul sistema monetario.
+        </div>
+      </div>
+
+      {/* 5 score: 4 cicli economici + debasement (intensità) */}
+      <div style={{ display: "grid", gap: 9 }}>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>I cinque regimi — 4 <em>cicli economici</em> (probabilità) + il <em>ciclo monetario</em> (intensità, orizzonte diverso)</div>
+        <ScoreBar label="Reflation · ciclo" value={scores.reflation} color={BLUE} suffix="%" />
+        <ScoreBar label="Stagflation · ciclo" value={scores.stagflation} color={NEG} suffix="%" />
+        <ScoreBar label="Goldilocks · ciclo" value={scores.goldilocks} color={POS} suffix="%" />
+        <ScoreBar label="Deflation · ciclo" value={scores.deflation} color={AMBER} suffix="%" />
+        <ScoreBar label="Debasement · meta (intensità)" value={scores.debasement} color={GOLD} suffix="/100" />
+      </div>
+
+      {/* Storia intensità + isteresi */}
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ fontSize: 12.5, color: "var(--muted)" }}>
+          Intensità nel tempo — le zone <span style={{ color: GOLD, fontWeight: 700 }}>oro</span> sono i periodi di debasement
+          confermato (isteresi: {deb.thresholds?.confirm_on ?? 2} mesi per accendersi, {deb.thresholds?.confirm_off ?? 6} per spegnersi).
+        </div>
+        <IntensitySpark points={deb.intensity_history} on={onThr} />
+      </div>
+
+      <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5,
+        borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+        Riproduce il <strong>DREAM Index</strong> di Vito Lops (segnale oro↔tassi reali). Soglie e conferme sono
+        euristiche <strong>non calibrate</strong> su backtest. I tassi reali (TIPS) partono dal 2003: i picchi storici
+        pre-2003 (es. 1980-81) non sono riproducibili con questi dati. Vista informativa, non un segnale operativo.
+      </div>
+    </div>
+  );
+}
+
 function Disclaimers() {
   const items = [
     "Lettura COINCIDENTE su dati rivedibili: dove siamo ORA, non una previsione.",
@@ -199,6 +343,7 @@ function Disclaimers() {
 
 export function CyclePage() {
   const [cc, setCc] = useState<CycleClock | null>(null);
+  const [deb, setDeb] = useState<DebasementRegime | null>(null);
   const [wi, setWi] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -209,6 +354,10 @@ export function CyclePage() {
     api.cycleClock(52)
       .then((r) => { if (alive) { setCc(r); setWi(Math.max(0, r.frames.length - 1)); } })
       .catch((e) => { if (alive) setErr(String(e)); });
+    // Meta-regime Debasement (DREAM): fetch indipendente, non blocca l'orologio se fallisce
+    api.cycleDebasement()
+      .then((r) => { if (alive) setDeb(r); })
+      .catch(() => { if (alive) setDeb(null); });
     return () => { alive = false; };
   }, []);
 
@@ -292,6 +441,18 @@ export function CyclePage() {
           Per capire se siamo "a fine ciclo" si leggono <strong>insieme</strong>. Contesto strutturale, non timing.
         </p>
         <DebtBar debt={cc.debt} />
+      </div>
+
+      {/* Ciclo monetario / Debasement (DREAM) — gemello del termometro debito */}
+      <div className="card">
+        <h2 style={{ marginBottom: 2 }}>Ciclo monetario / Debasement (DREAM)</h2>
+        <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: 0, maxWidth: 700 }}>
+          Un <strong>terzo orizzonte</strong>: non il ciclo economico (orologio) né quello della leva (termometro),
+          ma il <strong>ciclo monetario</strong>. Misura quando il mercato prezza la messa in discussione del sistema
+          monetario (debasement del dollaro) più del normale ciclo. Segnale-chiave: l'oro rispetto ai tassi reali.
+        </p>
+        {deb ? <DebasementPanel deb={deb} />
+          : <p style={{ color: "var(--muted)", fontSize: 12.5 }}>Calcolo il segnale di debasement…</p>}
       </div>
 
       {/* Disclaimer */}
