@@ -918,3 +918,40 @@ export interface CycleClock {
   phase_meta: CyclePhaseMeta[];
   debt: DebtThermometer;
 }
+
+// --- Meta-regime Debasement (DREAM, R2/R3): overlay monetario sopra l'orologio ---
+export interface DebasementScores {
+  reflation: number;
+  stagflation: number;
+  deflation: number;
+  goldilocks: number;
+  debasement: number; // INTENSITA' 0-1, non una probabilita' comparabile testa-a-testa
+}
+export interface DebasementMeta {
+  active: "debasement" | "cyclical";
+  sub_phase: "Early" | "Mature" | "Late" | null;
+  intensity: number;
+  months_in: number;
+  slope_3m: number;
+}
+export interface DebasementDivergence {
+  gap: number | null;
+  gap_pct: number | null;
+  gold: number | null;
+  fair_value: number | null;
+  real_yield: number | null;
+}
+export interface DebasementIntensityPoint {
+  date: string;
+  intensity: number;
+  state: boolean;
+}
+export interface DebasementRegime {
+  available: boolean;
+  asof?: string;
+  scores: DebasementScores | null;
+  meta: DebasementMeta | null;
+  divergence: DebasementDivergence | null;
+  intensity_history: DebasementIntensityPoint[];
+  thresholds?: { on: number; off: number; confirm_on: number; confirm_off: number };
+}

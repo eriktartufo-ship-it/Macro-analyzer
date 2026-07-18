@@ -3490,6 +3490,7 @@ def get_flows_timeline(
 
 
 _CYCLE_CACHE: dict[str, tuple[float, dict]] = {}
+_DEBASEMENT_CACHE: dict[str, tuple[float, dict]] = {}
 
 
 @router.get("/cycle/clock")
@@ -3557,4 +3558,50 @@ def get_cycle_clock(
     timeline = compute_cycle_timeline(regime_frame, observed, n_weeks=n_weeks)
     result = {**timeline, "debt": debt_thermometer()}
     _CYCLE_CACHE[key] = (now, result)
+    return result
+
+
+@router.get("/cycle/debasement")
+def get_cycle_debasement(db: Session = Depends(get_db)):
+    """Meta-regime Debasement (R2 DREAM): overlay MONETARIO sopra l'Investment Clock.
+
+    Segnale-firma di Vito Lops: divergenza oro vs tassi reali (rolling 60m) -> intensita'
+    0-1 con sotto-fasi Early/Mature/Late + isteresi asimmetrica. Le 4 prob CICLICHE
+    restano quelle del classifier (ciclo economico); il Debasement e' un'intensita'
+    a orizzonte lento, NON una 5a probabilita' testa-a-testa (coerente S46: orizzonti
+    separati). VISTA INFORMATIVA, non trading. Cache 1h; graceful (null se feed giu')."""
+    import time
+
+    from app.services.backtest.debasement_regime import compute_debasement_regime
+    from app.services.backtest.debasement_divergence import load_live_divergence
+
+    now = time.time()
+    hit = _DEBASEMENT_CACHE.get("current")
+    if hit and now - hit[0] < 3600.0:
+        return hit[1]
+
+    # prob correnti dei 4 regimi ciclici (ultimo record, come il dashboard)
+    latest = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .first()
+    )
+    regime_probs = None
+    if latest is not None:
+        regime_probs = {
+            "reflation": latest.probability_reflation or 0.0,
+            "stagflation": latest.probability_stagflation or 0.0,
+            "deflation": latest.probability_deflation or 0.0,
+            "goldilocks": latest.probability_goldilocks or 0.0,
+        }
+
+    divergence = load_live_divergence()
+    result = compute_debasement_regime(divergence, regime_probs)
+    if result is None:
+        # graceful: feed esterno giu' -> payload vuoto esplicito, mai 500
+        return {"available": False, "scores": None, "meta": None,
+                "divergence": None, "intensity_history": []}
+
+    result = {"available": True, **result}
+    _DEBASEMENT_CACHE["current"] = (now, result)
     return result
