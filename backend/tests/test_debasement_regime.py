@@ -18,6 +18,7 @@ from app.services.backtest.debasement_regime import (
     CONFIRM_ON,
     OFF_THRESHOLD,
     ON_THRESHOLD,
+    _INTENSITY_CENTER,
     apply_hysteresis,
     classify_subphase,
     compute_debasement_regime,
@@ -32,7 +33,7 @@ def test_gap_to_intensity_monotonic_and_bounded():
     hi = gap_to_intensity(0.40)
     assert 0.0 <= lo < mid < hi <= 1.0
     assert lo < 0.2 and hi > 0.8          # -25% debole, +40% forte
-    assert gap_to_intensity(0.10) == approx(0.5, abs=1e-9)  # center
+    assert gap_to_intensity(_INTENSITY_CENTER) == approx(0.5, abs=1e-9)  # center -> 0.5
 
 
 def test_hysteresis_turns_on_after_confirm_on():
