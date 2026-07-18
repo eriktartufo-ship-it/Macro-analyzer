@@ -14,14 +14,19 @@ divergenza oro/tassi reali (R1), con:
 
 Vista informativa, non trading: nessuna raccomandazione, solo misura (spec R2).
 
-DA VERIFICARE (dichiarato, come le ancore del termometro debito S46): le soglie
-ON/OFF e i mesi di conferma sono EURISTICHE non calibrate su backtest storico.
+CALIBRAZIONE (R4, scripts/debasement_calibration.py): la sigmoid intensità è
+DATA-GROUNDED sulla distribuzione empirica del gap 2008+ (center=mediana +7.9%,
+scale=mezzo-IQR). Le soglie ON/OFF + conferme NON sono fit-su-outcome (sarebbe
+overfitting: solo ~3 episodi, e sconfinerebbe nel market-timing) ma sono state
+VALIDATE come plateau di robustezza: il verdetto "acceso ORA" è stabile su tutte
+le 120 combinazioni di soglie testate; i valori scelti stanno al centro del plateau.
+Limite dichiarato: TIPS dal 2003 → picchi pre-2003 (1980-81) non riproducibili.
 """
 from __future__ import annotations
 
 import math
 
-# Soglie intensita' + conferma (euristiche DA VERIFICARE)
+# Soglie intensita' + conferma (centro del plateau di robustezza, R4)
 ON_THRESHOLD = 0.60
 OFF_THRESHOLD = 0.40
 CONFIRM_ON = 2       # mesi consecutivi sopra ON per accendere
@@ -31,9 +36,10 @@ CONFIRM_OFF = 6      # mesi consecutivi sotto OFF per spegnere (asimmetrico = ri
 EARLY_MONTHS = 6         # primi mesi dopo l'accensione = Early
 LATE_PEAK_FRAC = 0.80    # sotto l'80% del picco + in discesa = Late (verso neutralizzazione)
 
-# Mappatura gap divergenza -> intensita' (sigmoid centrata su +10%)
-_INTENSITY_CENTER = 0.10
-_INTENSITY_SCALE = 0.12
+# Mappatura gap divergenza -> intensita' (sigmoid DATA-GROUNDED sul gap 2008+, R4:
+# center = mediana empirica +7.9%, scale = mezzo-IQR -> p25/p75 cadono a ~0.27/0.73)
+_INTENSITY_CENTER = 0.08
+_INTENSITY_SCALE = 0.20
 
 
 def gap_to_intensity(gap: float, center: float = _INTENSITY_CENTER,

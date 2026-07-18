@@ -318,9 +318,11 @@ function DebasementPanel({ deb }: { deb: DebasementRegime }) {
 
       <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.5,
         borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-        Riproduce il <strong>DREAM Index</strong> di Vito Lops (segnale oro↔tassi reali). Soglie e conferme sono
-        euristiche <strong>non calibrate</strong> su backtest. I tassi reali (TIPS) partono dal 2003: i picchi storici
-        pre-2003 (es. 1980-81) non sono riproducibili con questi dati. Vista informativa, non un segnale operativo.
+        Riproduce il <strong>DREAM Index</strong> di Vito Lops (segnale oro↔tassi reali). L'intensità è
+        <strong> ancorata alla distribuzione storica</strong> del gap; le soglie sono al centro di un
+        <strong> plateau di robustezza</strong> (il verdetto non cambia al variare ragionevole dei parametri).
+        I tassi reali (TIPS) partono dal 2003: i picchi pre-2003 (es. 1980-81) non sono riproducibili.
+        Vista informativa, non un segnale operativo.
       </div>
     </div>
   );
