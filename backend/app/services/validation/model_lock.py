@@ -3,7 +3,8 @@
 Lock filosofia: per validare true OOS, ogni prediction deve essere attribuibile
 a uno STATO ESATTO del modello. Snapshot freezato in DB con:
 - version: stringa human-readable (es. "v1.0-sealed-2026-05-27")
-- flag state: dict di tutti i 27 flag opt-in + 3 default-ON al momento
+- flag state: dict di tutti i flag al momento (27 totali: 16 opt-in default-OFF +
+  11 default-ON — contati 2026-08-02, `config_flags.py`)
 - classifier_hash: md5 di REGIME_CONDITIONS dict (cattura tweak ai pesi/threshold)
 - locked_at + description
 
