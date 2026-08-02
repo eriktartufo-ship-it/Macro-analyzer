@@ -2,7 +2,7 @@
 
 Sistema di classificazione macro-regime e scoring per asset class.
 Analizza indicatori economici (FRED API) per determinare il regime macro corrente
-e calcolare score ottimali per 15 asset class.
+e calcolare score ottimali per 24 asset class.
 
 ## Regimi
 
@@ -73,12 +73,12 @@ Macro analyzer/
 │   │   ├── scheduler/       # APScheduler (refresh giornaliero 06:00 UTC)
 │   │   └── services/
 │   │       ├── indicators/  # FRED fetch + ROC, z-score, YoY
-│   │       ├── regime/      # Classifier (6 regimi, pesi, confidence)
-│   │       └── scoring/     # Score 0-100 per 15 asset class
+│   │       ├── regime/      # Classifier (4 regimi, pesi, confidence)
+│   │       └── scoring/     # Score 0-100 per 24 asset class
 │   ├── migrations/          # Alembic
 │   ├── seed/                # Dati storici hardcoded
 │   └── tests/               # pytest (TDD)
-├── frontend/                # Dashboard (dark mode) — coming soon
+├── frontend/                # Dashboard React+TS+Vite (dark/light) — implementato
 ├── .env.example
 ├── Makefile
 └── requirements.txt
