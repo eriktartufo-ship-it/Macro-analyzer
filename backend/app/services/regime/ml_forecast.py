@@ -163,7 +163,7 @@ def asset_allocation_forecast(
         forecast_horizons_list: output di `forecast_horizons`.
         score_fn: funzione (asset, regime) → score (es. _asset_regime_score
             o _asset_regime_score_percentile).
-        asset_classes: lista 15 asset class.
+        asset_classes: lista 24 asset class.
         top_n: top-N da restituire.
 
     Returns:
