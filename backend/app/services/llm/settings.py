@@ -95,16 +95,28 @@ def generation_config(
     indica l'unico sostituto vero: *"define a system instruction with explicit
     rules for your specific use case"*, cioè si scrive nel PROMPT, non qui.
 
-    🔴 **`thinkingBudget` → `thinkingLevel`**, e su 3.8 Flash il livello
-    `minimal` **non esiste più** (su 3.6 sì): lì è un errore di validazione
-    prima di generare un token. Poiché `thinkingBudget: 0` è esattamente
-    "non pensare", portarlo su 3.8 avrebbe spento l'analisi LLM in silenzio —
-    tutti i call-site catturano l'eccezione e tornano `None`, quindi nessun
-    crash e nessuno se ne accorge.
+    🔴 **`thinkingBudget` → `thinkingLevel`**. Qui la doc da sola porta fuori
+    strada, quindi i parametri sono stati CHIESTI AI MODELLI
+    (`backend/scripts/sonda_parametri_gemini.py`, eseguita il 2026-09-05). Esito:
 
-    Sui modelli 2.x nulla di tutto questo vale: `temperature` funziona davvero e
-    `thinkingBudget` è il parametro giusto. Per questo la funzione RAMIFICA
-    invece di uniformare: uniformare vorrebbe dire rompere il ramo 2.x.
+        parametro                  3.8-flash   3.6-flash   2.5-flash
+        thinkingLevel low/med/high    200         200      400 not supported
+        thinkingLevel minimal         400         200         400
+        thinkingBudget: 0             200         400         200
+
+    Due cose che nessuno indovinerebbe leggendo la doc:
+      · su **3.6** `thinkingBudget: 0` viene **RIFIUTATO** (400 "invalid
+        argument") mentre su 3.8 passa. L'intuizione naturale — "il legacy
+        romperà sul modello più nuovo" — è esattamente rovesciata.
+      · `minimal` esiste su 3.6 e sparisce su 3.8, quindi non si può nemmeno
+        mappare `thinkingBudget: 0` su `minimal` e chiudere la questione.
+
+    ⇒ nessun singolo valore va bene per tutti e tre. Per questo la funzione
+    RAMIFICA sulla famiglia invece di uniformare: `thinkingLevel` sui 3.x
+    (l'unico accettato da entrambi), `thinkingBudget` sui 2.x.
+
+    Sui modelli 2.x `temperature` funziona davvero: la deprecazione qui sopra
+    riguarda solo la linea 3.x.
     """
     cfg: dict = {"maxOutputTokens": max_output_tokens}
     if json_output:

@@ -203,11 +203,18 @@ dark/light, micro-animazioni, font Inter, layout responsive). Per nuovi pannelli
 - SVG charts custom per cone/timeline/heatmap (no librerie pesanti tipo Chart.js)
 - Toggle nell'Header per flag globali (es. dark theme, dedollar bonus)
 
-## Deployment (vedi `ai_deployment.md`) — TODO futuro
+## Deployment (vedi `ai_deployment.md`)
 
-Attualmente il progetto gira locale (Postgres + uvicorn + vite dev). Per ship a VPS
-servono `Dockerfile` backend/frontend + `docker-compose.yml`. Non ancora implementato
-— da pianificare quando si vuole esporre a utenti esterni.
+⚠️ **Questa sezione diceva "TODO futuro / non ancora implementato" fino al 2026-09-05**,
+quando esistevano già `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml` e
+`.github/workflows/deploy.yml`. Una doc che dichiara assente ciò che esiste manda via chi
+cercava lo strumento giusto — verificato e riscritto.
+
+- **Deploy**: push su `main` → `.github/workflows/deploy.yml` (build 2 immagini su GHCR,
+  poi pull+restart sul runner self-hosted della VPS). Anche `workflow_dispatch`.
+- **Host**: `macro.pieranlab.cloud` via Traefik (`APP_DOMAIN` in `.env`).
+- **Servizi**: `macro-postgres`, `macro-backend`, `macro-frontend`.
+- **Locale**: resta possibile senza Docker (Postgres + uvicorn + vite dev, `make dev`).
 
 ## Riferimenti incrociati
 
