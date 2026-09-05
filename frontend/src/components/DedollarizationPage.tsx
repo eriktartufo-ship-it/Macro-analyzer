@@ -758,13 +758,24 @@ export function DedollarizationPage({ data }: Props) {
                 }}
               >
                 {/* Il modello che ha scritto QUESTO testo, non quello impostato ora.
-                    Se sono diversi lo si dice, invece di lasciar credere che il testo
-                    venga dal modello corrente. */}
+                    L'etichetta resta CORTA: e' un'eyebrow da 10px bold uppercase, e una
+                    frase lunga qui dentro diventa un muro di maiuscolo a 375px. L'avviso
+                    "e' vecchia" va sulla riga sotto, in tondo e muted. */}
                 Analisi AI — {explanationModel ?? "modello non registrato"}
-                {explanationModel && modelloCorrente && explanationModel !== modelloCorrente
-                  ? ` (ora in uso: ${modelloCorrente} — rigenera per aggiornarla)`
-                  : ""}
               </div>
+              {explanationModel && modelloCorrente && explanationModel !== modelloCorrente && (
+                <div
+                  style={{
+                    fontSize: 11,
+                    lineHeight: 1.5,
+                    color: "var(--muted)",
+                    marginBottom: 8,
+                  }}
+                >
+                  Scritta da un modello diverso da quello in uso ora ({modelloCorrente}) —
+                  rigenera per aggiornarla.
+                </div>
+              )}
               <div style={{ fontSize: 14, lineHeight: 1.65, color: "var(--text)" }}>
                 {renderExplanation(explanation)}
               </div>
