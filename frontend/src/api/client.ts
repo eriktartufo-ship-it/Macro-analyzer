@@ -280,7 +280,7 @@ export const api = {
   news: () => request<NewsItem[]>("/news"),
   refresh: () => request<{ status: string }>("/refresh", { method: "POST" }, { retries: 0 }),
   generateDedollarExplanation: () =>
-    request<{ explanation: string; date: string }>(
+    request<{ explanation: string; explanation_model: string | null; date: string }>(
       "/dedollarization/explanation",
       { method: "POST" },
       { retries: 0 },

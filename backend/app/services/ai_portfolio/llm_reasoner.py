@@ -186,12 +186,9 @@ def _call_gemini(prompt: str, api_key: str, model: str) -> Optional[str]:
                 "contents": [
                     {"parts": [{"text": f"{_SYSTEM_PROMPT}\n\n---\n\n{prompt}"}]},
                 ],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 3000,
-                    "responseMimeType": "application/json",
-                    "thinkingConfig": {"thinkingBudget": 0},
-                },
+                "generationConfig": llm_settings.generation_config(
+                    model=model, max_output_tokens=3000, temperature=0.2
+                ),
             },
             timeout=90,
         )

@@ -1,6 +1,7 @@
 """LLM analyzer per FOMC statements/minutes.
 
-Provider stack: Gemini 2.5 Flash (preferito) → Groq Llama 3.3 70B (fallback).
+Provider stack: Gemini (preferito, modello unico di progetto da
+`services/llm/settings.get_model()`) → Groq Llama 3.3 70B (fallback).
 Estrae:
   - hawkish_dovish_score: -1.0 (very dovish, easing) → +1.0 (very hawkish, tightening)
   - confidence: 0..1 quanto il testo e' chiaro nella direzione
@@ -10,7 +11,9 @@ Estrae:
   - summary: 2-3 frasi in italiano
 
 I documenti sono in inglese, l'output e' strutturato JSON. Cache aggressiva: la
-stessa coppia (url, llm_version) non viene ri-analizzata.
+stessa coppia (url, MODELLO) non viene ri-analizzata — il modello e' entrato
+davvero nella chiave il 2026-09-05, prima il docstring lo prometteva e il codice
+no (vedi `_cache_path`).
 """
 
 from __future__ import annotations
@@ -25,13 +28,16 @@ from loguru import logger
 
 from app.config import settings
 from app.services.fomc.fetcher import FOMCDocument
+from app.services.llm import settings as llm_settings
 
 
 _ANALYSIS_CACHE_ROOT = Path(__file__).resolve().parents[3] / ".cache" / "fomc_analysis"
 
-_GEMINI_API_URL = (
+# 2026-09-05 — era inchiodato a `gemini-2.5-flash`, quindi il selettore del modello
+# nel pannello non governava il FOMC analyzer. Ora il modello è UNO per tutta Macro.
+_GEMINI_API_URL_TPL = (
     "https://generativelanguage.googleapis.com/v1beta/"
-    "models/gemini-2.5-flash:generateContent"
+    "models/{model}:generateContent"
 )
 
 _GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -145,30 +151,27 @@ def _truncate_text(text: str, max_chars: int = 18000) -> str:
 
 
 def _call_gemini(prompt: str, system: str = _SYSTEM_PROMPT) -> str | None:
-    """Chiamata Gemini 2.5 Flash via Google Generative Language API.
+    """Chiamata Gemini via Google Generative Language API, sul modello di progetto.
 
     Gemini non ha un campo `system` distinto: pattern usato qui = prepend
     `system\n\n---\n\nuser` come singola user message. responseMimeType
     `application/json` forza output JSON-only (niente markdown fences).
-    `thinkingConfig.thinkingBudget=0` disabilita reasoning extra (latency
-    + cost saving, va bene per task strutturati semplici come FOMC parse).
+    Il resto del `generationConfig` lo costruisce `llm_settings.generation_config`,
+    che sa quali parametri valgono per la famiglia del modello in uso.
     """
     if not settings.gemini_api_key:
         return None
     try:
         resp = requests.post(
-            _GEMINI_API_URL,
+            _GEMINI_API_URL_TPL.format(model=llm_settings.get_model()),
             params={"key": settings.gemini_api_key},
             json={
                 "contents": [
                     {"parts": [{"text": f"{system}\n\n---\n\n{prompt}"}]},
                 ],
-                "generationConfig": {
-                    "temperature": 0.1,
-                    "maxOutputTokens": 1500,
-                    "responseMimeType": "application/json",
-                    "thinkingConfig": {"thinkingBudget": 0},
-                },
+                "generationConfig": llm_settings.generation_config(
+                    max_output_tokens=1500, temperature=0.1
+                ),
             },
             timeout=60,
         )
@@ -216,8 +219,17 @@ def _call_groq(prompt: str, system: str = _SYSTEM_PROMPT) -> str | None:
 
 
 def _cache_path(url: str) -> Path:
+    """Percorso di cache dell'analisi — la chiave include il MODELLO.
+
+    2026-09-05: prima la chiave era il solo `url`, mentre il docstring del modulo
+    prometteva `(url, llm_version)`. Con il modello fuori dalla chiave, cambiarlo
+    non ri-analizzava niente: i documenti già in cache restavano quelli letti dal
+    modello vecchio, per sempre, e il cambio si vedeva solo sui documenti nuovi.
+    Un no-op silenzioso, cioè il modo peggiore di scoprire una migrazione.
+    """
     safe = re.sub(r"[^a-zA-Z0-9]", "_", url)[-80:]
-    return _ANALYSIS_CACHE_ROOT / f"{safe}.json"
+    modello = re.sub(r"[^a-zA-Z0-9]", "_", llm_settings.get_model())
+    return _ANALYSIS_CACHE_ROOT / f"{safe}__{modello}.json"
 
 
 def _load_cache(url: str) -> FOMCAnalysis | None:
@@ -276,7 +288,11 @@ def analyze_fomc_document(doc: FOMCDocument, force_refresh: bool = False) -> FOM
     provider = "unknown"
     if settings.gemini_api_key:
         raw = _call_gemini(prompt)
-        provider = "gemini"
+        # Il nome del MODELLO, non la famiglia: "gemini" non distingue un'analisi
+        # letta da 2.5-flash da una letta da 3.8-flash, e siccome le analisi restano
+        # in cache la UI finirebbe per attribuire al modello di oggi un testo scritto
+        # da quello di sei mesi fa.
+        provider = llm_settings.get_model()
     if not raw and settings.groq_api_key:
         raw = _call_groq(prompt)
         provider = "groq"

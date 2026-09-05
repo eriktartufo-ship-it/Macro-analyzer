@@ -419,6 +419,11 @@ class DedollarizationResponse(BaseModel):
     player_history: dict[str, dict[str, float]] = {}
     player_acceleration: dict[str, float] = {}
     explanation: str | None = None
+    # Quale modello ha scritto QUESTA spiegazione. Non e' il modello corrente: il testo
+    # resta salvato in `SecularTrend.components` e puo' essere stato generato mesi fa da
+    # un altro modello. `None` = spiegazione anteriore al 2026-09-05, quando il modello
+    # non veniva registrato: la UI deve dire "modello non registrato", non indovinare.
+    explanation_model: str | None = None
 
 
 class ConditionDetail(BaseModel):
@@ -3123,6 +3128,7 @@ def get_dedollarization(db: Session = Depends(get_db)):
     player_history = payload.get("player_history", {}) or {}
     player_acceleration_data = payload.get("player_acceleration", {}) or {}
     explanation = payload.get("explanation")
+    explanation_model = payload.get("explanation_model")
 
     return DedollarizationResponse(
         date=latest.date,
@@ -3141,6 +3147,7 @@ def get_dedollarization(db: Session = Depends(get_db)):
         player_history=player_history,
         player_acceleration=player_acceleration_data,
         explanation=explanation,
+        explanation_model=explanation_model,
     )
 
 
@@ -3319,12 +3326,22 @@ def generate_dedollarization_explanation(db: Session = Depends(get_db)):
             detail="Gemini non ha restituito alcun testo. Verifica GEMINI_API_KEY o riprova.",
         )
 
-    # Persisto l'explanation nel payload
+    # Persisto l'explanation nel payload, INSIEME al modello che l'ha scritta: senza,
+    # la GET dovrebbe indovinare, e mostrerebbe il modello di oggi accanto a un testo
+    # generato mesi fa. Qui i due coincidono perche' il testo e' appena stato generato.
+    from app.services.llm import settings as llm_settings
+
+    modello = llm_settings.get_model()
     payload["explanation"] = text
+    payload["explanation_model"] = modello
     latest.components = json.dumps(payload)
     db.commit()
 
-    return {"explanation": text, "date": latest.date.isoformat()}
+    return {
+        "explanation": text,
+        "explanation_model": modello,
+        "date": latest.date.isoformat(),
+    }
 
 
 @router.get("/news", response_model=list[NewsItemResponse])

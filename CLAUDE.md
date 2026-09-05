@@ -123,10 +123,23 @@ banale richiede un breve documento di specifica concordato prima di scrivere cod
 Il progetto fa LLM calls per FOMC analysis (Phase 6a) e news scoring (Phase 2).
 Regole obbligatorie:
 
-- **Provider cascading**: Gemini 2.5 Flash (preferito) → Groq llama-3.3-70b
-  fallback automatico (`services/fomc/analyzer.py` segue questo pattern).
-  Gemini scelto perché la chiave era già in `.env` (`GEMINI_API_KEY`) e
-  produce score/topics/summary di qualità superiore a Groq nei test 2026-05-01.
+- **Provider cascading**: Gemini (preferito) → Groq llama-3.3-70b fallback
+  automatico (`services/fomc/analyzer.py` segue questo pattern). Gemini scelto
+  perché la chiave era già in `.env` (`GEMINI_API_KEY`) e produce
+  score/topics/summary di qualità superiore a Groq nei test 2026-05-01.
+- 🔴 **UN SOLO modello per tutta Macro** (dal 2026-09-05): il nome del modello si
+  chiede SEMPRE a `services/llm/settings.get_model()` — mai inchiodato in un
+  endpoint. Fino a quella data `dedollarization/explainer.py` e
+  `fomc/analyzer.py` erano fissi su `gemini-2.5-flash`, quindi il selettore del
+  pannello non li governava e restavano indietro in silenzio a ogni cambio.
+  Default attuale: `gemini-3.8-flash`.
+- 🔴 **Il `generationConfig` non si scrive a mano**: si costruisce con
+  `llm_settings.generation_config(...)`, unico posto che sa quali parametri
+  valgono per la famiglia del modello. Sulla linea Gemini 3.x `temperature`,
+  `topP` e `topK` sono **accettati e ignorati** (200, nessun errore) e
+  `thinkingBudget` va sostituito da `thinkingLevel` — su 3.8 il livello
+  `minimal` non esiste. Per il determinismo si scrivono regole esplicite nella
+  **system instruction**, non si abbassa la temperatura.
 - **Structured outputs**: ogni risposta LLM passa per parsing JSON tollerante a
   markdown fences + validazione campi con clamping (vedi `_validate_analysis`).
 - **Cache aggressiva su disco** per ogni documento: stessa coppia (URL, version) mai
