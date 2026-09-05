@@ -19,10 +19,15 @@ import httpx
 from loguru import logger
 
 from app.config import settings
+from app.services.llm import settings as llm_settings
 
-GEMINI_ENDPOINT = (
+# 2026-09-05 — era inchiodato a `gemini-2.5-flash`. Inchiodato qui significava che
+# il selettore del modello nel pannello non governava questo servizio: si poteva
+# cambiare modello a tutto il progetto e la spiegazione dedollarizzazione restava
+# indietro, senza che niente lo dicesse. Ora il modello è UNO per tutta Macro.
+GEMINI_ENDPOINT_TPL = (
     "https://generativelanguage.googleapis.com/v1beta/"
-    "models/gemini-2.5-flash:generateContent"
+    "models/{model}:generateContent"
 )
 
 # Descrizioni sintetiche degli indicatori grezzi per dare contesto a Gemini
@@ -184,19 +189,20 @@ def generate_explanation(
         return None
 
     prompt = _build_prompt(dedollar, raw_indicators=raw_indicators)
+    model = llm_settings.get_model()
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.4,
-            "maxOutputTokens": 2000,
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
+        # `json_output=False`: qui la risposta è prosa italiana da mostrare in
+        # testa alla scheda, non JSON — a differenza di tutti gli altri call-site.
+        "generationConfig": llm_settings.generation_config(
+            model=model, max_output_tokens=2000, json_output=False, temperature=0.4
+        ),
     }
 
     try:
         with httpx.Client(timeout=45.0) as client:
             resp = client.post(
-                GEMINI_ENDPOINT,
+                GEMINI_ENDPOINT_TPL.format(model=model),
                 params={"key": api_key},
                 json=payload,
             )

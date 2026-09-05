@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
 import type { FOMCAnalysis, FOMCReport } from "../types";
+import { useCurrentLlmModel } from "../hooks/useCurrentLlmModel";
 
 const REGIME_COLOR: Record<string, string> = {
   reflation: "#10b981",
@@ -138,6 +139,7 @@ function SentimentTimeline({ analyses }: { analyses: FOMCAnalysis[] }) {
 }
 
 export function FOMCSentimentPanel() {
+  const modelloCorrente = useCurrentLlmModel();
   const [data, setData] = useState<FOMCReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -188,7 +190,8 @@ export function FOMCSentimentPanel() {
     <div className="card">
       <h2>FOMC sentiment (LLM-driven hawkish/dovish)</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-        Statements e minutes Federal Reserve analizzati da LLM (Gemini prio, Groq fallback)
+        Statements e minutes Federal Reserve analizzati da LLM (
+        {modelloCorrente ?? "modello configurato"} prio, Groq fallback)
         per estrarre tono <strong>hawkish</strong> (alza tassi → +) vs <strong>dovish</strong>
         (taglia tassi → −), key topics e regime implication. Cache aggressiva: stessi
         documenti non riprocessati.

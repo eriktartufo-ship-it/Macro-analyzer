@@ -10,11 +10,9 @@ Resolution priority:
 2. Env var (`GEMINI_API_KEY_MACRO`, `GEMINI_MODEL_MACRO`) → fallback
 3. Global config (`settings.gemini_api_key`, default model) → last resort
 
-Available models (Gemini family, 2026):
-- gemini-2.5-flash (default, fast + cheap)
-- gemini-2.5-pro (more capable, slower)
-- gemini-2.5-flash-lite (cheapest)
-- gemini-3.1-pro-preview (preview)
+Available models: vedi `AVAILABLE_MODELS` sotto — è l'unica lista, tenerne una
+seconda qui in prosa significa averne una sbagliata (lo era: elencava 2.5-flash
+come default quando il default era già 3.5-flash).
 """
 from __future__ import annotations
 
@@ -30,21 +28,107 @@ logger = logging.getLogger(__name__)
 
 _SETTINGS_PATH = Path(__file__).resolve().parents[3] / ".cache" / "llm_settings.json"
 
-DEFAULT_MODEL = "gemini-3.5-flash"
+# `gemini-3.8-flash` dal 2026-09-05. Era `gemini-3.5-flash`. Qui il cambio è
+# facile da difendere perché NON è un compromesso: 3.8-flash è più recente,
+# stable dal 2026-09-02, e costa **la metà** del 3.5-flash che sostituisce —
+# $0.75/$3.75 per Mtok (promo fino al 31/12/2026, poi $1.50/$7.50) contro
+# $1.50/$9.00 del 3.5, che non ha promo. Fonte: ai.google.dev/gemini-api/docs/pricing
+# letta il 2026-09-05.
+#
+# ⚠️ La qualità è quella DICHIARATA da Google (batte 3.7 su tutti i benchmark
+# pubblicati, primo su DeepSWE): sono benchmark di coding/agentic, non di lettura
+# macro. Per Macro sono comunque il proxy più vicino al lavoro vero (ragionamento
+# su testo), a differenza di Ormio dove il lavoro è OCR di calligrafia e quei
+# benchmark non dicono nulla. Se l'analisi macro peggiora, il rollback è una riga
+# qui oppure il selettore modello nel pannello (che vince su questo default).
+DEFAULT_MODEL = "gemini-3.8-flash"
 
-# Modelli Gemini disponibili 2026 (aggiornato dalla doc ai.google.dev/gemini-api).
+# Modelli Gemini disponibili (doc ai.google.dev/gemini-api/docs/models, 2026-09-05).
 # Selezione: text reasoning models, no image/video/audio/embedding.
-# Default = gemini-3.5-flash (più intelligente stable, free tier disponibile).
 AVAILABLE_MODELS = [
-    # Gemini 3.x — generazione corrente (2026)
-    "gemini-3.5-flash",          # stable, most intelligent (DEFAULT)
+    # Gemini 3.x — generazione corrente
+    "gemini-3.8-flash",          # stable dal 02/09/2026, most intelligent (DEFAULT)
+    "gemini-3.7-flash",          # stable, generazione precedente
+    "gemini-3.6-flash",          # stable, in esecuzione su Ormio
+    "gemini-3.5-flash",          # stable, ex-default (più caro del 3.8: $1.50/$9.00)
+    "gemini-3.5-flash-lite",     # stable, reduced cost
     "gemini-3.1-flash-lite",     # stable, reduced cost
     "gemini-3.1-pro-preview",    # preview, max capability
     # Gemini 2.5 — generazione precedente, ancora stabile + free tier
-    "gemini-2.5-flash",          # stable, price-performance fallback
+    "gemini-2.5-flash",          # stable, il più economico dei non-lite ($0.30/$2.50)
     "gemini-2.5-flash-lite",     # cheapest, budget-friendly
     "gemini-2.5-pro",            # most advanced 2.5
 ]
+
+
+def is_gemini_3(model: Optional[str] = None) -> bool:
+    """True se il modello è della linea 3.x (regole di config diverse dalla 2.x)."""
+    return (model or get_model()).lower().startswith("gemini-3")
+
+
+def generation_config(
+    *,
+    max_output_tokens: int,
+    model: Optional[str] = None,
+    json_output: bool = True,
+    thinking: str = "low",
+    temperature: float = 0.2,
+) -> dict:
+    """Costruisce il `generationConfig` corretto per il modello — UNICO scrittore.
+
+    Prima di questa funzione ogni call-site LLM del progetto teneva la propria
+    copia di `{"temperature": X, "thinkingConfig": {"thinkingBudget": 0}}`.
+    Sette copie della stessa decisione = sette posti dove sbagliarla al prossimo
+    cambio di modello. Ora l'intenzione la dichiara il chiamante
+    (quanto output, JSON o prosa, quanto deve pensare) e la TRADUZIONE nei
+    parametri giusti per quella famiglia di modelli sta qui.
+
+    Le due regole della linea 3.x, dalla doc ufficiale letta il 2026-09-05:
+
+    🔴 **`temperature`/`topP`/`topK` sono deprecati e IGNORATI.**
+    `ai.google.dev/gemini-api/docs/whats-new-gemini-3.5` dice di rimuoverli da
+    tutte le richieste perché *"Gemini 3's reasoning capabilities are optimized
+    for the default settings"*. Il guasto è che **non danno errore**: la
+    richiesta torna 200 e il valore viene buttato via (i valori fuori range,
+    quelli sì, danno 400). Quindi una `temperature` lasciata lì non è
+    innocua — è una leva che qualcuno crede accesa. Per il determinismo la doc
+    indica l'unico sostituto vero: *"define a system instruction with explicit
+    rules for your specific use case"*, cioè si scrive nel PROMPT, non qui.
+
+    🔴 **`thinkingBudget` → `thinkingLevel`**. Qui la doc da sola porta fuori
+    strada, quindi i parametri sono stati CHIESTI AI MODELLI
+    (`backend/scripts/sonda_parametri_gemini.py`, eseguita il 2026-09-05). Esito:
+
+        parametro                  3.8-flash   3.6-flash   2.5-flash
+        thinkingLevel low/med/high    200         200      400 not supported
+        thinkingLevel minimal         400         200         400
+        thinkingBudget: 0             200         400         200
+
+    Due cose che nessuno indovinerebbe leggendo la doc:
+      · su **3.6** `thinkingBudget: 0` viene **RIFIUTATO** (400 "invalid
+        argument") mentre su 3.8 passa. L'intuizione naturale — "il legacy
+        romperà sul modello più nuovo" — è esattamente rovesciata.
+      · `minimal` esiste su 3.6 e sparisce su 3.8, quindi non si può nemmeno
+        mappare `thinkingBudget: 0` su `minimal` e chiudere la questione.
+
+    ⇒ nessun singolo valore va bene per tutti e tre. Per questo la funzione
+    RAMIFICA sulla famiglia invece di uniformare: `thinkingLevel` sui 3.x
+    (l'unico accettato da entrambi), `thinkingBudget` sui 2.x.
+
+    Sui modelli 2.x `temperature` funziona davvero: la deprecazione qui sopra
+    riguarda solo la linea 3.x.
+    """
+    cfg: dict = {"maxOutputTokens": max_output_tokens}
+    if json_output:
+        cfg["responseMimeType"] = "application/json"
+
+    if is_gemini_3(model):
+        # Niente temperature/topP/topK: sarebbero accettati e ignorati.
+        cfg["thinkingConfig"] = {"thinkingLevel": thinking}
+    else:
+        cfg["temperature"] = temperature
+        cfg["thinkingConfig"] = {"thinkingBudget": 0}
+    return cfg
 
 
 def _read_settings_file() -> dict:

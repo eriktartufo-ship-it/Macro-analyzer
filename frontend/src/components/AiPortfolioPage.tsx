@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
+import { useCurrentLlmModel } from "../hooks/useCurrentLlmModel";
 import type {
   AiPortfolioDecision,
   AiPortfolioLearning,
@@ -29,7 +30,9 @@ const STRATEGY_META: Record<StrategyType, { label: string; emoji: string; subtit
   llm_driven: {
     label: "LLM-Driven",
     emoji: "🤖",
-    subtitle: "Gemini decide guardando entrambi i sistemi",
+    // Il modello vero lo inietta il render (`STRATEGY_META` e' una costante di modulo e
+    // non puo' leggere l'hook): `{MODELLO}` viene sostituito li'.
+    subtitle: "{MODELLO} decide guardando entrambi i sistemi",
     color: "var(--stagflation)",
   },
 };
@@ -63,6 +66,7 @@ function formatAsset(a: string): string {
 }
 
 export function AiPortfolioPage() {
+  const modelloCorrente = useCurrentLlmModel();
   const [activeStrategy, setActiveStrategy] = useState<StrategyType>("model_driven");
   const [leaderboard, setLeaderboard] = useState<Record<string, unknown> | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -304,7 +308,9 @@ export function AiPortfolioPage() {
               }}
             >
               {m.emoji} {m.label}
-              <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.8, marginTop: 2 }}>{m.subtitle}</div>
+              <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.8, marginTop: 2 }}>
+                {m.subtitle.replace("{MODELLO}", modelloCorrente ?? "Il modello configurato")}
+              </div>
             </button>
           );
         })}

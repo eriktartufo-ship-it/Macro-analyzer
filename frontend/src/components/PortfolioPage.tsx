@@ -454,6 +454,10 @@ function AdviceCard({
               day: "numeric",
               month: "long",
             })}
+            {/* Il modello che ha scritto QUESTO consiglio: e' salvato in riga insieme
+                al consiglio, quindi resta vero anche quando il modello di progetto
+                cambia. Il campo esisteva gia' nel tipo ma non veniva mostrato. */}
+            {advice.provider ? ` · ${advice.provider}` : ""}
           </div>
         </>
       )}

@@ -104,7 +104,9 @@ export function MacroLlmAnalysisPanel() {
               textTransform: "none",
             }}
           >
-            Gemini 2.5 Flash · {timeAgo(data.cached_at)}
+            {/* `data.provider` e' il modello che ha scritto QUESTA analisi, non quello
+                impostato adesso: l'analisi e' in cache, quindi i due possono differire. */}
+            {data.provider || "modello non registrato"} · {timeAgo(data.cached_at)}
             {data.stale && " · stale"}
           </span>
         </h2>

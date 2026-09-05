@@ -165,6 +165,10 @@ export interface Dedollarization {
   player_history: Record<string, Record<string, number>>;
   player_acceleration: Record<string, number>;
   explanation?: string | null;
+  /** Modello che ha scritto `explanation`. Il testo e' salvato in DB e puo' essere
+   *  stato generato mesi fa: NON coincide per forza col modello impostato adesso.
+   *  `null` = spiegazione anteriore al 2026-09-05, quando non veniva registrato. */
+  explanation_model?: string | null;
 }
 
 export interface ConditionDetail {

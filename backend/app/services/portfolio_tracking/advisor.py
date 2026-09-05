@@ -173,12 +173,9 @@ def _call_gemini(prompt: str) -> str | None:
             params={"key": api_key},
             json={
                 "contents": [{"parts": [{"text": f"{_SYSTEM_PROMPT}\n\n---\n\n{prompt}"}]}],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "maxOutputTokens": 2000,
-                    "responseMimeType": "application/json",
-                    "thinkingConfig": {"thinkingBudget": 0},
-                },
+                "generationConfig": llm_settings.generation_config(
+                    max_output_tokens=2000, temperature=0.2
+                ),
             },
             timeout=60,
         )
@@ -281,7 +278,9 @@ def generate_advice(db: Session, trigger: str = "scheduled") -> PtAdvice | None:
     prompt = _build_prompt(macro, market)
 
     raw = _call_gemini(prompt)
-    provider = "gemini"
+    # Il nome del MODELLO, non la famiglia: il consiglio resta salvato in riga e la
+    # UI deve poter dire da CHI e' stato scritto, non solo "da Gemini".
+    provider = llm_settings.get_model()
     if raw is None:
         raw = _call_groq(prompt)
         provider = "groq"
