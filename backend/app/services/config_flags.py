@@ -146,6 +146,9 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_LABOR_CREDIT_PILLAR",
         "USE_CYCLICAL_PILLAR",
         "USE_NOWCAST_PILLAR",
+        "USE_LEVEL_ACCEL_PILLARS",
+        "USE_ENERGY_SHOCK_PILLAR",
+        "USE_EU_STRESS_TRIGGER",
         "USE_AI_PORTFOLIO_CASH_OVERNIGHT",
         "USE_AI_PORTFOLIO_DEPLOY_BOOST",
     ]
@@ -671,6 +674,30 @@ def use_level_accel_pillars() -> bool:
     backfill). Default OFF fino a validation gate A/B sui 32 episodi.
     """
     return _read_flag("USE_LEVEL_ACCEL_PILLARS", default=False)
+
+
+def use_energy_shock_pillar() -> bool:
+    """S50 (2026-10-12): pilastro SHOCK ENERGETICO sul lato stagflazione.
+
+    Lo shock d'offerta del petrolio e' la firma della stagflazione 1973-74 e 2022. Il classifier lo
+    vedeva solo nel rapporto oro/petrolio (`gold_oil_low`/`gold_oil_high`), che nel 2026 (oro
+    quadruplicato) legge "petrolio crollato" in piena crisi del petrolio.
+    Ingresso `oil_yoy`: live = Brent spot a 12 mesi (europe_energy), episodi = WTI mensile.
+    Soglie = quantili WTI a 12 mesi 1947-2026 (regola anti-hand-tuning): center p90 46,6.
+    Default OFF fino al cancello A/B sui 49 episodi (scripts/s50_energy_shock_validation.py).
+    """
+    return _read_flag("USE_ENERGY_SHOCK_PILLAR", default=False)
+
+
+def use_eu_stress_trigger() -> bool:
+    """S50 (2026-10-12): trigger STRESS SOVRANO EURO nel crisis indicator.
+
+    Spread 10 anni fra la curva BCE di tutti i rating e quella AAA (proxy dello stress periferico:
+    2011-12 a 1,9, calma 0,5-0,7). Soglia = p90 2004-2026 (0,94). Il trigger esiste solo se il dato
+    c'e' (prima del 2004 nessun effetto sul punteggio). Default OFF fino al cancello
+    (scripts/s50_eu_stress_validation.py).
+    """
+    return _read_flag("USE_EU_STRESS_TRIGGER", default=False)
 
 
 def use_cyclical_pillar() -> bool:
