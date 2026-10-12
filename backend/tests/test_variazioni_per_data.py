@@ -149,3 +149,19 @@ class TestPercorsiStorici:
         monkeypatch.setattr(at, "load_series_from_db", lambda db, key: _mensile(fine="2026-08-01"))
         yoy = at.load_cpi_yoy_from_db(None)
         assert yoy.iloc[-1] == pytest.approx(YOY_12)
+
+    def test_walk_forward_dedollar_real_rate_usa_cpi_a_12_mesi(self, monkeypatch):
+        from app.services.backtest import walk_forward as wf
+        from app.services.dedollarization import scorer
+
+        visti = {}
+
+        def finto(ind, *a, **k):
+            visti.update(ind)
+            return {}
+
+        monkeypatch.setattr(scorer, "calculate_dedollarization", finto)
+        monkeypatch.setattr(scorer, "calculate_secular_bonus", lambda *a, **k: {})
+        ff = pd.Series(4.0, index=pd.date_range("2023-01-01", "2026-08-01", freq="MS"))
+        wf.compute_dedollar_secular_bonus_at({"cpi": _mensile(fine="2026-08-01"), "fed_funds": ff}, date(2026, 8, 15))
+        assert visti["real_rate"] == pytest.approx(4.0 - YOY_12)

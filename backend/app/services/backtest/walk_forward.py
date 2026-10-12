@@ -21,6 +21,7 @@ import pandas as pd
 from loguru import logger
 
 from app.services.indicators.fetcher import FredFetcher
+from app.services.indicators.transforms import roc_between
 from app.services.regime.backfill import _CLASSIFIER_SERIES, _build_indicators_as_of
 from app.services.regime.classifier import classify_regime
 
@@ -88,15 +89,12 @@ def compute_dedollar_secular_bonus_at(
         s = series.get(name)
         if s is None or s.empty:
             return None
-        filtered = s[s.index <= cutoff]
-        if len(filtered) < 13:
+        # per DATA: il CPI non ha ottobre 2025 e 13 righe indietro erano 13 mesi
+        filtered = s[s.index <= cutoff].dropna()
+        if filtered.empty:
             return None
         try:
-            curr = float(filtered.iloc[-1])
-            prev = float(filtered.iloc[-13])
-            if prev == 0:
-                return None
-            return (curr / prev - 1) * 100
+            return roc_between(filtered, filtered.index[-1], 12)
         except Exception:
             return None
 
