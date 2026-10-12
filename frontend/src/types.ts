@@ -959,3 +959,24 @@ export interface DebasementRegime {
   intensity_history: DebasementIntensityPoint[];
   thresholds?: { on: number; off: number; confirm_on: number; confirm_off: number };
 }
+
+// S50 (2026-10-12): area euro ed energia — GET /europe-energy
+export interface EuropeEnergyItem {
+  key: string;
+  label: string;
+  unit: "%" | "pp" | "$" | "€/MWh" | string;
+  value: number | null;
+}
+
+export interface EuropeEnergyGroup {
+  id: string;
+  title: string;
+  items: EuropeEnergyItem[];
+}
+
+export interface EuropeEnergy {
+  as_of: string | null;
+  available: boolean;
+  groups: EuropeEnergyGroup[];
+  sovereign_spread_pctile: number | null;
+}

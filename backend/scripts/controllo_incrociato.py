@@ -72,6 +72,19 @@ def treasury(tipo: str) -> pd.DataFrame:
     return df.sort_values("Date").set_index("Date")
 
 
+def bce(chiave: str) -> pd.Series:
+    """Serie del Data Portal BCE letta qui, senza passare dal modulo dell'app."""
+    df = pd.read_csv(io.StringIO(get(f"https://data-api.ecb.europa.eu/service/data/{chiave}"
+                                     "?format=csvdata&detail=dataonly&lastNObservations=5").decode("utf-8")))
+    df = df.dropna(subset=["OBS_VALUE"])
+    return pd.Series(df["OBS_VALUE"].astype(float).to_numpy(), index=pd.to_datetime(df["TIME_PERIOD"].astype(str)))
+
+
+def yahoo_ultimo(ticker: str) -> float:
+    import yfinance as yf
+    return float(yf.Ticker(ticker).history(period="10d")["Close"].dropna().iloc[-1])
+
+
 def fred(sid: str) -> pd.Series:
     from app.config import settings
     from fredapi import Fred
@@ -102,6 +115,11 @@ def main() -> int:
         ("Detentori esteri Treasury 12m", "foreign_treasury_roc_12m", lambda: yoy_per_data(fred("FDHBFIN")), 0.5, "FRED FDHBFIN"),
         ("High yield OAS", "hy_oas", lambda: float(fred("BAMLH0A0HYM2").iloc[-1]), 0.15, "FRED BAMLH0A0HYM2"),
         ("Breakeven 10a", "breakeven_10y", lambda: float(fred("T10YIE").iloc[-1]), 0.08, "FRED T10YIE"),
+        # S50: area euro ed energia
+        ("Inflazione area euro", "ea_hicp_yoy", lambda: float(bce("HICP/M.U2.N.000000.4D0.ANR").iloc[-1]), 0.05, "BCE HICP"),
+        ("Tasso BCE sui depositi", "ecb_deposit_rate", lambda: float(bce("FM/D.U2.EUR.4F.KR.DFR.LEV").iloc[-1]), 0.01, "BCE FM DFR"),
+        ("Brent fisico", "brent_spot", lambda: float(fred("DCOILBRENTEU").iloc[-1]), 1.0, "FRED DCOILBRENTEU"),
+        ("Gas TTF", "ttf_price", lambda: yahoo_ultimo("TTF=F"), 5.0, "Yahoo TTF=F (intraday: toll. larga)"),
     ]
 
     rossi = 0

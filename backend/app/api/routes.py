@@ -3622,3 +3622,24 @@ def get_cycle_debasement(db: Session = Depends(get_db)):
     result = {"available": True, **result}
     _DEBASEMENT_CACHE["current"] = (now, result)
     return result
+
+
+@router.get("/europe-energy")
+def get_europe_energy(db: Session = Depends(get_db)):
+    """S50: area euro ed energia (BCE, TTF, Brent) dall'ultimo refresh. Vista informativa:
+    il classificatore usa questi dati solo dietro flag (criteri S50). Una voce senza valore
+    torna `null`, cosi' una fonte giu' si vede sul sito invece di sparire."""
+    from app.services.indicators.europe_energy import europe_energy_payload
+
+    latest = (
+        db.query(RegimeClassification)
+        .order_by(RegimeClassification.date.desc())
+        .first()
+    )
+    indicators: dict = {}
+    if latest and latest.conditions_met:
+        try:
+            indicators = json.loads(latest.conditions_met).get("indicators") or {}
+        except (ValueError, TypeError, AttributeError):
+            indicators = {}
+    return europe_energy_payload(indicators, latest.date if latest else None)
