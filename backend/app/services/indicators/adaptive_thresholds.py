@@ -320,7 +320,8 @@ def load_cpi_yoy_from_db(db) -> pd.Series:
     cpi_level = load_series_from_db(db, "cpi")
     if cpi_level.empty:
         return pd.Series(dtype=float)
-    # Resample monthly + pct_change 12 mesi
-    monthly = cpi_level.resample("ME").last().dropna()
-    yoy = monthly.pct_change(12) * 100.0
+    # Resample monthly + variazione su 12 mesi. Il dropna va DOPO: prima toglieva il mese
+    # mancante (CPI ottobre 2025) e pct_change(12) confrontava con 13 mesi prima.
+    monthly = cpi_level.resample("ME").last()
+    yoy = monthly.pct_change(12, fill_method=None) * 100.0
     return yoy.dropna()
