@@ -21,7 +21,7 @@ from app.models.secular_trends import SecularTrend
 from app.services.dedollarization.scorer import calculate_dedollarization
 from app.services.indicators.fetcher import FredFetcher
 from app.services.indicators.fred_codes import FRED_SERIES
-from app.services.indicators.transforms import calculate_roc, calculate_zscore
+from app.services.indicators.transforms import roc_between, standard_transforms
 
 
 # Serie FRED usate dalle pipeline dedollar + player signals + regime macro
@@ -100,35 +100,7 @@ class AsOfFetcher:
             return {"raw": pd.Series(dtype=float)}
 
         config = FRED_SERIES.get(series_name, {})
-        freq = config.get("frequency", "monthly")
-        result: dict[str, pd.Series] = {"raw": raw}
-
-        if freq == "monthly":
-            result["roc_3m"] = calculate_roc(raw, periods=3)
-            result["roc_6m"] = calculate_roc(raw, periods=6)
-            result["roc_12m"] = calculate_roc(raw, periods=12)
-            result["zscore_12m"] = calculate_zscore(raw, window=12)
-            result["zscore_36m"] = calculate_zscore(raw, window=36)
-        elif freq == "quarterly":
-            result["roc_3m"] = calculate_roc(raw, periods=1)
-            result["roc_6m"] = calculate_roc(raw, periods=2)
-            result["roc_12m"] = calculate_roc(raw, periods=4)
-            result["zscore_12m"] = calculate_zscore(raw, window=4)
-            result["zscore_36m"] = calculate_zscore(raw, window=12)
-        elif freq == "annual":
-            result["roc_3m"] = calculate_roc(raw, periods=1)
-            result["roc_6m"] = calculate_roc(raw, periods=1)
-            result["roc_12m"] = calculate_roc(raw, periods=1)
-            result["zscore_12m"] = calculate_zscore(raw, window=3)
-            result["zscore_36m"] = calculate_zscore(raw, window=5)
-        else:  # daily, weekly
-            result["roc_3m"] = calculate_roc(raw, periods=63)
-            result["roc_6m"] = calculate_roc(raw, periods=126)
-            result["roc_12m"] = calculate_roc(raw, periods=252)
-            result["zscore_12m"] = calculate_zscore(raw, window=252)
-            result["zscore_36m"] = calculate_zscore(raw, window=756)
-
-        return result
+        return standard_transforms(raw, config.get("frequency", "monthly"))
 
 
 def _latest_as_of(raw_series: dict[str, pd.Series], as_of: pd.Timestamp) -> dict[str, float]:
@@ -163,7 +135,9 @@ def _macro_indicators_as_of(
         c = cpi[cpi.index <= as_of]
         if len(c) > 12:
             try:
-                out["cpi_yoy"] = (float(c.iloc[-1]) / float(c.iloc[-13]) - 1) * 100
+                v = roc_between(c, c.dropna().index[-1], 12)
+                if v is not None:
+                    out["cpi_yoy"] = v
             except Exception:
                 pass
     return out

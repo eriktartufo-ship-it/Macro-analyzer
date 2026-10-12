@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.database import engine
 from app.models import RegimeClassification
 from app.services.indicators.fetcher import FredFetcher
+from app.services.indicators.transforms import roc_between
 from app.services.regime.classifier import classify_regime
 
 
@@ -90,24 +91,22 @@ def _build_indicators_as_of(
             return None
         return float(filtered.iloc[-1])
 
-    def roc(name: str, periods: int) -> Optional[float]:
+    def roc(name: str, months: int) -> Optional[float]:
+        """ROC % dell'ultima osservazione <= cutoff contro `months` mesi prima, per DATA.
+
+        Prima contava `periods` righe: con ottobre 2025 mancante (CPI, disoccupazione) il
+        confronto cadeva un mese prima. Ora un mese di confronto mancante da' None.
+        """
         s = series.get(name)
         if s is None or s.empty:
             return None
-        filtered = s[s.index <= cutoff]
-        if len(filtered) <= periods:
+        filtered = s[s.index <= cutoff].dropna()
+        if filtered.empty:
             return None
-        try:
-            prev = float(filtered.iloc[-1 - periods])
-            curr = float(filtered.iloc[-1])
-            if prev == 0:
-                return None
-            return (curr / prev - 1) * 100
-        except Exception:
-            return None
+        return roc_between(filtered, filtered.index[-1], months)
 
     # GDP ROC (quarterly: 1 trimestre = 3 mesi)
-    v = roc("real_gdp", 1)
+    v = roc("real_gdp", 3)
     if v is not None:
         indicators["gdp_roc"] = v
 
@@ -138,7 +137,7 @@ def _build_indicators_as_of(
         indicators["yield_curve_10y3m"] = v
 
     # Initial claims (weekly: ~13 periodi = 3 mesi)
-    v = roc("initial_claims", 13)
+    v = roc("initial_claims", 3)
     if v is not None:
         indicators["initial_claims_roc"] = v
 
@@ -237,10 +236,10 @@ def _build_indicators_as_of(
         indicators["gdp_nowcast_atlanta"] = v
 
     # T20 livello-vs-accelerazione: YoY su serie TRIMESTRALI (4 periodi)
-    v = roc("unit_labor_cost", 4)
+    v = roc("unit_labor_cost", 12)
     if v is not None:
         indicators["ulc_yoy"] = v
-    v = roc("productivity_nfb", 4)
+    v = roc("productivity_nfb", 12)
     if v is not None:
         indicators["productivity_yoy"] = v
 
@@ -272,15 +271,15 @@ def _enrich_with_momentum_derivatives(
         s = series.get(name)
         if s is None or s.empty:
             return None
-        filtered = s[s.index <= cutoff]
-        if len(filtered) < 19:
+        filtered = s[s.index <= cutoff].dropna()
+        if filtered.empty:
             return None
-        try:
-            curr_yoy = (float(filtered.iloc[-1]) / float(filtered.iloc[-13]) - 1) * 100
-            prev_yoy = (float(filtered.iloc[-7]) / float(filtered.iloc[-19]) - 1) * 100
-            return curr_yoy - prev_yoy
-        except Exception:
+        ultimo = filtered.index[-1]
+        curr_yoy = roc_between(filtered, ultimo, 12)
+        prev_yoy = roc_between(filtered, ultimo - pd.DateOffset(months=6), 12)
+        if curr_yoy is None or prev_yoy is None:
             return None
+        return curr_yoy - prev_yoy
 
     v = yoy_change_6m("cpi")
     if v is not None:
@@ -314,18 +313,16 @@ def _enrich_with_momentum_derivatives(
         s = series.get("cpi")
         if s is None or s.empty:
             return None
-        filtered = s[s.index <= cutoff]
-        if len(filtered) < 18:
+        filtered = s[s.index <= cutoff].dropna()
+        if filtered.empty:
             return None
-        try:
-            yoy_values = []
-            for i in range(6):
-                idx = -1 - i
-                yoy = (float(filtered.iloc[idx]) / float(filtered.iloc[idx - 12]) - 1) * 100
-                yoy_values.append(yoy)
-            return min(yoy_values)
-        except Exception:
-            return None
+        ultimo = filtered.index[-1]
+        # un mese senza confronto (base mancante) si salta, non si sostituisce col mese prima
+        yoy_values = [
+            v for i in range(6)
+            if (v := roc_between(filtered, ultimo - pd.DateOffset(months=i), 12)) is not None
+        ]
+        return min(yoy_values) if yoy_values else None
 
     v = cpi_yoy_min_last_6m()
     if v is not None:
@@ -366,17 +363,12 @@ def _enrich_with_momentum_derivatives(
             s = series.get(key)
             if s is None or s.empty:
                 continue
-            filtered = s[s.index <= cutoff]
-            if len(filtered) < 13:
+            filtered = s[s.index <= cutoff].dropna()
+            if filtered.empty:
                 continue
-            try:
-                curr = float(filtered.iloc[-1])
-                prev = float(filtered.iloc[-13])
-                if prev <= 0:
-                    continue
-                return (curr / prev - 1) * 100
-            except Exception:
-                continue
+            v = roc_between(filtered, filtered.index[-1], 12)
+            if v is not None:
+                return v
         return None
 
     v = m2_yoy()
@@ -389,21 +381,21 @@ def _enrich_with_momentum_derivatives(
         cpi_s = series.get("cpi")
         if ff_s is None or cpi_s is None or ff_s.empty or cpi_s.empty:
             return None
-        ff_filt = ff_s[ff_s.index <= cutoff]
-        cpi_filt = cpi_s[cpi_s.index <= cutoff]
-        if len(ff_filt) < 4 or len(cpi_filt) < 13:
+        ff_filt = ff_s[ff_s.index <= cutoff].dropna()
+        cpi_filt = cpi_s[cpi_s.index <= cutoff].dropna()
+        if ff_filt.empty or cpi_filt.empty:
             return None
-        try:
-            ff_now = float(ff_filt.iloc[-1])
-            cpi_yoy_now = (float(cpi_filt.iloc[-1]) / float(cpi_filt.iloc[-13]) - 1) * 100
-            real_rate_now = ff_now - cpi_yoy_now
-
-            ff_3m = float(ff_filt.iloc[-4]) if len(ff_filt) >= 4 else ff_now
-            cpi_yoy_3m_ago = (float(cpi_filt.iloc[-4]) / float(cpi_filt.iloc[-16]) - 1) * 100 if len(cpi_filt) >= 16 else cpi_yoy_now
-            real_rate_3m_ago = ff_3m - cpi_yoy_3m_ago
-            return real_rate_now - real_rate_3m_ago  # negativo = declining
-        except Exception:
+        ultimo = cpi_filt.index[-1]
+        tre_mesi_fa = ultimo - pd.DateOffset(months=3)
+        cpi_yoy_now = roc_between(cpi_filt, ultimo, 12)
+        cpi_yoy_3m_ago = roc_between(cpi_filt, tre_mesi_fa, 12)
+        ff_now = float(ff_filt.iloc[-1])
+        ff_3m_s = ff_filt[ff_filt.index <= ff_filt.index[-1] - pd.DateOffset(months=3)]
+        if cpi_yoy_now is None or cpi_yoy_3m_ago is None or ff_3m_s.empty:
             return None
+        real_rate_now = ff_now - cpi_yoy_now
+        real_rate_3m_ago = float(ff_3m_s.iloc[-1]) - cpi_yoy_3m_ago
+        return real_rate_now - real_rate_3m_ago  # negativo = declining
 
     v = real_rate_decline_3m()
     if v is not None:

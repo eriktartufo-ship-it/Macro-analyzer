@@ -13,10 +13,7 @@ from loguru import logger
 
 from app.config import settings
 from app.services.indicators.fred_codes import FRED_SERIES
-from app.services.indicators.transforms import (
-    calculate_roc,
-    calculate_zscore,
-)
+from app.services.indicators.transforms import standard_transforms
 
 # --- Disk cache: TTL per frequenza della serie ---
 # Evitiamo di ri-fetchare serie mensili/trimestrali se non sono passati giorni sufficienti
@@ -152,33 +149,9 @@ class FredFetcher:
         raw = self.fetch_series(series_name, start_date, end_date)
         config = FRED_SERIES[series_name]
 
-        result = {"raw": raw}
-
-        # Calcola ROC a vari orizzonti
-        if config["frequency"] == "monthly":
-            result["roc_3m"] = calculate_roc(raw, periods=3)
-            result["roc_6m"] = calculate_roc(raw, periods=6)
-            result["roc_12m"] = calculate_roc(raw, periods=12)
-            result["zscore_12m"] = calculate_zscore(raw, window=12)
-            result["zscore_36m"] = calculate_zscore(raw, window=36)
-        elif config["frequency"] == "quarterly":
-            result["roc_3m"] = calculate_roc(raw, periods=1)  # 1 trimestre = 3 mesi
-            result["roc_6m"] = calculate_roc(raw, periods=2)
-            result["roc_12m"] = calculate_roc(raw, periods=4)
-            result["zscore_12m"] = calculate_zscore(raw, window=4)
-            result["zscore_36m"] = calculate_zscore(raw, window=12)
-        elif config["frequency"] == "annual":
-            result["roc_3m"] = calculate_roc(raw, periods=1)  # 1 anno
-            result["roc_6m"] = calculate_roc(raw, periods=1)
-            result["roc_12m"] = calculate_roc(raw, periods=1)
-            result["zscore_12m"] = calculate_zscore(raw, window=3)
-            result["zscore_36m"] = calculate_zscore(raw, window=5)
-        elif config["frequency"] in ("daily", "weekly"):
-            result["roc_3m"] = calculate_roc(raw, periods=63)   # ~3 mesi trading days
-            result["roc_6m"] = calculate_roc(raw, periods=126)
-            result["roc_12m"] = calculate_roc(raw, periods=252)
-            result["zscore_12m"] = calculate_zscore(raw, window=252)
-            result["zscore_36m"] = calculate_zscore(raw, window=756)
+        # ROC per DATA, non per righe: con un mese mancante (CPI ottobre 2025), una serie
+        # trimestrale dichiarata mensile o una settimanale, contare righe sbagliava orizzonte.
+        result = standard_transforms(raw, config["frequency"])
 
         self._transform_cache[transform_key] = result
         return result
