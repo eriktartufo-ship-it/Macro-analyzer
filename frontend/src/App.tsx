@@ -18,6 +18,7 @@ import { LazyDetails } from "./components/LazyDetails";
 const DedollarizationPage = lazy(() => import("./components/DedollarizationPage").then(m => ({ default: m.DedollarizationPage })));
 const AssetRankingTable = lazy(() => import("./components/AssetRankingTable").then(m => ({ default: m.AssetRankingTable })));
 const DataPage = lazy(() => import("./components/DataPage").then(m => ({ default: m.DataPage })));
+const EuropeEnergyPanel = lazy(() => import("./components/EuropeEnergyPanel").then(m => ({ default: m.EuropeEnergyPanel })));
 const FlowsPage = lazy(() => import("./components/FlowsPage").then(m => ({ default: m.FlowsPage })));
 const CyclePage = lazy(() => import("./components/CyclePage").then(m => ({ default: m.CyclePage })));
 const AiPortfolioPage = lazy(() => import("./components/AiPortfolioPage").then(m => ({ default: m.AiPortfolioPage })));
@@ -212,6 +213,9 @@ export default function App() {
 
           {/* CRISIS RISK + Asset projection — key actionable info */}
           {crisis && <CrisisRiskPanel data={crisis} />}
+          <Suspense fallback={null}>
+            <EuropeEnergyPanel />
+          </Suspense>
           {explain?.trajectory && (
             <ProjectedAssetsPanel
               trajectory={explain.trajectory}

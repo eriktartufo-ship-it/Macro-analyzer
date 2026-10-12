@@ -841,6 +841,15 @@ def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
     except Exception as e:
         logger.warning(f"CFTC COT skipped: {e}")
 
+    # S50 — area euro ed energia (BCE, TTF, Brent): informativi; il classificatore li legge
+    # solo dietro flag. Una fonte giu' toglie solo le sue chiavi.
+    try:
+        from app.services.indicators import europe_energy
+
+        indicators.update(europe_energy.live_europe_energy_indicators(us=indicators))
+    except Exception as e:
+        logger.warning(f"Europa/energia skipped: {e}")
+
     return indicators
 
 

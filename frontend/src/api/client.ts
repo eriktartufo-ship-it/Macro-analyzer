@@ -48,7 +48,8 @@ import type {
   TransitionMatrix,
   TransitionCheckResponse,
   MLForecastResponse,
-  // Regime2DResponse + SubRegimeResponse rimossi 2026-05-28
+  // Regime2DResponse + SubRegimeResponse rimossi 2026-05-28,
+  EuropeEnergy,
 } from "../types";
 
 const BASE = "/api/v1";
@@ -118,6 +119,7 @@ export const api = {
     request<FlowTimeline>(`/flows/timeline?n_weeks=${nWeeks}&flow_lookback=${flowLookback}`),
   cycleClock: (nWeeks = 52) => request<CycleClock>(`/cycle/clock?n_weeks=${nWeeks}`),
   cycleDebasement: () => request<DebasementRegime>("/cycle/debasement"),
+  europeEnergy: () => request<EuropeEnergy>("/europe-energy"),
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),
   scoreboard: () => request<Scoreboard>(withDedollar("/scoreboard")),

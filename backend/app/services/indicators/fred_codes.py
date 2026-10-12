@@ -397,6 +397,14 @@ FRED_SERIES = {
         "frequency": "daily",
         "transform": "roc",
     },
+    # S50 (2026-10-12): Brent SPOT (fisico, EIA) dal 1987. Con il future BZ=F da' il premio del
+    # fisico sulla carta; la sua variazione a 12 mesi e' l'ingresso del pilastro shock energetico.
+    "brent_spot": {
+        "fred_id": "DCOILBRENTEU",
+        "description": "Crude Oil Prices: Brent - Europe (spot, USD/Barrel)",
+        "frequency": "daily",
+        "transform": "level",
+    },
     "debt_gdp": {
         "fred_id": "GFDEGDQ188S",
         "description": "Federal Debt: Total Public Debt as % of GDP",
