@@ -322,6 +322,12 @@ def _build_user_prompt(
             "korea_exports_yoy",
         ],
     }
+    # S50 (2026-10-12): area euro ed energia. Stessa lista del pannello del sito (un'unica
+    # fonte di verita'): se il sito mostra una chiave, il bot la vede.
+    from app.services.indicators.europe_energy import PANEL_GROUPS
+    key_inds_grouped["Europa ed energia"] = [
+        k for _, _, items in PANEL_GROUPS for k, _, _ in items
+    ] + ["ea_sovereign_spread_pctile"]
     indicator_blocks = []
     for group_name, keys in key_inds_grouped.items():
         lines = []

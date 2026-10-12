@@ -23,6 +23,7 @@ from app.services.config_flags import (
     use_gdp_collapse_override,
     use_labor_credit_pillar,
     use_level_accel_pillars,
+    use_energy_shock_pillar,
     use_ml_regime_blend,
     use_momentum_pillars,
     use_news_pillar,
@@ -423,6 +424,28 @@ def _merge_level_accel_pillars(base: dict) -> dict:
             merged[regime][cond_name] = dict(cond_data)
     return merged
 
+
+# S50 (2026-10-12): SHOCK ENERGETICO. Soglie = quantili di WTISPLC a 12 mesi 1947-2026:
+# p50 0,0 · p75 15,1 · p90 46,6 · p95 75,3 ⇒ center = p90, scale = (p90 − p75)/2.
+# Sanity: 1974-06 +184 · 2022-06 +61 · 2026-09 +52 · 2008-06 +98 (episodio DEFLAZIONE: il rischio
+# che il cancello misura) · 2015-06 −44. Costanti di modulo: lo script di validazione le varia.
+_OIL_SHOCK_CENTER = 46.6
+_OIL_SHOCK_SCALE = 15.7
+_ENERGY_SHOCK_PILLAR_ADD: dict[str, dict[str, dict]] = {
+    "stagflation": {
+        "oil_supply_shock": {"weight": 0.05, "description": "Petrolio a 12 mesi > p90 storico (+47%): shock d'offerta"},
+    },
+}
+
+
+def _merge_energy_shock_pillar(base: dict) -> dict:
+    """S50: aggiunge il pilastro shock energetico (solo con USE_ENERGY_SHOCK_PILLAR)."""
+    merged = {regime: {k: dict(v) for k, v in conds.items()} for regime, conds in base.items()}
+    for regime, adds in _ENERGY_SHOCK_PILLAR_ADD.items():
+        for cond_name, cond_data in adds.items():
+            merged[regime][cond_name] = dict(cond_data)
+    return merged
+
 # Condizioni per ogni regime con pesi (somma per regime = 1.0)
 REGIME_CONDITIONS = {
     "reflation": {
@@ -638,6 +661,8 @@ def _evaluate_condition(
     payrolls_any = indicators.get("payrolls_roc_12m", indicators.get("payrolls_yoy", 1.5))
     claims_any = indicators.get("initial_claims_roc", indicators.get("claims_roc", 0.0))
     cpi_chg6_any = indicators.get("cpi_yoy_change_6m", 0.0)
+    # S50: petrolio a 12 mesi. Default = mediana storica WTI 1947-2026 (0%): dato assente = niente shock.
+    oil_yoy = indicators.get("oil_yoy", 0.0)
     # Cross-asset ratios (Tier 6.3): default neutral = mediane storiche REALI
     # 2000-2026 (AUDIT 2026-07-12: 0.37 era ~160x fuori scala vs raw ratio).
     # Opt-in via USE_CROSS_ASSET_PILLARS. Soft pillar 0.02-0.03 each.
@@ -1029,6 +1054,9 @@ def _evaluate_condition(
     elif condition_name == "unit_labor_costs_spiraling" and regime == "stagflation":
         # ULC YoY > p90=7.0: wage-price spiral (1974: 11.2 → 1; 2021: 6.2 → 0.3).
         return _sigmoid(ulc_yoy, center=7.0, scale=1.0)
+    elif condition_name == "oil_supply_shock" and regime == "stagflation":
+        # S50: petrolio a 12 mesi oltre il p90 storico = shock d'offerta (1974 +184 → 1; 2026 +52 → 0,6).
+        return _sigmoid(oil_yoy, center=_OIL_SHOCK_CENTER, scale=_OIL_SHOCK_SCALE)
 
     # Fallback
     return 0.5
@@ -1113,6 +1141,10 @@ def classify_regime(
     # deflation overfit + goldilocks blindness. Default OFF fino a gate A/B.
     if use_level_accel_pillars():
         active_conditions = _merge_level_accel_pillars(active_conditions)
+
+    # S50 (2026-10-12): shock energetico. Default OFF fino al cancello A/B.
+    if use_energy_shock_pillar():
+        active_conditions = _merge_energy_shock_pillar(active_conditions)
 
     for regime in REGIMES:
         regime_score = 0.0

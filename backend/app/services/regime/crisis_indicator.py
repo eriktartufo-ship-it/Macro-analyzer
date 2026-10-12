@@ -48,6 +48,8 @@ _THRESHOLDS = {
     "dedollar_high": 0.65,             # >= → debasement signal
     "gdp_weak": 1.0,                   # <= QoQ → growth slowdown
     "unrate_rising_fast": 5.0,         # >= unrate_roc → labor market stress
+    # S50: spread sovrano euro 10a (tutti i rating − AAA), p90 2004-2026. Solo con USE_EU_STRESS_TRIGGER.
+    "eu_sovereign_spread_p90": 0.94,
 }
 
 
@@ -164,6 +166,13 @@ def _evaluate_triggers(
         ("gdp_weak", ind.get("gdp_roc", 2.0), _THRESHOLDS["gdp_weak"], "le", "GDP QoQ debole"),
         ("unrate_rising", ind.get("unrate_roc", 0.0), _THRESHOLDS["unrate_rising_fast"], "ge", "Unemployment in salita rapida"),
     ]
+    # S50: stress sovrano euro. Aggiunto solo se il dato esiste: un trigger sempre spento
+    # diluirebbe il punteggio anche dove la curva BCE non c'e' (prima del 2004).
+    from app.services.config_flags import use_eu_stress_trigger
+    eu_spread = ind.get("ea_sovereign_spread_10y")
+    if use_eu_stress_trigger() and isinstance(eu_spread, (int, float)):
+        checks.append(("eu_sovereign_stress", eu_spread, _THRESHOLDS["eu_sovereign_spread_p90"], "ge",
+                       "Spread sovrano euro sopra il p90 dal 2004 (stress area euro)"))
     for name, value, threshold, op, description in checks:
         fired = value >= threshold if op == "ge" else value <= threshold
         triggers.append({
