@@ -10,7 +10,7 @@ interface Props {
   onPageChange: (p: Page) => void;
   theme: Theme;
   onThemeToggle: () => void;
-  onRefresh: () => void;
+  onRefresh?: () => void; // S51: assente per chi non ha il token admin
   refreshing: boolean;
 }
 
@@ -89,14 +89,16 @@ export function Sidebar({
           >
             {theme === "dark" ? "☀" : "☾"}
           </button>
-          <button
-            className="mac-foot-btn"
-            onClick={onRefresh}
-            disabled={refreshing}
-            title="Aggiorna dati"
-          >
-            {refreshing ? "…" : "⟳"}
-          </button>
+          {onRefresh && (
+            <button
+              className="mac-foot-btn"
+              onClick={onRefresh}
+              disabled={refreshing}
+              title="Aggiorna dati"
+            >
+              {refreshing ? "…" : "⟳"}
+            </button>
+          )}
         </div>
       </div>
     </aside>

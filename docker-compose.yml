@@ -45,6 +45,9 @@ services:
       PT_USERS: ${PT_USERS:-}
       PT_SECRET: ${PT_SECRET:-}
       PT_ADMIN_TOKEN: ${PT_ADMIN_TOKEN:-}
+      # S51: token admin del sito (endpoint che scrivono) e chiave AGSI+ (stoccaggi gas UE)
+      MACRO_ADMIN_TOKEN: ${MACRO_ADMIN_TOKEN:-}
+      AGSI_API_KEY: ${AGSI_API_KEY:-}
     volumes:
       - fred-cache:/app/.cache/fred
     expose:

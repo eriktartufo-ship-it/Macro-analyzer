@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     pt_secret: str = ""
     # Token admin per push da Claude Code (strategy vetrina + import bulk)
     pt_admin_token: str = ""
+    # S51: token admin del sito (Bearer) per gli endpoint che scrivono. Vuoto = tutto rifiutato (503).
+    macro_admin_token: str = ""
+    # S51: chiave API AGSI+ (GIE) per gli stoccaggi di gas UE. Vuota = dato assente, nessun errore.
+    agsi_api_key: str = ""
 
 
 settings = Settings()

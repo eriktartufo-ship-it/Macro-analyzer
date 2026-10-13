@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, lazy, Suspense } from "react";
+import { getAdminToken, onAdminTokenChange } from "./api/adminToken";
 import { api } from "./api/client";
 import { useDedollarBonus } from "./hooks/useDedollarBonus";
 import type { CrisisHistory, CrisisRiskAssessment, CurrentRegime, Dedollarization, InsiderActivity, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
@@ -66,6 +67,9 @@ export default function App() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // S51: il refresh vuole il token admin; senza, il bottone non compare (fallirebbe a ogni clic)
+  const [isAdmin, setIsAdmin] = useState(() => Boolean(getAdminToken()));
+  useEffect(() => onAdminTokenChange(() => setIsAdmin(Boolean(getAdminToken()))), []);
   const [dedollarFlag] = useDedollarBonus();
   const [loading, setLoading] = useState(true);
   // Deep-link: macro.pieranlab.cloud/portfolio apre direttamente i Portafogli
@@ -165,13 +169,13 @@ export default function App() {
         onPageChange={setPage}
         theme={theme}
         onThemeToggle={themeToggle}
-        onRefresh={onRefresh}
+        onRefresh={isAdmin ? onRefresh : undefined}
         refreshing={refreshing}
       />
       <div className="mac-main">
         <Header
           date={regime?.date}
-          onRefresh={onRefresh}
+          onRefresh={isAdmin ? onRefresh : undefined}
           refreshing={refreshing}
           page={page}
           onPageChange={setPage}

@@ -6,7 +6,7 @@ export type Theme = "light" | "dark";
 
 interface Props {
   date?: string;
-  onRefresh: () => void;
+  onRefresh?: () => void; // S51: assente per chi non ha il token admin
   refreshing: boolean;
   page: Page;
   onPageChange: (p: Page) => void;
@@ -73,9 +73,11 @@ export function Header({ date, onRefresh, refreshing, page, onPageChange, theme,
           >
             {theme === "dark" ? "☀" : "☾"}
           </button>
-          <button className="btn glass-btn" onClick={onRefresh} disabled={refreshing}>
-            {refreshing ? "Refreshing…" : "Refresh data"}
-          </button>
+          {onRefresh && (
+            <button className="btn glass-btn" onClick={onRefresh} disabled={refreshing}>
+              {refreshing ? "Refreshing…" : "Refresh data"}
+            </button>
+          )}
         </div>
       </div>
 

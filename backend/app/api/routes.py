@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.admin_auth import is_admin, require_admin, require_admin_for_regeneration
 from app.database import get_db
 from app.models import DailySignal, RegimeClassification
 from app.models.news_signals import NewsSignal
@@ -1040,7 +1041,7 @@ def get_asset_calibration():
     )
 
 
-@router.post("/asset-calibration/run")
+@router.post("/asset-calibration/run", dependencies=[Depends(require_admin)])
 def run_asset_calibration(
     horizon_months: int = Query(default=12, ge=3, le=36),
     regime_threshold: float = Query(default=0.35, ge=0.25, le=0.70),
@@ -1209,7 +1210,7 @@ def get_llm_settings():
     return llm_settings.get_current_state()
 
 
-@router.post("/llm-settings")
+@router.post("/llm-settings", dependencies=[Depends(require_admin)])
 def update_llm_settings(payload: dict = Body(...)):
     """Update runtime settings LLM (process-local + persistent file disco).
 
@@ -1245,11 +1246,13 @@ def update_llm_settings(payload: dict = Body(...)):
 def get_macro_llm_analysis(
     force_refresh: bool = Query(default=False, description="Bypass cache 24h"),
     db: Session = Depends(get_db),
+    admin: bool = Depends(is_admin),
 ):
     """LLM macro analysis: regime + indicators → Gemini structured analysis.
 
     Cache disco TTL 24h per evitare Gemini call ad ogni reload (cost + latency).
     Cache invalidata su regime change (file key = `date_regime.json`).
+    S51: force_refresh (chiamata Gemini a pagamento) solo col token admin.
 
     Returns:
         {headline, regime_thesis, key_drivers, risks, opportunities,
@@ -1257,6 +1260,7 @@ def get_macro_llm_analysis(
          cached_at, provider, cache_hit}
         OR HTTP 503 se Gemini API key missing e nessuna cache disponibile.
     """
+    require_admin_for_regeneration(force_refresh, admin)
     from app.services.llm.macro_analyzer import get_macro_analysis
 
     latest = (
@@ -1442,7 +1446,7 @@ def get_ai_portfolio_performance(
     }
 
 
-@router.post("/ai-portfolio/manual-scan")
+@router.post("/ai-portfolio/manual-scan", dependencies=[Depends(require_admin)])
 def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
     """Trigger manuale daily scan di TUTTE le strategie + performance + LLM reasoning."""
     from app.services.ai_portfolio import (
@@ -1494,8 +1498,10 @@ def get_ai_portfolio_reasoning(
     force_refresh: bool = Query(default=False),
     strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
+    admin: bool = Depends(is_admin),
 ):
     """LLM reasoning + regime challenge per ultima data disponibile per strategy."""
+    require_admin_for_regeneration(force_refresh, admin)
     from app.services.ai_portfolio import llm_reasoner
     import json as _json
 
@@ -1540,7 +1546,7 @@ def get_ai_portfolio_learnings(
     return learning.list_top_learnings(db, limit=limit, strategy_type=strategy)
 
 
-@router.post("/ai-portfolio/reset")
+@router.post("/ai-portfolio/reset", dependencies=[Depends(require_admin)])
 def reset_ai_portfolio(
     confirm: str = Query(default=""),
     strategy: str | None = Query(default=None),
@@ -1677,12 +1683,14 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
 def get_fomc_report(
     limit: int = Query(default=6, ge=1, le=12),
     force_refresh: bool = Query(default=False),
+    admin: bool = Depends(is_admin),
 ):
     """FOMC statements/minutes con sentiment hawkish/dovish via LLM (Gemini → Groq fallback).
 
     Cache aggressiva su disco per URL. force_refresh=true forza ri-analisi.
     Trend = differenza tra primo e ultimo score (hawkening/dovening/stable).
     """
+    require_admin_for_regeneration(force_refresh, admin)
     from app.services.fomc.service import build_fomc_report, serialize_analysis
 
     report = build_fomc_report(limit=limit, force_refresh=force_refresh)
@@ -1920,7 +1928,7 @@ def get_scoreboard_dedollar_comparison(db: Session = Depends(get_db)):
     )
 
 
-@router.post("/regime/classify")
+@router.post("/regime/classify", dependencies=[Depends(require_admin)])
 def classify_from_indicators(
     indicators: dict[str, float],
     include_dedollar: bool | None = Query(default=None),
@@ -1937,7 +1945,7 @@ def classify_from_indicators(
     }
 
 
-@router.post("/refresh")
+@router.post("/refresh", dependencies=[Depends(require_admin)])
 def trigger_refresh():
     """Trigger manuale del refresh dati."""
     from app.scheduler.jobs import daily_refresh
@@ -2053,7 +2061,7 @@ def get_post_mortem(
     }
 
 
-@router.post("/ml/retrain")
+@router.post("/ml/retrain", dependencies=[Depends(require_admin)])
 def trigger_ml_retrain():
     """NEW council 2026-05-27 #5: trigger ML blend retrain.
 
@@ -2097,7 +2105,7 @@ def get_learnings(
     return {"summary": summary, "recent_failures": recent}
 
 
-@router.post("/model/lock")
+@router.post("/model/lock", dependencies=[Depends(require_admin)])
 def lock_model_endpoint(
     version: str = Query(..., min_length=3, max_length=64),
     description: str | None = Query(default=None),
@@ -2116,7 +2124,7 @@ def lock_model_endpoint(
         raise HTTPException(status_code=500, detail=f"Lock failed: {str(e)}")
 
 
-@router.post("/regime/backfill")
+@router.post("/regime/backfill", dependencies=[Depends(require_admin)])
 def trigger_regime_backfill(days: int = Query(default=365, ge=1, le=3650)):
     """Ricostruisce lo storico classificazioni regime per gli ultimi N giorni."""
     from app.services.regime.backfill import backfill_regime_history
@@ -2135,7 +2143,7 @@ def trigger_regime_backfill(days: int = Query(default=365, ge=1, le=3650)):
         raise HTTPException(status_code=500, detail=f"Errore backfill: {str(e)}")
 
 
-@router.post("/regime/backfill/historical")
+@router.post("/regime/backfill/historical", dependencies=[Depends(require_admin)])
 def trigger_regime_backfill_historical(
     start: date = Query(default=date(1970, 1, 1)),
     end: date | None = Query(default=None),
@@ -2167,7 +2175,7 @@ def trigger_regime_backfill_historical(
         raise HTTPException(status_code=500, detail=f"Errore backfill storico: {str(e)}")
 
 
-@router.post("/backfill/all")
+@router.post("/backfill/all", dependencies=[Depends(require_admin)])
 def trigger_full_backfill(days: int = Query(default=365, ge=30, le=3650)):
     """Backfill completo: regime + dedollarization + asset scores + prune."""
     from app.services.backfill import backfill_all
@@ -2280,7 +2288,7 @@ class FlagUpdate(BaseModel):
     value: bool | None  # None = clear runtime override
 
 
-@router.post("/config/flags")
+@router.post("/config/flags", dependencies=[Depends(require_admin)])
 def set_config_flag(update: FlagUpdate):
     """Set/clear runtime override per un feature flag (process-local).
 
@@ -2422,7 +2430,7 @@ def get_calibration_snapshots(
     return list_snapshots(db, limit=limit)
 
 
-@router.post("/scoring/calibration/refresh")
+@router.post("/scoring/calibration/refresh", dependencies=[Depends(require_admin)])
 def trigger_calibration_refresh(db: Session = Depends(get_db)):
     """Tier 6.6 — Force refresh manuale della live calibration.
 
@@ -2469,7 +2477,7 @@ def list_overrides(db: Session = Depends(get_db)):
     ]
 
 
-@router.post("/scoring/overrides")
+@router.post("/scoring/overrides", dependencies=[Depends(require_admin)])
 def post_override(payload: OverrideCreate, db: Session = Depends(get_db)):
     """Tier 6.7 — Crea nuovo override discrezionale (audit-trail).
 
@@ -2654,7 +2662,7 @@ def get_ml_forecast(
 # /regime/sub-regime endpoint rimosso 2026-05-28 (code audit, no frontend consumer)
 
 
-@router.delete("/scoring/overrides/{override_id}")
+@router.delete("/scoring/overrides/{override_id}", dependencies=[Depends(require_admin)])
 def remove_override(override_id: int, db: Session = Depends(get_db)):
     """Tier 6.7 — Cancella override per id."""
     from app.services.scoring.discretionary import delete_override
@@ -2945,7 +2953,7 @@ def get_regime_meta(
     }
 
 
-@router.post("/admin/repair-lei")
+@router.post("/admin/repair-lei", dependencies=[Depends(require_admin)])
 def trigger_repair_lei(
     dry_run: bool = Query(default=False, description="Anteprima senza commit"),
     db: Session = Depends(get_db),
@@ -3293,7 +3301,7 @@ def get_signals_history(
     return [SignalsHistoryItem(date=d, scores=scores) for d, scores in by_date.items()]
 
 
-@router.post("/dedollarization/explanation")
+@router.post("/dedollarization/explanation", dependencies=[Depends(require_admin)])
 def generate_dedollarization_explanation(db: Session = Depends(get_db)):
     """Genera on-demand l'analisi AI (Gemini) dell'ultimo stato dedollarizzazione.
 
@@ -3622,6 +3630,12 @@ def get_cycle_debasement(db: Session = Depends(get_db)):
     result = {"available": True, **result}
     _DEBASEMENT_CACHE["current"] = (now, result)
     return result
+
+
+@router.get("/admin/check", dependencies=[Depends(require_admin)])
+def admin_check():
+    """S51: il token admin inserito nel sito e' valido? (401/403/503 altrimenti)"""
+    return {"ok": True}
 
 
 @router.get("/europe-energy")

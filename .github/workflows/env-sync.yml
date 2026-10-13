@@ -1,0 +1,73 @@
+# S51 (2026-10-13): porta sul VPS le variabili sensibili del backend, senza che passino da un file
+# del repo o da una chat. I valori stanno nei GitHub Secrets del repo (mascherati nei log):
+#   MACRO_ADMIN_TOKEN  token admin del sito (endpoint che scrivono)
+#   AGSI_API_KEY       chiave AGSI+ per gli stoccaggi di gas UE (facoltativa)
+# Un secret vuoto o assente viene saltato, non cancellato dal .env.
+#
+# Cosa fa: sincronizza docker-compose.yml dal repo (la copia in /opt/macro e' manuale e il deploy
+# non la aggiorna), aggiorna/aggiunge le righe nel .env (backup .env.bak-envsync), ricrea il backend
+# (il solo restart NON rilegge env e compose) e verifica dall'esterno.
+# Permessi: gh-runner non scrive in /opt/macro -> scritture via container helper (vedi pt-env-setup.yml).
+# Il valore entra nel container da stdin: non compare negli argomenti dei processi ne' nei log.
+name: Env sync (secret -> VPS)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: [self-hosted, linux, vps-macro]
+    steps:
+      - name: Checkout (compose canonico del repo)
+        uses: actions/checkout@v4
+
+      - name: Sync docker-compose.yml repo -> /opt/macro (diff visibile, backup)
+        run: |
+          set -euo pipefail
+          echo "--- diff compose VPS vs repo (informativo) ---"
+          diff /opt/macro/docker-compose.yml docker-compose.yml || true
+          echo "--- fine diff ---"
+          docker run --rm -v "$PWD:/src:ro" -v /opt/macro:/m alpine \
+            sh -c 'cp /m/docker-compose.yml /m/docker-compose.yml.bak && cp /src/docker-compose.yml /m/docker-compose.yml'
+
+      - name: Aggiorna le variabili nel .env (solo nomi nei log)
+        env:
+          MACRO_ADMIN_TOKEN: ${{ secrets.MACRO_ADMIN_TOKEN }}
+          AGSI_API_KEY: ${{ secrets.AGSI_API_KEY }}
+        run: |
+          set -euo pipefail
+          upsert() {
+            name="$1"; value="$2"
+            if [ -z "$value" ]; then echo "$name: secret vuoto o assente, salto"; return 0; fi
+            printf '%s' "$value" | docker run --rm -i -e NAME="$name" -v /opt/macro:/m alpine sh -c '
+              v=$(cat); f=/m/.env
+              cp "$f" "$f.bak-envsync"
+              { grep -v "^${NAME}=" "$f" || true; printf "%s=%s\n" "$NAME" "$v"; } > /tmp/env.new
+              cat /tmp/env.new > "$f"'
+            echo "$name: aggiornato"
+          }
+          upsert MACRO_ADMIN_TOKEN "${MACRO_ADMIN_TOKEN}"
+          upsert AGSI_API_KEY "${AGSI_API_KEY}"
+
+      - name: Pull + ricrea il backend
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          docker compose pull backend
+          docker compose up -d --force-recreate backend
+
+      - name: Verifica (presenza, mai il valore)
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          for v in MACRO_ADMIN_TOKEN AGSI_API_KEY; do
+            if docker compose exec -T backend sh -c "test -n \"\$$v\""; then echo "$v: presente nel backend"; else echo "$v: assente nel backend"; fi
+          done
+          # senza token l'endpoint di verifica deve dire 401 (token configurato), non 503 (non configurato)
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://macro.pieranlab.cloud/api/v1/admin/check || true)
+            if [ "$code" = "401" ]; then echo "OK: /admin/check senza token = 401"; exit 0; fi
+            echo "tentativo $i: $code — riprovo tra 8s"; sleep 8
+          done
+          echo "/admin/check non risponde 401: token non configurato o backend giu'" >&2
+          exit 1
