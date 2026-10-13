@@ -51,6 +51,7 @@ import type {
   MLForecastResponse,
   // Regime2DResponse + SubRegimeResponse rimossi 2026-05-28,
   EuropeEnergy,
+  DataQuality,
 } from "../types";
 
 const BASE = "/api/v1";
@@ -141,6 +142,7 @@ export const api = {
   cycleClock: (nWeeks = 52) => request<CycleClock>(`/cycle/clock?n_weeks=${nWeeks}`),
   cycleDebasement: () => request<DebasementRegime>("/cycle/debasement"),
   adminCheck: () => request<{ ok: boolean }>("/admin/check", undefined, { retries: 0 }),
+  dataQuality: () => request<DataQuality>("/data-quality", undefined, { retries: 0 }),
   europeEnergy: () => request<EuropeEnergy>("/europe-energy"),
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),

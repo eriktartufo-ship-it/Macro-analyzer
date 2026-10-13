@@ -19,6 +19,7 @@ import { LazyDetails } from "./components/LazyDetails";
 const DedollarizationPage = lazy(() => import("./components/DedollarizationPage").then(m => ({ default: m.DedollarizationPage })));
 const AssetRankingTable = lazy(() => import("./components/AssetRankingTable").then(m => ({ default: m.AssetRankingTable })));
 const DataPage = lazy(() => import("./components/DataPage").then(m => ({ default: m.DataPage })));
+const DataQualityStrip = lazy(() => import("./components/DataQualityStrip").then(m => ({ default: m.DataQualityStrip })));
 const EuropeEnergyPanel = lazy(() => import("./components/EuropeEnergyPanel").then(m => ({ default: m.EuropeEnergyPanel })));
 const FlowsPage = lazy(() => import("./components/FlowsPage").then(m => ({ default: m.FlowsPage })));
 const CyclePage = lazy(() => import("./components/CyclePage").then(m => ({ default: m.CyclePage })));
@@ -109,7 +110,7 @@ export default function App() {
     setExplain(e);
     setCrisis(c);
     if (!r && !s) {
-      setError("Dati non ancora disponibili — attendi il primo refresh oppure premi Refresh data.");
+      setError("Dati non ancora disponibili — attendi il refresh giornaliero (o premi Refresh data, se hai l'accesso admin).");
     }
     setLoading(false);
 
@@ -196,6 +197,11 @@ export default function App() {
               projected={explain?.trajectory?.projected_probabilities}
             />
           </div>
+
+          {/* S51: i numeri del sito contro le fonti ufficiali, verificati dopo ogni refresh */}
+          <Suspense fallback={null}>
+            <DataQualityStrip />
+          </Suspense>
 
           {/* AI ANALYSIS — Gemini macro analysis (cached 24h, fisso) */}
           <MacroLlmAnalysisPanel />

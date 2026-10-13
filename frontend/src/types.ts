@@ -980,3 +980,25 @@ export interface EuropeEnergy {
   groups: EuropeEnergyGroup[];
   sovereign_spread_pctile: number | null;
 }
+
+// S51 (2026-10-13): controllo incrociato con le fonti ufficiali — GET /data-quality
+export interface DataQualityResult {
+  name: string;
+  key: string;
+  site: number | null;
+  source_value: number | null;
+  tolerance: number;
+  source: string;
+  status: "ok" | "fail" | "na";
+  note: string;
+}
+
+export interface DataQuality {
+  available: boolean;
+  checked_at: string;
+  n_ok: number;
+  n_fail: number;
+  n_na: number;
+  results: DataQualityResult[];
+  history?: { checked_at: string; n_ok: number; n_fail: number; n_na: number }[];
+}

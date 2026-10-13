@@ -64,10 +64,15 @@ jobs:
             if docker compose exec -T backend sh -c "test -n \"\$$v\""; then echo "$v: presente nel backend"; else echo "$v: assente nel backend"; fi
           done
           # senza token l'endpoint di verifica deve dire 401 (token configurato), non 503 (non configurato)
+          ok401=""
           for i in 1 2 3 4 5 6 7 8 9 10; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 https://macro.pieranlab.cloud/api/v1/admin/check || true)
-            if [ "$code" = "401" ]; then echo "OK: /admin/check senza token = 401"; exit 0; fi
+            if [ "$code" = "401" ]; then echo "OK: /admin/check senza token = 401"; ok401=1; break; fi
             echo "tentativo $i: $code — riprovo tra 8s"; sleep 8
           done
-          echo "/admin/check non risponde 401: token non configurato o backend giu'" >&2
-          exit 1
+          [ -n "$ok401" ] || { echo "/admin/check non risponde 401: token non configurato o backend giu'" >&2; exit 1; }
+          # caso positivo: dentro il container, col token del server, deve dire 200. Il token non esce
+          # dal server; nei log c'e' solo il codice HTTP.
+          code=$(docker compose exec -T backend python -c "import os,urllib.request; r=urllib.request.Request('http://localhost:8000/api/v1/admin/check', headers={'Authorization': 'Bearer ' + os.environ['MACRO_ADMIN_TOKEN']}); print(urllib.request.urlopen(r, timeout=10).status)" 2>/dev/null || echo errore)
+          echo "/admin/check col token del server (dentro il container): $code"
+          [ "$code" = "200" ] || { echo "il token configurato non viene accettato" >&2; exit 1; }

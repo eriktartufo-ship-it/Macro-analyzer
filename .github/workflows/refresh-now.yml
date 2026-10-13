@@ -1,0 +1,23 @@
+# S51 (2026-10-13): refresh dei dati SUBITO, senza aspettare lo scheduler (06:00 UTC) e senza token:
+# gira dentro il container del backend, in-process (stessa funzione dello scheduler, niente HTTP).
+# Utile dopo un deploy che cambia i calcoli. Alla fine mostra l'esito del controllo incrociato.
+name: Refresh ora
+
+on:
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: [self-hosted, linux, vps-macro]
+    steps:
+      - name: Refresh in-process nel backend
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          docker compose exec -T backend python -c "from app.scheduler.jobs import daily_refresh; daily_refresh()"
+
+      - name: Esito del controllo incrociato
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          docker compose exec -T backend python -c "import json,urllib.request; d=json.load(urllib.request.urlopen('http://localhost:8000/api/v1/data-quality', timeout=20)); print('disponibile:', d.get('available'), '| ok', d.get('n_ok'), '| fuori tolleranza', d.get('n_fail'), '| non giudicabili', d.get('n_na'), '|', d.get('checked_at'))"
