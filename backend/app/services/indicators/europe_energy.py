@@ -212,12 +212,56 @@ def fetch_europe_energy_series(yahoo=None, fred=None) -> dict[str, pd.Series]:
     return series
 
 
+AGSI_URL = "https://agsi.gie.eu/api"
+
+
+def _agsi(api_key: str, **params) -> Optional[dict]:
+    """Prima riga di AGSI+ (aggregato UE). Una chiave rifiutata torna un JSON con `error`, con HTTP 200."""
+    r = requests.get(AGSI_URL, params={"type": "eu", "size": 1, **params}, headers={"x-key": api_key}, timeout=30)
+    r.raise_for_status()
+    j = r.json()
+    if j.get("error"):
+        raise RuntimeError(f"AGSI: {j.get('message') or j['error']}")
+    rows = j.get("data") or []
+    return rows[0] if rows else None
+
+
+def gas_storage_indicators(api_key: str) -> dict[str, float]:
+    """S51: stoccaggi di gas UE (AGSI+, GIE). Senza chiave nessuna chiamata, nessuna chiave.
+
+    ea_gas_storage_pct = riempimento %, ea_gas_storage_trend = variazione del giorno (pp),
+    ea_gas_storage_vs_1y = punti in meno/in piu' rispetto allo STESSO giorno gas di un anno prima.
+    ⚠️ Struttura della risposta dalla documentazione AGSI: da provare dal vivo con la chiave vera.
+    """
+    if not api_key:
+        return {}
+    out: dict[str, float] = {}
+    try:
+        oggi = _agsi(api_key)
+        if not oggi or oggi.get("full") in (None, "", "-"):
+            return {}
+        out["ea_gas_storage_pct"] = float(oggi["full"])
+        if oggi.get("trend") not in (None, "", "-"):
+            out["ea_gas_storage_trend"] = float(oggi["trend"])
+        giorno = pd.Timestamp(oggi["gasDayStart"])
+        prima = _agsi(api_key, date=(giorno - pd.DateOffset(years=1)).date().isoformat())
+        if prima and prima.get("full") not in (None, "", "-"):
+            out["ea_gas_storage_vs_1y"] = out["ea_gas_storage_pct"] - float(prima["full"])
+    except Exception as e:
+        logger.warning(f"AGSI stoccaggi non disponibili: {e}")
+        return {}
+    return out
+
+
 def live_europe_energy_indicators(us: Optional[dict] = None) -> dict[str, float]:
     """Punto d'ingresso del refresh giornaliero."""
+    from app.config import settings
     from app.services.indicators.fetcher import FredFetcher
     from app.services.prices.yahoo_fetcher import YahooFetcher
 
-    return europe_energy_indicators(fetch_europe_energy_series(YahooFetcher(), FredFetcher()), us=us)
+    out = europe_energy_indicators(fetch_europe_energy_series(YahooFetcher(), FredFetcher()), us=us)
+    out.update(gas_storage_indicators(settings.agsi_api_key))
+    return out
 
 
 # Il pannello del sito: gruppi, etichette e unita'. Una voce senza valore resta (None = "—"),
@@ -246,6 +290,8 @@ PANEL_GROUPS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
         ("brent_yoy", "Brent in 12 mesi", "%"),
         ("ttf_price", "Gas TTF", "€/MWh"),
         ("ttf_yoy", "Gas TTF in 12 mesi", "%"),
+        ("ea_gas_storage_pct", "Stoccaggi gas UE", "%"),
+        ("ea_gas_storage_vs_1y", "Stoccaggi rispetto a un anno fa", "pp"),
     ]),
     ("lavoro", "Lavoro", [
         ("ea_unemployment", "Disoccupazione area euro", "%"),

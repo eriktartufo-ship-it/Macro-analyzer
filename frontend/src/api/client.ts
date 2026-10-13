@@ -1,4 +1,5 @@
 import { getDedollarBonusFlag } from "../hooks/useDedollarBonus";
+import { getAdminToken } from "./adminToken";
 import type {
   BacktestResult,
   CalibrationPayload,
@@ -62,6 +63,25 @@ export class ApiError extends Error {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// S51: il token admin (se inserito) viaggia con ogni richiesta; senza, le letture funzionano uguale.
+function withAdmin(init?: RequestInit): RequestInit {
+  const tok = getAdminToken();
+  if (!tok) return init ?? {};
+  const headers = new Headers(init?.headers);
+  headers.set("Authorization", `Bearer ${tok}`);
+  return { ...init, headers };
+}
+
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body && typeof body.detail === "string") return body.detail;
+  } catch {
+    // corpo non JSON
+  }
+  return `${res.status} ${res.statusText}`;
+}
+
 async function request<T>(
   path: string,
   init?: RequestInit,
@@ -72,12 +92,13 @@ async function request<T>(
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const res = await fetch(`${BASE}${path}`, init);
+      const res = await fetch(`${BASE}${path}`, withAdmin(init));
       if (res.ok) return (await res.json()) as T;
 
       // 4xx (tranne 408/429) = errore del client, non ritentare.
+      // Il messaggio arriva dal backend (es. "Serve il token admin (Impostazioni → Accesso admin)").
       if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
-        throw new ApiError(res.status, `${res.status} ${res.statusText}`);
+        throw new ApiError(res.status, await errorMessage(res));
       }
 
       lastErr = new ApiError(res.status, `${res.status} ${res.statusText}`);
@@ -119,6 +140,7 @@ export const api = {
     request<FlowTimeline>(`/flows/timeline?n_weeks=${nWeeks}&flow_lookback=${flowLookback}`),
   cycleClock: (nWeeks = 52) => request<CycleClock>(`/cycle/clock?n_weeks=${nWeeks}`),
   cycleDebasement: () => request<DebasementRegime>("/cycle/debasement"),
+  adminCheck: () => request<{ ok: boolean }>("/admin/check", undefined, { retries: 0 }),
   europeEnergy: () => request<EuropeEnergy>("/europe-energy"),
   regimeHistory: (days = 180) => request<RegimeHistoryItem[]>(`/regime/history?days=${days}`),
   regimeExplain: () => request<RegimeExplain>("/regime/explain"),

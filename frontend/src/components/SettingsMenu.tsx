@@ -4,6 +4,8 @@ import { ptClearSession, usePtSession } from "../hooks/usePtSession";
 import type { Page } from "./Header";
 import { FeatureFlagsPanel } from "./FeatureFlagsPanel";
 import { LlmSettingsModal } from "./LlmSettingsModal";
+import { AdminAccessModal } from "./AdminAccessModal";
+import { getAdminToken, onAdminTokenChange } from "../api/adminToken";
 
 /** Settings cog button + dropdown: account (utente Portafogli + esci) +
  * impostazioni macro (LLM, flag, dedollar). Riusato in topbar (mobile) e
@@ -18,6 +20,9 @@ export function SettingsMenu({
   const [open, setOpen] = useState(false);
   const [llmOpen, setLlmOpen] = useState(false);
   const [flagsOpen, setFlagsOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [hasAdmin, setHasAdmin] = useState(() => Boolean(getAdminToken()));
+  useEffect(() => onAdminTokenChange(() => setHasAdmin(Boolean(getAdminToken()))), []);
   const [dedollarOn, setDedollarOn] = useDedollarBonus();
   const user = usePtSession();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -104,6 +109,14 @@ export function SettingsMenu({
           <div className="mac-menu-divider" />
 
           <MenuItem
+            label="🔑 Accesso admin"
+            sub={hasAdmin ? "Attivo su questo dispositivo" : "Serve per modificare flag, LLM e refresh"}
+            onClick={() => {
+              setAdminOpen(true);
+              setOpen(false);
+            }}
+          />
+          <MenuItem
             label="🧠 LLM Settings"
             sub="API key + modello Gemini"
             onClick={() => {
@@ -130,6 +143,7 @@ export function SettingsMenu({
 
       <LlmSettingsModal open={llmOpen} onClose={() => setLlmOpen(false)} />
       <FeatureFlagsPanel open={flagsOpen} onClose={() => setFlagsOpen(false)} />
+      <AdminAccessModal open={adminOpen} onClose={() => setAdminOpen(false)} />
     </div>
   );
 }

@@ -166,3 +166,56 @@ class TestPayloadPannello:
         from app.services.indicators.europe_energy import europe_energy_payload
 
         assert europe_energy_payload({"cpi_yoy": 3.35}, "2026-10-12")["available"] is False
+
+
+class TestStoccaggiAgsi:
+    """AGSI+ (GIE) vuole una chiave: senza, nessuna chiamata e nessuna chiave negli indicatori.
+    ⚠️ Struttura della risposta dalla documentazione AGSI, NON ancora provata dal vivo (manca la chiave)."""
+
+    RISPOSTA = {"last_page": 1, "total": 1, "dataset": "storage", "data": [
+        {"name": "EU", "code": "eu", "gasDayStart": "2026-10-11", "full": "73.02", "trend": "0.11",
+         "gasInStorage": "831.5", "workingGasVolume": "1138.7"}]}
+    UN_ANNO_FA = {"data": [{"name": "EU", "gasDayStart": "2025-10-11", "full": "82.90", "trend": "0.15"}]}
+
+    def test_senza_chiave_nessuna_chiamata(self, monkeypatch):
+        from app.services.indicators import europe_energy as ee
+
+        def vietato(*a, **k):
+            raise AssertionError("chiamata AGSI senza chiave")
+        monkeypatch.setattr(ee.requests, "get", vietato)
+        assert ee.gas_storage_indicators("") == {}
+
+    def test_con_chiave_percentuale_e_confronto_annuo(self, monkeypatch):
+        from app.services.indicators import europe_energy as ee
+
+        chiamate = []
+
+        class Risp:
+            def __init__(self, j):
+                self._j = j
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return self._j
+
+        def finto_get(url, params=None, headers=None, timeout=None):
+            chiamate.append((params, headers))
+            return Risp(self.UN_ANNO_FA if params.get("date") else self.RISPOSTA)
+        monkeypatch.setattr(ee.requests, "get", finto_get)
+        ind = ee.gas_storage_indicators("chiave-finta")
+        assert ind["ea_gas_storage_pct"] == pytest.approx(73.02)
+        assert ind["ea_gas_storage_vs_1y"] == pytest.approx(73.02 - 82.90)
+        assert ind["ea_gas_storage_trend"] == pytest.approx(0.11)
+        assert chiamate[0][1] == {"x-key": "chiave-finta"}
+        assert chiamate[1][0]["date"] == "2025-10-11"  # stesso giorno gas, un anno prima
+
+    def test_chiave_rifiutata_nessun_dato_e_nessuna_eccezione(self, monkeypatch):
+        from app.services.indicators import europe_energy as ee
+
+        class Risp:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"error": "access denied", "message": "Invalid or missing API key", "data": []}
+        monkeypatch.setattr(ee.requests, "get", lambda *a, **k: Risp())
+        assert ee.gas_storage_indicators("chiave-sbagliata") == {}
