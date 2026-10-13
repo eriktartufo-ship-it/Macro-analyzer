@@ -3632,6 +3632,16 @@ def get_cycle_debasement(db: Session = Depends(get_db)):
     return result
 
 
+@router.get("/data-quality")
+def get_data_quality():
+    """S51: esito dell'ultimo controllo incrociato (numeri del sito contro BLS, Treasury.gov, FRED,
+    BCE, Yahoo), calcolato dopo ogni refresh giornaliero. Pubblico: e' una lettura."""
+    from app.services.validation import source_crosscheck as sc
+
+    r = sc.load_result()
+    return {"available": False} if r is None else {"available": True, **r}
+
+
 @router.get("/admin/check", dependencies=[Depends(require_admin)])
 def admin_check():
     """S51: il token admin inserito nel sito e' valido? (401/403/503 altrimenti)"""

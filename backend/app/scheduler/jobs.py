@@ -146,6 +146,10 @@ def daily_refresh():
             trajectory=trajectory,
         )
 
+        # 8-bis. S51: i numeri appena salvati contro le fonti primarie (prima era solo uno
+        # script da lanciare a mano: il bug di S49 e' rimasto in produzione ~11 mesi).
+        _crosscheck_after_refresh({**dedollar_indicators, **indicators})
+
         # 9. Rolling window: mantieni solo gli ultimi 365 giorni
         try:
             from app.services.backfill import prune_old_records
@@ -253,6 +257,22 @@ def _log_and_evaluate_predictions(
                 logger.info(f"PredictionLog evaluated {updated} records (realized returns 1m/3m/6m)")
         except Exception as e:
             logger.warning(f"evaluate_log failed: {e}")
+
+
+def _crosscheck_after_refresh(values: dict) -> None:
+    """S51: controllo incrociato con le fonti primarie dopo il refresh; esito in GET /data-quality.
+
+    Non blocca mai il refresh: una fonte giu' e' `na`, un errore qui finisce solo nel log.
+    """
+    try:
+        from app.services.validation import source_crosscheck as sc
+
+        r = sc.run_crosscheck(values)
+        sc.save_result(r)
+        log = logger.warning if r["n_fail"] else logger.info
+        log(f"Controllo incrociato: {r['n_ok']} ok, {r['n_fail']} fuori tolleranza, {r['n_na']} non giudicabili")
+    except Exception as e:
+        logger.warning(f"Controllo incrociato saltato: {e}")
 
 
 def _prepare_indicators(latest: dict[str, float], fetcher) -> dict[str, float]:
