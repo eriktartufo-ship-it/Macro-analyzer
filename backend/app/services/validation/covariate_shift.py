@@ -11,10 +11,10 @@ nel 2026 H2 inizia ipotetico regime fiscal-dominance con CPI 6-8% stabile, il
 modello è in covariate-shift → predictions inaffidabili.
 
 Metodologia:
-1. Per ogni indicator chiave: mean + std del training set (37 episodi).
+1. Per ogni indicator chiave: mean + std del training set (49 episodi).
 2. Per la live observation: z-score = (live_val - train_mean) / train_std.
 3. Se |z| > 2.5 → indicator in covariate shift.
-4. Se >= 3/19 indicators in shift → alert ALERT_DRIFT.
+4. Se >= 3/9 indicators in shift → alert ALERT_DRIFT.
 
 Differenza con OOD detector (Mahalanobis):
 - OOD = punto singolo lontano dal cloud training (multivariata)

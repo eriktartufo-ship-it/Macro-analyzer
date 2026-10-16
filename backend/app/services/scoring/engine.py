@@ -387,7 +387,7 @@ _LIMITED_SAMPLE_PERCENTILE_CAP = 0.80
 def _compute_regime_percentiles() -> dict[str, dict[str, float]]:
     """Tier 7.2 + T9-AUDIT: pre-compute rank percentile within-regime per asset.
 
-    Per ogni regime, ordina i 15 asset per `_asset_regime_score(asset, regime)`,
+    Per ogni regime, ordina i 24 asset per `_asset_regime_score(asset, regime)`,
     assegna percentile = rank / (n-1) ∈ [0, 1]. Score più alto → percentile 1.0.
 
     **T9-AUDIT-FIX**: cap percentile a 0.80 per asset in `_LIMITED_SAMPLE_ASSETS`

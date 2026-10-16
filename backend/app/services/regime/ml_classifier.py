@@ -162,7 +162,7 @@ def extract_features_minimal(
 
 
 def extract_features(indicators: dict[str, Any]) -> tuple[np.ndarray, list[str]]:
-    """Feature engineering: 19 raw + 10 derived = 29 feature totali.
+    """Feature engineering: 19 raw + 10 z-score + 10 derived = 39 feature totali.
 
     LEGACY (T8): mantenuto per back-compat. Per nuovo training preferire
     `extract_features_minimal` (8 features post-audit T9).
