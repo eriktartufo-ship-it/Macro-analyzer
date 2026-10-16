@@ -1,8 +1,10 @@
 """T11 Momentum pillars TDD — Council 2026-05-27 verdict.
 
 Aggiunge 5 pillar momentum-based al classifier per catturare ACCELERAZIONE
-oltre al livello istantaneo. Flag opt-in `USE_MOMENTUM_PILLARS` (default OFF
-finche walk-forward T10c-style validation passa).
+oltre al livello istantaneo. Flag `USE_MOMENTUM_PILLARS`, promosso default-ON
+in T11 post paper trading (vedi `config_flags.use_momentum_pillars` e il test
+`test_flag_off_no_effect_on_stagflation` in questo file, che lo forza OFF
+esplicitamente per riprodurre il comportamento legacy).
 
 Scenari sintetici:
 - A: CPI 3.95 costante (level high but no momentum) → flag OFF=ON identici

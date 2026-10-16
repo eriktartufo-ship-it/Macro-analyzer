@@ -30,12 +30,12 @@ Macro analyzer/
 │   │   │   ├── dedollarization/
 │   │   │   ├── news/
 │   │   │   └── config_flags.py  # USE_CALIBRATED_SCORING, USE_DEDOLLAR_BONUS
-│   │   ├── api/             # FastAPI endpoints (~36 routes)
+│   │   ├── api/             # FastAPI endpoints (96 routes: 82 routes.py + 14 portfolio_tracking.py)
 │   │   └── scheduler/       # APScheduler refresh giornaliero
 │   ├── migrations/          # Alembic migrations
-│   ├── tests/               # pytest (TDD obbligatorio, 194/194 passano)
+│   ├── tests/               # pytest (TDD obbligatorio, 1061 funzioni test / 88 file — contati 2026-08-02, esito pass/fail non rieseguito in questa routine)
 │   └── seed/                # Hardcoded asset_regime_performance + calibrated JSON
-├── frontend/                # React+TS+Vite, dark/light theme, 12 pannelli Data
+├── frontend/                # React+TS+Vite, dark/light theme, 10 pannelli Data
 ├── .env.example
 ├── Makefile                 # make setup/dev/test/migrate/seed
 └── requirements.txt
@@ -87,7 +87,7 @@ penalizza deflation/goldilocks).
 | Unemployment, Claims | Settimanale/Mensile | FRED |
 | Yield curve, Fed Funds, ACM term premium | Giornaliero | FRED |
 | LEI (CFNAIMA3) | Mensile | FRED |
-| Asset prices (15 ETF + bond TR sintetici) | Daily | Yahoo / FRED via duration |
+| Asset prices (24 asset class: ETF + bond TR sintetici) | Daily | Yahoo / FRED via duration |
 | Fama-French factors | Mensile | Kenneth French (Dartmouth) |
 | FOMC statements/minutes | ~8/anno | Fed RSS feed |
 
