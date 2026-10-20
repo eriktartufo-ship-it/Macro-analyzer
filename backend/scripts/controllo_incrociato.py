@@ -1,6 +1,6 @@
 """Il sito dice la verita'? Confronta i numeri PUBBLICATI di Macro con le fonti primarie.
 
-Stessi 13 controlli del controllo automatico che gira dopo ogni refresh
+Stessi 14 controlli del controllo automatico che gira dopo ogni refresh
 (app/services/validation/source_crosscheck.py, esito in GET /data-quality): qui si leggono i numeri
 dal sito pubblicato invece che dal refresh appena fatto. Nato il 2026-10-12 dal bug di S49.
     ✅ entro la tolleranza   ❌ fuori   ⚪ non giudicabile (fonte giu' o dato assente)
