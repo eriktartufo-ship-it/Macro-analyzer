@@ -109,6 +109,7 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_LABOR_CREDIT_PILLAR": True,        # T17 Council 2026-05-31 sessione 23: wage/quits/hours/HY spread
         "USE_CYCLICAL_PILLAR": True,            # T18 Council 2026-05-31 sessione 25: heavy truck/permits/credit/durable
         "USE_NOWCAST_PILLAR": False,            # T19 council expected +1pp but validation -0.22pp drag, demoted opt-in
+        "USE_EU_STRESS_TRIGGER": True,          # S52 2026-10-20: cancello I2-bis PASS dopo la correzione della diluizione
         "USE_AI_PORTFOLIO_CASH_OVERNIGHT": True, # 2026-07-13: cash idle horserace rende overnight (BIL/€STR) non 0%
         "USE_AI_PORTFOLIO_DEPLOY_BOOST": True,  # 2026-07-13: combo deadband+fastramp+floor PROMOSSO (walk-forward 2008/2020/all_crisis: α +1.2/+7.9/+2.2pp, severe 2020 30→11)
     }
@@ -694,10 +695,12 @@ def use_eu_stress_trigger() -> bool:
 
     Spread 10 anni fra la curva BCE di tutti i rating e quella AAA (proxy dello stress periferico:
     2011-12 a 1,9, calma 0,5-0,7). Soglia = p90 2004-2026 (0,94). Il trigger esiste solo se il dato
-    c'e' (prima del 2004 nessun effetto sul punteggio). Default OFF fino al cancello
-    (scripts/s50_eu_stress_validation.py).
+    c'e' (prima del 2004 nessun effetto sul punteggio).
+    12/10 cancello FAIL (la diluizione del denominatore abbassava le crisi vere). 20/10, dopo la correzione
+    dei trigger additivi (S52), cancello I2-bis PASS: crisi euro 2011-12 +0,050 e 4 mesi su di livello,
+    calma invariata, nessuna crisi abbassata ⇒ default ON.
     """
-    return _read_flag("USE_EU_STRESS_TRIGGER", default=False)
+    return _read_flag("USE_EU_STRESS_TRIGGER", default=True)
 
 
 def use_cyclical_pillar() -> bool:

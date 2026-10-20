@@ -60,10 +60,8 @@ def carica() -> list[tuple[pd.Timestamp, dict]]:
 
 
 def valuta(punti, flag_on: bool) -> dict:
-    if flag_on:
-        os.environ["USE_EU_STRESS_TRIGGER"] = "1"
-    else:
-        os.environ.pop("USE_EU_STRESS_TRIGGER", None)
+    # esplicito nei due versi: dal 20/10 il default e' ON, togliere la variabile non spegne piu' il flag
+    os.environ["USE_EU_STRESS_TRIGGER"] = "1" if flag_on else "0"
     res = {}
     for t, ind in punti:
         a = assess_crisis_risk(dict(ind), dedollar_combined=None, date=t.date().isoformat())
