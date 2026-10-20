@@ -266,6 +266,13 @@ def _classify_crisis_type(
     return top_type, min(1.0, top_score), analogs[top_type]
 
 
+# S52 (2026-10-20): trigger ADDITIVI. Entrano nel numeratore quando scattano, MAI nel denominatore.
+# Misurato (scripts/s52_diluizione_crisi.py): un trigger in piu' sempre spento abbassava lo score nel 99%
+# dei 460 punti 2004-2026 e faceva scendere di livello 139 punti (8/9/2008 elevated -> moderate),
+# perche' i livelli stanno su frazioni esatte del denominatore. Ogni dato nuovo va dichiarato qui.
+_ADDITIVE_TRIGGERS: frozenset[str] = frozenset({"eu_sovereign_stress"})
+
+
 def _compute_risk_level(triggers: list[dict], crisis_type: str) -> tuple[str, float]:
     """Aggrega trigger fired in livello rischio + score 0-1."""
     fired_count = sum(1 for t in triggers if t["fired"])
@@ -278,10 +285,12 @@ def _compute_risk_level(triggers: list[dict], crisis_type: str) -> tuple[str, fl
     # Denominatore basato sui critical EFFETTIVAMENTE presenti nei triggers
     # (T6.5: correlation_breakdown aggiunto solo se caller passa assessment,
     # quindi `critical` può essere più ampio dei trigger effettivi).
-    trigger_names = {t["name"] for t in triggers}
+    # S52: il denominatore conta solo i trigger di base; gli additivi possono solo aggiungere.
+    base = [t for t in triggers if t["name"] not in _ADDITIVE_TRIGGERS]
+    trigger_names = {t["name"] for t in base}
     critical_present = critical & trigger_names
     # Score 0-1: combina critical (peso 2) + others (peso 1) / max possible
-    denom = len(critical_present) * 2 + (len(triggers) - len(critical_present))
+    denom = len(critical_present) * 2 + (len(base) - len(critical_present))
     score = (critical_count * 2 + (fired_count - critical_count)) / denom if denom > 0 else 0.0
     score = max(0.0, min(1.0, score))
 

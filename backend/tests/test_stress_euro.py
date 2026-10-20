@@ -11,7 +11,7 @@ def _eu(trigs):
 
 
 def test_flag_spento_nessun_trigger(monkeypatch):
-    monkeypatch.delenv("USE_EU_STRESS_TRIGGER", raising=False)
+    monkeypatch.setenv("USE_EU_STRESS_TRIGGER", "0")
     assert _eu(ci._evaluate_triggers({**IND, "ea_sovereign_spread_10y": 1.9}, PROBS)) == []
 
 
@@ -34,3 +34,12 @@ def test_il_flag_compare_nel_pannello_dei_flag():
     from app.services.config_flags import get_all_flags_state
 
     assert "USE_EU_STRESS_TRIGGER" in get_all_flags_state()
+
+
+def test_acceso_di_default_dal_20_10(monkeypatch):
+    # S52: cancello I2-bis PASS dopo la correzione della diluizione
+    from app.services.config_flags import get_all_flags_state, use_eu_stress_trigger
+
+    monkeypatch.delenv("USE_EU_STRESS_TRIGGER", raising=False)
+    assert use_eu_stress_trigger() is True
+    assert get_all_flags_state()["USE_EU_STRESS_TRIGGER"]["value"] is True
