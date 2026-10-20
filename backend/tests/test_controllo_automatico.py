@@ -46,12 +46,13 @@ def test_valore_assente_sul_sito_non_giudicabile():
     assert r["results"][0]["status"] == "na"
 
 
-def test_i_13_controlli_di_default_coprono_i_numeri_corretti_in_s49_e_s50():
+def test_i_14_controlli_di_default_coprono_i_numeri_corretti_in_s49_e_s50():
     chiavi = {c[1] for c in sc.default_checks()}
     for k in ("cpi_yoy", "fed_balance_roc_12m", "ecb_balance_roc_12m", "foreign_treasury_roc_12m",
               "ea_hicp_yoy", "ecb_deposit_rate", "brent_spot", "ttf_price"):
         assert k in chiavi
-    assert len(chiavi) == 13
+    assert "ea_gas_storage_pct" in chiavi  # S52: stoccaggi AGSI
+    assert len(chiavi) == 14
 
 
 def test_salva_e_rilegge_con_storia(tmp_path, monkeypatch):
@@ -87,3 +88,28 @@ def test_endpoint_qualita_dati(monkeypatch):
     monkeypatch.setattr(sc, "load_result", lambda path=None: finto)
     d = TestClient(app).get("/api/v1/data-quality").json()
     assert d["available"] is True and d["n_ok"] == 13
+
+
+def test_agsi_sceglie_il_giorno_piu_recente_per_data_non_per_posizione(monkeypatch):
+    # righe in ordine CRESCENTE: un parser che prende la prima sbaglierebbe giorno
+    risposta = {"data": [{"gasDayStart": "2026-10-16", "full": "74.10"},
+                         {"gasDayStart": "2026-10-18", "full": "74.58"},
+                         {"gasDayStart": "2026-10-17", "full": "74.35"}]}
+    monkeypatch.setattr(sc, "_agsi_json", lambda key: risposta)
+    assert sc.agsi_ultimo_riempimento("chiave-finta") == pytest.approx(74.58)
+
+
+def test_agsi_senza_chiave_non_giudicabile(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "agsi_api_key", "")
+    check = [c for c in sc.default_checks() if c[1] == "ea_gas_storage_pct"]
+    r = sc.run_crosscheck({"ea_gas_storage_pct": 74.58}, checks=check)
+    assert r["results"][0]["status"] == "na"
+    assert "chiave AGSI" in r["results"][0]["note"]
+
+
+def test_agsi_chiave_rifiutata_non_giudicabile(monkeypatch):
+    monkeypatch.setattr(sc, "_agsi_json", lambda key: {"error": "access denied", "message": "Invalid or missing API key"})
+    with pytest.raises(RuntimeError):
+        sc.agsi_ultimo_riempimento("sbagliata")

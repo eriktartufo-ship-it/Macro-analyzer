@@ -94,8 +94,32 @@ def fred(sid: str) -> pd.Series:
     return Fred(api_key=settings.fred_api_key).get_series(sid, observation_start="2019-01-01").dropna()
 
 
+def _agsi_json(api_key: str) -> dict:
+    req = urllib.request.Request("https://agsi.gie.eu/api?type=eu&size=5",
+                                 headers={"x-key": api_key, "User-Agent": "macro-controllo-incrociato"})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read())
+
+
+def agsi_ultimo_riempimento(api_key: Optional[str] = None) -> float:
+    """S52: riempimento % degli stoccaggi UE nel giorno gas piu' recente, scelto per DATA fra gli
+    ultimi 5 (il modulo dell'app prende la prima riga: questo controllo verifica anche quell'assunto)."""
+    if api_key is None:
+        from app.config import settings
+        api_key = settings.agsi_api_key
+    if not api_key:
+        raise RuntimeError("chiave AGSI non configurata")
+    d = _agsi_json(api_key)
+    if d.get("error"):
+        raise RuntimeError(f"AGSI: {d.get('message') or d['error']}")
+    righe = [r for r in d.get("data") or [] if r.get("full") not in (None, "", "-")]
+    if not righe:
+        raise RuntimeError("AGSI: nessuna riga")
+    return float(max(righe, key=lambda r: r["gasDayStart"])["full"])
+
+
 def default_checks() -> list[Check]:
-    """I 13 controlli: (nome, chiave sul sito, valore vero dalla fonte, tolleranza, fonte)."""
+    """I 14 controlli: (nome, chiave sul sito, valore vero dalla fonte, tolleranza, fonte)."""
     cache: dict = {}
 
     def b():
@@ -123,6 +147,7 @@ def default_checks() -> list[Check]:
          "BCE FM DFR"),
         ("Brent fisico", "brent_spot", lambda: float(fred("DCOILBRENTEU").iloc[-1]), 1.0, "FRED DCOILBRENTEU"),
         ("Gas TTF", "ttf_price", lambda: yahoo_ultimo("TTF=F"), 5.0, "Yahoo TTF=F (intraday: tolleranza larga)"),
+        ("Stoccaggi gas UE", "ea_gas_storage_pct", lambda: agsi_ultimo_riempimento(), 0.05, "AGSI+ (GIE)"),
     ]
 
 
