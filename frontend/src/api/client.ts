@@ -309,6 +309,8 @@ export const api = {
       { retries: 0 },
     ),
   news: () => request<NewsItem[]>("/news"),
+  newsStatus: () =>
+    request<{ latest_date: string | null; days_since: number | null; groq_configured: boolean; model: string }>("/news/status"),
   refresh: () => request<{ status: string }>("/refresh", { method: "POST" }, { retries: 0 }),
   generateDedollarExplanation: () =>
     request<{ explanation: string; explanation_model: string | null; date: string }>(

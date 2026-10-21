@@ -29,8 +29,6 @@ from app.services.llm import settings as llm_settings
 _GEMINI_URL_TPL = (
     "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 )
-_GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 ADVICE_ASSETS = ("gold", "silver", "platinum", "palladium", "bitcoin")
 _LIGHTS = {"green", "yellow", "red"}
@@ -192,29 +190,9 @@ def _call_gemini(prompt: str) -> str | None:
 
 
 def _call_groq(prompt: str) -> str | None:
-    if not settings.groq_api_key:
-        return None
-    try:
-        resp = requests.post(
-            _GROQ_API_URL,
-            headers={"Authorization": f"Bearer {settings.groq_api_key}"},
-            json={
-                "model": _GROQ_MODEL,
-                "messages": [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.2,
-                "max_tokens": 2000,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.warning(f"pt advisor groq failed: {e}")
-        return None
+    from app.services.llm import groq_client
+
+    return groq_client.chat_json(_SYSTEM_PROMPT, prompt, max_tokens=2000, temperature=0.2, label="pt advisor")
 
 
 def _safe_parse_json(raw: str | None) -> dict | None:
@@ -283,7 +261,8 @@ def generate_advice(db: Session, trigger: str = "scheduled") -> PtAdvice | None:
     provider = llm_settings.get_model()
     if raw is None:
         raw = _call_groq(prompt)
-        provider = "groq"
+        from app.services.llm import groq_client
+        provider = groq_client.get_model()[:24]  # colonna String(24): il modello, non la famiglia
     advice = validate_advice(_safe_parse_json(raw) or {})
     if advice is None:
         logger.warning("pt advisor: nessun output LLM valido")

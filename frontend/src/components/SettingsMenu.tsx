@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDedollarBonus } from "../hooks/useDedollarBonus";
 import { ptClearSession, usePtSession } from "../hooks/usePtSession";
 import type { Page } from "./Header";
@@ -142,9 +143,18 @@ export function SettingsMenu({
         </div>
       )}
 
-      <LlmSettingsModal open={llmOpen} onClose={() => setLlmOpen(false)} />
-      <FeatureFlagsPanel open={flagsOpen} onClose={() => setFlagsOpen(false)} />
-      <AdminAccessModal open={adminOpen} onClose={() => setAdminOpen(false)} />
+      {/* Portal su <body> (2026-10-21): la sidebar desktop ha `backdrop-filter`, che la rende il
+          containing block di ogni figlio `position: fixed`. Disegnate qui dentro, le finestre si
+          centravano sui 248 px della sidebar (left 50% = 123,6 px) e uscivano a sinistra dello
+          schermo (−106/−136/−156 px), con lo sfondo scuro largo quanto la sidebar. */}
+      {createPortal(
+        <>
+          <LlmSettingsModal open={llmOpen} onClose={() => setLlmOpen(false)} />
+          <FeatureFlagsPanel open={flagsOpen} onClose={() => setFlagsOpen(false)} />
+          <AdminAccessModal open={adminOpen} onClose={() => setAdminOpen(false)} />
+        </>,
+        document.body,
+      )}
     </div>
   );
 }

@@ -40,8 +40,6 @@ _GEMINI_API_URL_TPL = (
     "models/{model}:generateContent"
 )
 
-_GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 _SYSTEM_PROMPT = """Role: macro analyst. Task: parse FOMC doc -> JSON.
@@ -189,33 +187,9 @@ def _call_gemini(prompt: str, system: str = _SYSTEM_PROMPT) -> str | None:
 
 
 def _call_groq(prompt: str, system: str = _SYSTEM_PROMPT) -> str | None:
-    if not settings.groq_api_key:
-        return None
-    try:
-        resp = requests.post(
-            _GROQ_API_URL,
-            headers={
-                "Authorization": f"Bearer {settings.groq_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": _GROQ_MODEL,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 1500,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
-    except Exception as e:
-        logger.warning(f"Groq API call failed: {e}")
-        return None
+    from app.services.llm import groq_client
+
+    return groq_client.chat_json(system, prompt, max_tokens=1500, temperature=0.1, label="FOMC")
 
 
 def _cache_path(url: str) -> Path:
@@ -295,7 +269,8 @@ def analyze_fomc_document(doc: FOMCDocument, force_refresh: bool = False) -> FOM
         provider = llm_settings.get_model()
     if not raw and settings.groq_api_key:
         raw = _call_groq(prompt)
-        provider = "groq"
+        from app.services.llm import groq_client
+        provider = groq_client.get_model()  # il modello che ha scritto il testo, non la famiglia (S48)
     if not raw:
         logger.warning(f"FOMC analyzer: nessun provider LLM disponibile o tutti falliti")
         return None

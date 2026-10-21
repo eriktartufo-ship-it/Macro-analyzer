@@ -3433,6 +3433,26 @@ def get_news(
     ]
 
 
+@router.get("/news/status")
+def get_news_status(db: Session = Depends(get_db)):
+    """Da quando non arriva una notizia valutata, e con quale modello Groq (2026-10-21).
+
+    Groq aveva ritirato il modello e per oltre un mese il pannello Notizie è rimasto vuoto con un
+    messaggio che dava la colpa alla chiave mancante. Qui il pannello legge com'è il mondo adesso.
+    """
+    from sqlalchemy import func
+    from app.config import settings
+    from app.services.llm import groq_client
+
+    latest = db.query(func.max(NewsSignal.date)).scalar()
+    return {
+        "latest_date": str(latest) if latest else None,
+        "days_since": (date.today() - latest).days if latest else None,
+        "groq_configured": bool(settings.groq_api_key),
+        "model": groq_client.get_model(),
+    }
+
+
 # --- Flows / RRG (Relative Rotation Graph) ---
 
 _RRG_CACHE: dict[str, tuple[float, dict]] = {}
