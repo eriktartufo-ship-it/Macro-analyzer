@@ -2057,6 +2057,14 @@ def ai_portfolio_daily_scan():
 
     logger.info("AI portfolio HORSERACE daily scan starting...")
     with SessionLocal() as db:
+        # 2026-10-21: senza una chiusura nuova i bot decidevano due volte sugli stessi prezzi
+        # (weekend) e lo snapshot ricontava il venerdì. Weekend e festivi si saltano da soli.
+        from app.services.ai_portfolio.market_calendar import bots_should_run
+
+        run, why = bots_should_run(db)
+        logger.info(f"AI portfolio: {why}")
+        if not run:
+            return
         # 3 strategie indipendenti — capitale $100k cadauno
         # (data_driven rimosso 2026-07-15; risk_managed_sp aggiunto 2026-07-15)
         for strategist_mod, label in (
@@ -2088,6 +2096,32 @@ def ai_portfolio_daily_scan():
             except Exception as e:
                 logger.exception(f"AI portfolio scan {label} failed: {e}")
 
+        # Libro reale: i bot hanno deciso, il libro crea gli ordini per l'apertura.
+        from app.services.config_flags import use_real_book
+
+        if use_real_book():
+            try:
+                from app.services.real_book import book as real_book
+
+                logger.info(f"Libro reale (dopo i bot): {real_book.run_after_scan(db)}")
+            except Exception as e:
+                logger.exception(f"Libro reale run_after_scan fallito: {e}")
+
+
+def real_book_after_close():
+    """Libro reale: esegue gli ordini al prezzo d'apertura, accredita le cedole, scrive il
+    valore del libro alla chiusura. Gira dopo la chiusura di Xetra/Borsa Italiana (17:30 ora
+    locale = 15:30/16:30 UTC): alle 17:15 UTC le barre del giorno ci sono in ogni stagione."""
+    from app.database import SessionLocal
+    from app.services.config_flags import use_real_book
+
+    if not use_real_book():
+        return
+    from app.services.real_book import book as real_book
+
+    with SessionLocal() as db:
+        logger.info(f"Libro reale (dopo la chiusura): {real_book.run_after_close(db)}")
+
 
 def start_scheduler():
     """Avvia lo scheduler con job giornaliero."""
@@ -2106,6 +2140,16 @@ def start_scheduler():
         hour=settings.scheduler_hour,
         minute=(settings.scheduler_minute + 30) % 60,
         id="ai_portfolio_daily_scan",
+        replace_existing=True,
+    )
+    # Libro reale: esecuzioni + cedole + valore, a mercati europei chiusi (lun-ven).
+    scheduler.add_job(
+        real_book_after_close,
+        "cron",
+        day_of_week="mon-fri",
+        hour=17,
+        minute=15,
+        id="real_book_after_close",
         replace_existing=True,
     )
     # Insider refresh: 03:00 UTC, separato dal macro refresh per non

@@ -100,6 +100,17 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Portfolio Tracking table init skipped: {e}")
 
+    # Libro reale (rb_*, 2026-10-21): tabelle nuove e additive, create se mancano.
+    try:
+        from app.database import Base, engine
+        from app.models import RbBook, RbBotSnapshot, RbMovement, RbNav  # noqa: F401
+
+        Base.metadata.create_all(bind=engine, tables=[
+            RbBook.__table__, RbMovement.__table__, RbBotSnapshot.__table__, RbNav.__table__,
+        ])
+    except Exception as e:
+        logger.warning(f"Libro reale: init tabelle saltato: {e}")
+
     # CRITICAL #2 council 2026-05-27: lock initial model snapshot se non esiste.
     # Versione sealed iniziale = "v1.0-sealed-YYYY-MM-DD". Successivi lock
     # manuali via POST /api/v1/model/lock.

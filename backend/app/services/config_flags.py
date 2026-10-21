@@ -111,6 +111,8 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_NOWCAST_PILLAR": False,            # T19 council expected +1pp but validation -0.22pp drag, demoted opt-in
         "USE_EU_STRESS_TRIGGER": True,          # S52 2026-10-20: cancello I2-bis PASS dopo la correzione della diluizione
         "USE_AI_PORTFOLIO_CASH_OVERNIGHT": True, # 2026-07-13: cash idle horserace rende overnight (BIL/€STR) non 0%
+        "USE_REAL_BOOK": True,                  # 2026-10-21: libro reale (ETF UCITS in euro) che segue i 3 bot
+        "USE_REAL_BOOK_LLM_NARRATOR": True,     # 2026-10-21: Gemini riscrive il perché, solo se passa la guardia
         "USE_AI_PORTFOLIO_DEPLOY_BOOST": True,  # 2026-07-13: combo deadband+fastramp+floor PROMOSSO (walk-forward 2008/2020/all_crisis: α +1.2/+7.9/+2.2pp, severe 2020 30→11)
     }
     # Add new flags to known list below
@@ -152,6 +154,8 @@ def get_all_flags_state() -> dict[str, dict]:
         "USE_EU_STRESS_TRIGGER",
         "USE_AI_PORTFOLIO_CASH_OVERNIGHT",
         "USE_AI_PORTFOLIO_DEPLOY_BOOST",
+        "USE_REAL_BOOK",
+        "USE_REAL_BOOK_LLM_NARRATOR",
     ]
     out = {}
     for name in known:
@@ -172,6 +176,8 @@ def get_all_flags_state() -> dict[str, dict]:
 _NON_CLASSIFIER_FLAGS: frozenset[str] = frozenset({
     "use_ai_portfolio_cash_overnight",
     "use_ai_portfolio_deploy_boost",
+    "use_real_book",
+    "use_real_book_llm_narrator",
 })
 
 
@@ -813,3 +819,17 @@ def use_ml_regime_blend() -> bool:
 
 # `use_asset_feedback` rimosso 2026-05-28 (code audit): modulo dead, 21 test
 # verdi su funzione mai chiamata in produzione. File asset_feedback.py deleted.
+
+
+def use_real_book() -> bool:
+    """Libro reale (2026-10-21): copia i 3 bot su ETF UCITS in euro, con quote intere,
+    apertura di borsa, commissioni e cedole. Non tocca i bot né il loro storico.
+    Default: True. Spento = lo scheduler non crea ordini né valori nuovi."""
+    return _read_flag("USE_REAL_BOOK", default=True)
+
+
+def use_real_book_llm_narrator() -> bool:
+    """Libro reale: Gemini riscrive il perché in prosa, e il testo passa solo se la guardia
+    (nessun numero fuori dai fatti, nessun nome di strumento) lo accetta. Spento = resta il
+    perché deterministico. Default: True."""
+    return _read_flag("USE_REAL_BOOK_LLM_NARRATOR", default=True)

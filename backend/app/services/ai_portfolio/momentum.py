@@ -16,7 +16,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from app.services.prices.asset_universe import ASSET_TICKERS
+from app.services.prices.asset_universe import ASSET_TICKERS, BOT_ONLY_TICKERS
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ def get_asset_signal_and_vol(
 
 def asset_to_ticker(asset_class: str) -> Optional[str]:
     """Mapping asset interno → Yahoo ticker."""
-    cfg = ASSET_TICKERS.get(asset_class, {})
+    cfg = ASSET_TICKERS.get(asset_class) or BOT_ONLY_TICKERS.get(asset_class, {})
     return cfg.get("ticker")
 
 

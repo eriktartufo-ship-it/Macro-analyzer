@@ -80,6 +80,34 @@ def get_daily_return(asset_class: str) -> Optional[float]:
     return get_daily_return_for_ticker(ticker)
 
 
+def get_return_between_for_ticker(ticker: str, prev_run_date, run_date) -> Optional[float]:
+    """Rendimento fra la chiusura vista al giro precedente e quella vista oggi (market_calendar).
+
+    Sostituisce `last/prev` nello snapshot: con `last/prev` il venerdì veniva contato a ogni
+    giro senza una chiusura nuova (sabato, domenica, lunedì notte). Qui, senza chiusura nuova,
+    il rendimento vale 0.
+    """
+    from datetime import timedelta
+
+    from app.services.ai_portfolio.market_calendar import return_between
+
+    try:
+        s = _fetcher().fetch(ticker, start_date=prev_run_date - timedelta(days=15), end_date=run_date)
+        if s is None or s.empty:
+            return None
+        return return_between(s, prev_run_date, run_date)
+    except Exception as e:
+        logger.warning(f"pnl_tracker: return_between failed for {ticker}: {e}")
+        return None
+
+
+def get_return_between(asset_class: str, prev_run_date, run_date) -> Optional[float]:
+    ticker = asset_to_ticker(asset_class)
+    if not ticker:
+        return None
+    return get_return_between_for_ticker(ticker, prev_run_date, run_date)
+
+
 def compute_pnl_pct(entry_price: float | None, current_price: float | None) -> float:
     """PnL % = (current - entry) / entry. 0 se uno dei due è None o entry=0."""
     if not entry_price or not current_price or entry_price == 0:

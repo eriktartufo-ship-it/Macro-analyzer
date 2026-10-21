@@ -77,6 +77,7 @@ class AiPortfolioDecision(Base):
     )
 
     # action enum: OPEN_TRANCHE | CLOSE_TRANCHE | FULL_CLOSE | HOLD | SKIP_NO_SIGNAL | STOP_LOSS | TAKE_PROFIT
+    #              | CAP_TRIM (tetto per strumento, 2026-10-21)
     action: Mapped[str] = mapped_column(String(24), nullable=False)
     size_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     tranche_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

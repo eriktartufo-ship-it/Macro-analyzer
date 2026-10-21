@@ -20,6 +20,7 @@ from app.models.portfolio_tracking import (
     PtTransaction,
 )
 from app.models.prediction_log import PredictionLog
+from app.models.real_book import RbBook, RbBotSnapshot, RbMovement, RbNav
 from app.models.regime_classifications import RegimeClassification
 from app.models.runtime_flag_overrides import RuntimeFlagOverride
 from app.models.secular_trends import SecularTrend
@@ -43,6 +44,10 @@ __all__ = [
     "PtPriceCache",
     "PtStrategy",
     "PtTransaction",
+    "RbBook",
+    "RbBotSnapshot",
+    "RbMovement",
+    "RbNav",
     "RegimeClassification",
     "RuntimeFlagOverride",
     "SecularTrend",

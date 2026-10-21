@@ -31,7 +31,9 @@ import pandas as pd
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-SP = "us_equities_growth"
+# 2026-10-21: era "us_equities_growth" = QQQ (Nasdaq-100) etichettato SPY. Ora S&P 500 vero:
+# SPY dal 1993, ^GSPC prima (solo prezzo, senza dividendi: prudente per il buy&hold).
+SP = "us_equities_sp500"
 CASH = "cash_money_market"
 BOND = "us_bonds_long"
 GOLD = "gold"
@@ -122,7 +124,16 @@ def main():
 
     print("Loading daily matrix (cache)...")
     dm = build_daily_returns_matrix(list(ASSET_REGIME_DATA.keys()))
-    print(f"  {dm.shape}\n")
+    from app.services.prices.yahoo_fetcher import YahooFetcher
+    yf_ = YahooFetcher()
+    spy = yf_.fetch("SPY", start_date=date(1993, 1, 29)).pct_change()
+    gspc = yf_.fetch("^GSPC", start_date=date(1960, 1, 1)).pct_change()
+    sp = spy.combine_first(gspc)
+    sp.index = pd.to_datetime(sp.index)
+    if getattr(sp.index, "tz", None) is not None:
+        sp.index = sp.index.tz_localize(None)
+    dm[SP] = sp.reindex(dm.index)
+    print(f"  {dm.shape} · {SP}: {dm[SP].notna().sum()} giorni con dato\n")
 
     horizon = 252
     configs = [

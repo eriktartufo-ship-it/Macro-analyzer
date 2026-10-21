@@ -84,6 +84,25 @@ def _real_portfolio_daily_return(
     return total
 
 
+def _portfolio_return_between(weights: dict[str, float], probabilities: dict[str, float],
+                              prev_run_date: date, run_date: date) -> float:
+    """Come `_real_portfolio_daily_return`, ma fra la chiusura già contata e quella nuova."""
+    total = 0.0
+    for asset, w in weights.items():
+        if w <= 0:
+            continue
+        r = pnl_tracker.get_return_between(asset, prev_run_date, run_date)
+        if r is None:
+            r = _estimate_daily_return_from_regime({asset: 1.0}, probabilities)
+        total += w * r
+    return total
+
+
+def _ticker_return_between(ticker: str, prev_run_date: date, run_date: date) -> float:
+    r = pnl_tracker.get_return_between_for_ticker(ticker, prev_run_date, run_date)
+    return r if r is not None else 0.0
+
+
 def _benchmark_sp500_daily_return() -> float:
     """S&P500 reale via SPY daily return. Fallback 0 se Yahoo fail."""
     dr = pnl_tracker.get_daily_return_for_ticker(SP500_BENCHMARK_TICKER)
@@ -150,10 +169,12 @@ def snapshot(
     n_positions = len(positions)
     deployed = sum(weights.values())
 
-    # Previous snapshot per same strategy
+    # Snapshot precedente della stessa strategia, di un giorno PRIMA di oggi: rilanciare lo scan
+    # nello stesso giorno non deve applicare il rendimento due volte (prima prendeva l'ultimo, oggi compreso).
     prev = (
         db.query(AiPortfolioPerformance)
-        .filter(AiPortfolioPerformance.strategy_type == strategy_type)
+        .filter(AiPortfolioPerformance.strategy_type == strategy_type,
+                AiPortfolioPerformance.date < target_date)
         .order_by(AiPortfolioPerformance.date.desc())
         .first()
     )
@@ -162,15 +183,23 @@ def snapshot(
     prev_b60 = prev.benchmark_60_40_return_pct if prev else 0.0
     prev_sp = prev.benchmark_sp500_return_pct if prev else 0.0
 
-    # Daily returns — prezzi REALI Yahoo (refactor 2026-06-17)
-    portfolio_dr = _real_portfolio_daily_return(weights, probabilities)
+    # Rendimenti — prezzi REALI Yahoo, fra la chiusura già contata al giro precedente e quella
+    # nuova (market_calendar, 2026-10-21). Primo snapshot: ultimo giorno di borsa.
+    if prev is not None:
+        portfolio_dr = _portfolio_return_between(weights, probabilities, prev.date, target_date)
+        cash_dr = _ticker_return_between(CASH_OVERNIGHT_TICKER, prev.date, target_date)
+        sp_dr = _ticker_return_between(SP500_BENCHMARK_TICKER, prev.date, target_date)
+        b60_dr = 0.6 * sp_dr + 0.4 * _ticker_return_between(BONDS_LONG_BENCHMARK_TICKER, prev.date, target_date)
+    else:
+        portfolio_dr = _real_portfolio_daily_return(weights, probabilities)
+        cash_dr = _cash_overnight_daily_return()
+        sp_dr = _benchmark_sp500_daily_return()
+        b60_dr = _benchmark_60_40_daily_return()
     # Cash idle non schierato: remunerato all'overnight (BIL/€STR) invece di 0%,
     # per non penalizzare le AI del risk-free vs benchmark full-invested
     # (fix fairness horserace 2026-07-13, opt-out via flag).
     if config_flags.use_ai_portfolio_cash_overnight():
-        portfolio_dr += idle_cash_contribution(deployed, _cash_overnight_daily_return())
-    b60_dr = _benchmark_60_40_daily_return()
-    sp_dr = _benchmark_sp500_daily_return()
+        portfolio_dr += idle_cash_contribution(deployed, cash_dr)
 
     new_nav = prev_nav * (1 + portfolio_dr)
     new_peak = max(prev_peak, new_nav)

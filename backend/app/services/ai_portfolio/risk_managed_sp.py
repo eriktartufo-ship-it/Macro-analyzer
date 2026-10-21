@@ -4,26 +4,27 @@ RICHIESTA ERIK: "un trader che si concentra nel battere s&p500 smorzando le disc
 stando più aggressivo capendo dove stanno andando i soldi".
 
 ⚠️ PROMESSA ONESTA (il nome NON è "batti-S&P", e c'è un motivo misurato):
-`scripts/sp_trend_edge.py` (5 seed × 40 sim, dati reali, costi 10bps) dice che
-questa strategia **NON batte l'S&P** su campione ampio: −3.2pp/anno (cash) o
-−2.5pp/anno (rifugio). Batte l'S&P solo nei bear (2008 +12/+16pp, 2022 +2/+4pp) e
-perde nelle V-recovery (2020 −6pp, whipsaw: esce dopo il crollo e rientra tardi).
-Quello che fa DAVVERO, e in modo grande:
+`scripts/sp_trend_edge.py` (5 seed × 40 sim, dati reali, costi 10bps), RIFATTO il 2026-10-21 sull'S&P
+500 vero (SPY dal 1993, ^GSPC prima). Fino a quel giorno il bot e il suo backtest usavano
+`us_equities_growth` = QQQ, cioè il Nasdaq-100, etichettato «SPY»: i numeri vecchi erano del Nasdaq.
 
-              | ret broad | α vs S&P | DD broad | **DD 2008**
-  SPY b&h     |  +14.8%   |    —     | −19.3%   | **−42.0%**
-  trend→cash  |  +11.7%   |  −3.2pp  | −13.8%   | **−13.9%**  ← un terzo del DD
-  trend→rifug |  +12.3%   |  −2.5pp  | −16.4%   | −24.7%
+  configurazione dal vivo = MA200 + rifugio (il migliore fra Treasury lunghi, oro, cash)
+              | ret ampia | α vs S&P        | DD ampia | 2008: α / DD          | 2020 α  | 2022 α
+  S&P b&h     |  +10.8%   |      —          | −14.2%   |    —  / −43.3%        |   —     |   —
+  MA200→cash  |   +7.2%   | −3.6 ± 1.5pp    | −10.2%   | +24.2pp / −6.6%       | −5.9pp  | −5.5pp
+  MA200→rifug |   +8.5%   | −2.4 ± 1.9pp    | −12.6%   | +29.3pp / −20.6%      | −9.6pp  | −6.2pp
 
-È un'ASSICURAZIONE: paghi ~3pp di premio l'anno e incassa quando arriva il 2008.
-Calmar broad 0.85 (cash) vs 0.77 (SPY) → meglio risk-adjusted, NON più ricco.
+È un'ASSICURAZIONE: paga ~2-4 punti l'anno nei periodi normali e incassa quando arriva un 2008.
+Perde nelle V-recovery (2020: esce dopo il crollo e rientra tardi). ⚠️ Il 2022, che sul Nasdaq
+sembrava a favore (+2/+4pp), sull'S&P è a sfavore. Variante non adottata, solo misurata: rifugio con
+conferma a 5 giorni = +0,1 ± 2,4pp sull'ampia e +33pp nel 2008 (cambiarla è una decisione di Erik).
 
 Perché esiste comunque: è un profilo di rischio DIVERSO dal model_driven (che è
 macro-difensivo e schiera ~35%). Qui si sta sul beta azionario e si esce solo
 quando il trend gira.
 
 Meccanica:
-  - SPY sopra la MA(window) → 100% us_equities_growth;
+  - SPY sopra la MA(window) → 100% us_equities_sp500 (S&P 500);
   - sotto → REFUGE_CASH: 100% cash · REFUGE_BEST: il migliore fra bond/oro/cash per
     momentum trailing (= "seguire dove si spostano i soldi", intuizione Erik: nel
     2022 ha aggiunto +4.0 vs +2.2 del solo cash, ma con DD peggiore).
@@ -46,7 +47,9 @@ logger = logging.getLogger(__name__)
 
 STRATEGY_TYPE = "risk_managed_sp"
 
-SP_ASSET = "us_equities_growth"
+# 2026-10-21: era "us_equities_growth" (QQQ = Nasdaq-100) per un errore di etichetta che stava
+# anche nel backtest. Ora è l'S&P 500 vero (SPY), fuori dall'universo dello scoring.
+SP_ASSET = "us_equities_sp500"
 CASH_ASSET = "cash_money_market"
 REFUGE_CANDIDATES = ("us_bonds_long", "gold", "cash_money_market")
 

@@ -1399,50 +1399,38 @@ def get_ai_portfolio_performance(
     strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """Equity curve + DD + benchmarks (60/40 + S&P500) per strategy_type."""
+    """Equity curve + DD + benchmark (60/40, S&P 500, MSCI ACWI) per strategy_type.
+
+    2026-10-21: valori corretti ALLA LETTURA (`history_view`): fino a quel giorno lo snapshot
+    ricontava il venerdì nei giri senza chiusura nuova. I dati salvati non vengono riscritti.
+    """
     from datetime import timedelta
     from app.models.ai_portfolio import AiPortfolioPerformance
+    from app.services.ai_portfolio.history_view import corrected_history
 
-    cutoff = date.today() - timedelta(days=days)
     snaps = (
         db.query(AiPortfolioPerformance)
-        .filter(
-            AiPortfolioPerformance.date >= cutoff,
-            AiPortfolioPerformance.strategy_type == strategy,
-        )
+        .filter(AiPortfolioPerformance.strategy_type == strategy)
         .order_by(AiPortfolioPerformance.date)
         .all()
     )
-    latest = snaps[-1] if snaps else None
+    corrected, info = corrected_history(snaps)
+    cutoff = str(date.today() - timedelta(days=days))
+    latest, last = (snaps[-1], corrected[-1]) if snaps else (None, None)
     return {
         "current": (
             {
-                "date": str(latest.date),
-                "nav": latest.nav,
-                "cumulative_return_pct": latest.cumulative_return_pct,
-                "drawdown_pct": latest.drawdown_pct,
-                "peak_nav": latest.peak_nav,
+                **last,
                 "n_positions": latest.n_positions,
                 "deployed_pct": latest.deployed_pct,
                 "top_position_asset": latest.top_position_asset,
                 "top_position_weight_pct": latest.top_position_weight_pct,
-                "benchmark_60_40_return_pct": latest.benchmark_60_40_return_pct,
-                "benchmark_sp500_return_pct": latest.benchmark_sp500_return_pct,
             }
             if latest
             else None
         ),
-        "history": [
-            {
-                "date": str(s.date),
-                "nav": s.nav,
-                "cumulative_return_pct": s.cumulative_return_pct,
-                "drawdown_pct": s.drawdown_pct,
-                "benchmark_60_40_return_pct": s.benchmark_60_40_return_pct,
-                "benchmark_sp500_return_pct": s.benchmark_sp500_return_pct,
-            }
-            for s in snaps
-        ],
+        "history": [row for row in corrected if row["date"] >= cutoff],
+        "correction": info,
     }
 
 
@@ -1597,33 +1585,43 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
     """Confronto 3-way: model vs LLM vs S&P-a-rischio-gestito (NAV + alpha vs benchmarks)."""
     from app.models.ai_portfolio import AiPortfolioPerformance
 
+    from app.services.ai_portfolio.history_view import corrected_history
+
     out = {}
     for strategy in ("model_driven", "llm_driven", "risk_managed_sp"):
-        latest = (
+        snaps = (
             db.query(AiPortfolioPerformance)
             .filter(AiPortfolioPerformance.strategy_type == strategy)
-            .order_by(AiPortfolioPerformance.date.desc())
-            .first()
+            .order_by(AiPortfolioPerformance.date)
+            .all()
         )
-        if latest is None:
+        if not snaps:
             out[strategy] = None
             continue
+        latest = snaps[-1]
+        # 2026-10-21: storico corretto alla lettura (venerdì ricontato) + MSCI ACWI dai prezzi
+        corrected, info = corrected_history(snaps)
+        c = corrected[-1]
+
+        def alpha(key: str):
+            v = c.get(key)
+            return None if v is None else c["cumulative_return_pct"] - v
+
         out[strategy] = {
             "date": str(latest.date),
-            "nav": latest.nav,
-            "cumulative_return_pct": latest.cumulative_return_pct,
-            "drawdown_pct": latest.drawdown_pct,
-            "peak_nav": latest.peak_nav,
+            "nav": c["nav"],
+            "cumulative_return_pct": c["cumulative_return_pct"],
+            "drawdown_pct": c["drawdown_pct"],
+            "peak_nav": c["peak_nav"],
             "n_positions": latest.n_positions,
             "deployed_pct": latest.deployed_pct,
-            "benchmark_60_40_return_pct": latest.benchmark_60_40_return_pct,
-            "benchmark_sp500_return_pct": latest.benchmark_sp500_return_pct,
-            "alpha_vs_60_40": (
-                latest.cumulative_return_pct - (latest.benchmark_60_40_return_pct or 0)
-            ),
-            "alpha_vs_sp500": (
-                latest.cumulative_return_pct - (latest.benchmark_sp500_return_pct or 0)
-            ),
+            "benchmark_60_40_return_pct": c["benchmark_60_40_return_pct"],
+            "benchmark_sp500_return_pct": c["benchmark_sp500_return_pct"],
+            "benchmark_acwi_return_pct": c["benchmark_acwi_return_pct"],
+            "alpha_vs_60_40": alpha("benchmark_60_40_return_pct"),
+            "alpha_vs_sp500": alpha("benchmark_sp500_return_pct"),
+            "alpha_vs_acwi": alpha("benchmark_acwi_return_pct"),
+            "correction": info,
         }
 
     # 3-way ranking
@@ -1677,6 +1675,58 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
         "head_to_head": head_to_head,
         "market": market,
     }
+
+
+# ---------------------------------------------------------------------------
+# Libro reale (2026-10-21): i 3 bot copiati su ETF UCITS in euro. Letture pubbliche per
+# asset class; strumento/ISIN/quantità solo col token admin (scelta Erik: niente
+# raccomandazioni su strumenti specifici sul sito pubblico).
+# ---------------------------------------------------------------------------
+
+_RB_STRATEGIES = ("model_driven", "llm_driven", "risk_managed_sp")
+
+
+@router.get("/real-book/overview")
+def get_real_book_overview(db: Session = Depends(get_db), admin: bool = Depends(is_admin)):
+    from app.services.real_book import views
+    return views.overview(db, admin=admin)
+
+
+@router.get("/real-book/journal")
+def get_real_book_journal(
+    strategy: str | None = Query(default=None),
+    limit: int = Query(default=60, ge=1, le=500),
+    db: Session = Depends(get_db),
+    admin: bool = Depends(is_admin),
+):
+    from app.services.real_book import views
+    if strategy is not None and strategy not in _RB_STRATEGIES:
+        raise HTTPException(status_code=400, detail=f"strategia sconosciuta: {strategy}")
+    return views.journal(db, strategy=strategy, limit=limit, admin=admin)
+
+
+@router.get("/real-book/nav")
+def get_real_book_nav(
+    strategy: str = Query(default="model_driven"),
+    days: int = Query(default=365, ge=1, le=3650),
+    db: Session = Depends(get_db),
+):
+    from app.services.real_book import views
+    if strategy not in _RB_STRATEGIES:
+        raise HTTPException(status_code=400, detail=f"strategia sconosciuta: {strategy}")
+    return views.nav_series(db, strategy=strategy, days=days)
+
+
+@router.post("/real-book/run", dependencies=[Depends(require_admin)])
+def post_real_book_run(
+    phase: str = Query(default="scan", pattern="^(scan|close)$"),
+    db: Session = Depends(get_db),
+):
+    """Lancio manuale: `scan` crea gli ordini dallo stato dei bot, `close` esegue + cedole + valore."""
+    from app.services.real_book import book
+    if phase == "scan":
+        return {"phase": phase, "summary": book.run_after_scan(db)}
+    return {"phase": phase, "summary": book.run_after_close(db)}
 
 
 @router.get("/fomc/report", response_model=FOMCReportResponse)
