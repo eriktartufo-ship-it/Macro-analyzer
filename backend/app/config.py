@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://postgres:password@localhost:5432/macro_analyzer"
     fred_api_key: str = ""
     groq_api_key: str = ""
+    groq_model: str = ""  # vuoto = default in services/llm/groq_client.py (un solo posto)
     newsapi_key: str = ""
     gemini_api_key: str = ""  # Gemini 2.5 Flash, provider preferito per FOMC + dedollar explainer
     scheduler_hour: int = 6

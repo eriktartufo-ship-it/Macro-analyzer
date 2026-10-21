@@ -9,14 +9,13 @@ Prende un batch di titoli/notizie e chiede al LLM di:
 import json
 from typing import Any
 
-import requests
 from loguru import logger
 
 from app.config import settings
 from app.services.scoring.engine import ASSET_CLASSES
 
-GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.3-70b-versatile"
+# Il modello Groq si chiede a services/llm/groq_client (2026-10-21: `llama-3.3-70b-versatile`
+# era scritto qui, Groq l'ha ritirato e le notizie si sono fermate per oltre un mese).
 
 SYSTEM_PROMPT = """Role: macro analyst. Task: score N headlines -> JSON array.
 
@@ -102,28 +101,15 @@ def score_news_batch(headlines: list[dict[str, str]]) -> list[dict]:
         for i, h in enumerate(headlines[:20])  # Max 20 per batch
     )
 
-    try:
-        resp = requests.post(
-            GROQ_API_URL,
-            headers={
-                "Authorization": f"Bearer {settings.groq_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": MODEL,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Analyze these headlines:\n\n{titles_text}"},
-                ],
-                "temperature": 0.1,
-                "max_tokens": 4000,
-                "response_format": {"type": "json_object"},
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
+    from app.services.llm import groq_client
 
-        content = resp.json()["choices"][0]["message"]["content"]
+    try:
+        content = groq_client.chat_json(
+            SYSTEM_PROMPT, f"Analyze these headlines:\n\n{titles_text}",
+            max_tokens=4000, temperature=0.1, timeout=60, label="news scorer",
+        )
+        if content is None:
+            return []
         parsed = json.loads(content)
 
         # Groq con response_format json_object restituisce un dict wrapper
@@ -155,9 +141,6 @@ def score_news_batch(headlines: list[dict[str, str]]) -> list[dict]:
         logger.info(f"Groq scored {len(results)} headlines (from {len(items)} items)")
         return results
 
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Errore Groq API: {e}")
-        return []
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         logger.error(f"Errore parsing risposta Groq: {e}")
         return []

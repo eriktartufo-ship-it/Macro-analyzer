@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
 import type { NewsItem } from "../types";
 
 interface Props {
@@ -32,16 +34,30 @@ const SOURCE_LABELS: Record<string, string> = {
   ft_markets: "FT",
 };
 
+function EmptyNews() {
+  // 2026-10-21: il vecchio testo dava sempre la colpa alla chiave mancante; per oltre un mese la
+  // causa era il modello Groq ritirato. Qui si dice com'è il mondo adesso.
+  const [st, setSt] = useState<{ latest_date: string | null; days_since: number | null; groq_configured: boolean; model: string } | null>(null);
+  useEffect(() => {
+    api.newsStatus().then(setSt).catch(() => setSt(null));
+  }, []);
+  let msg = "Nessuna notizia valutata negli ultimi 3 giorni.";
+  if (st && !st.groq_configured) msg = "Nessuna notizia valutata: manca la chiave Groq sul server.";
+  else if (st?.latest_date)
+    msg = `Nessuna notizia valutata negli ultimi 3 giorni: l'ultima è del ${st.latest_date} (${st.days_since} giorni fa). ` +
+      `Se dura, il servizio che le valuta non risponde (modello Groq in uso: ${st.model}).`;
+  else if (st) msg = `Nessuna notizia valutata finora (modello Groq in uso: ${st.model}).`;
+  return (
+    <div className="card">
+      <h2>News Sentiment</h2>
+      <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0", lineHeight: 1.5 }}>{msg}</div>
+    </div>
+  );
+}
+
 export function NewsPanel({ news }: Props) {
   if (news.length === 0) {
-    return (
-      <div className="card">
-        <h2>News Sentiment</h2>
-        <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0" }}>
-          No news data available yet. Add your GROQ_API_KEY to .env and run a refresh.
-        </div>
-      </div>
-    );
+    return <EmptyNews />;
   }
 
   // Summary: average sentiment
