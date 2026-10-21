@@ -1399,50 +1399,38 @@ def get_ai_portfolio_performance(
     strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """Equity curve + DD + benchmarks (60/40 + S&P500) per strategy_type."""
+    """Equity curve + DD + benchmark (60/40, S&P 500, MSCI ACWI) per strategy_type.
+
+    2026-10-21: valori corretti ALLA LETTURA (`history_view`): fino a quel giorno lo snapshot
+    ricontava il venerdì nei giri senza chiusura nuova. I dati salvati non vengono riscritti.
+    """
     from datetime import timedelta
     from app.models.ai_portfolio import AiPortfolioPerformance
+    from app.services.ai_portfolio.history_view import corrected_history
 
-    cutoff = date.today() - timedelta(days=days)
     snaps = (
         db.query(AiPortfolioPerformance)
-        .filter(
-            AiPortfolioPerformance.date >= cutoff,
-            AiPortfolioPerformance.strategy_type == strategy,
-        )
+        .filter(AiPortfolioPerformance.strategy_type == strategy)
         .order_by(AiPortfolioPerformance.date)
         .all()
     )
-    latest = snaps[-1] if snaps else None
+    corrected, info = corrected_history(snaps)
+    cutoff = str(date.today() - timedelta(days=days))
+    latest, last = (snaps[-1], corrected[-1]) if snaps else (None, None)
     return {
         "current": (
             {
-                "date": str(latest.date),
-                "nav": latest.nav,
-                "cumulative_return_pct": latest.cumulative_return_pct,
-                "drawdown_pct": latest.drawdown_pct,
-                "peak_nav": latest.peak_nav,
+                **last,
                 "n_positions": latest.n_positions,
                 "deployed_pct": latest.deployed_pct,
                 "top_position_asset": latest.top_position_asset,
                 "top_position_weight_pct": latest.top_position_weight_pct,
-                "benchmark_60_40_return_pct": latest.benchmark_60_40_return_pct,
-                "benchmark_sp500_return_pct": latest.benchmark_sp500_return_pct,
             }
             if latest
             else None
         ),
-        "history": [
-            {
-                "date": str(s.date),
-                "nav": s.nav,
-                "cumulative_return_pct": s.cumulative_return_pct,
-                "drawdown_pct": s.drawdown_pct,
-                "benchmark_60_40_return_pct": s.benchmark_60_40_return_pct,
-                "benchmark_sp500_return_pct": s.benchmark_sp500_return_pct,
-            }
-            for s in snaps
-        ],
+        "history": [row for row in corrected if row["date"] >= cutoff],
+        "correction": info,
     }
 
 
@@ -1597,33 +1585,43 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
     """Confronto 3-way: model vs LLM vs S&P-a-rischio-gestito (NAV + alpha vs benchmarks)."""
     from app.models.ai_portfolio import AiPortfolioPerformance
 
+    from app.services.ai_portfolio.history_view import corrected_history
+
     out = {}
     for strategy in ("model_driven", "llm_driven", "risk_managed_sp"):
-        latest = (
+        snaps = (
             db.query(AiPortfolioPerformance)
             .filter(AiPortfolioPerformance.strategy_type == strategy)
-            .order_by(AiPortfolioPerformance.date.desc())
-            .first()
+            .order_by(AiPortfolioPerformance.date)
+            .all()
         )
-        if latest is None:
+        if not snaps:
             out[strategy] = None
             continue
+        latest = snaps[-1]
+        # 2026-10-21: storico corretto alla lettura (venerdì ricontato) + MSCI ACWI dai prezzi
+        corrected, info = corrected_history(snaps)
+        c = corrected[-1]
+
+        def alpha(key: str):
+            v = c.get(key)
+            return None if v is None else c["cumulative_return_pct"] - v
+
         out[strategy] = {
             "date": str(latest.date),
-            "nav": latest.nav,
-            "cumulative_return_pct": latest.cumulative_return_pct,
-            "drawdown_pct": latest.drawdown_pct,
-            "peak_nav": latest.peak_nav,
+            "nav": c["nav"],
+            "cumulative_return_pct": c["cumulative_return_pct"],
+            "drawdown_pct": c["drawdown_pct"],
+            "peak_nav": c["peak_nav"],
             "n_positions": latest.n_positions,
             "deployed_pct": latest.deployed_pct,
-            "benchmark_60_40_return_pct": latest.benchmark_60_40_return_pct,
-            "benchmark_sp500_return_pct": latest.benchmark_sp500_return_pct,
-            "alpha_vs_60_40": (
-                latest.cumulative_return_pct - (latest.benchmark_60_40_return_pct or 0)
-            ),
-            "alpha_vs_sp500": (
-                latest.cumulative_return_pct - (latest.benchmark_sp500_return_pct or 0)
-            ),
+            "benchmark_60_40_return_pct": c["benchmark_60_40_return_pct"],
+            "benchmark_sp500_return_pct": c["benchmark_sp500_return_pct"],
+            "benchmark_acwi_return_pct": c["benchmark_acwi_return_pct"],
+            "alpha_vs_60_40": alpha("benchmark_60_40_return_pct"),
+            "alpha_vs_sp500": alpha("benchmark_sp500_return_pct"),
+            "alpha_vs_acwi": alpha("benchmark_acwi_return_pct"),
+            "correction": info,
         }
 
     # 3-way ranking

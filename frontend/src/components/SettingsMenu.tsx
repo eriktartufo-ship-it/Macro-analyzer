@@ -6,6 +6,7 @@ import { FeatureFlagsPanel } from "./FeatureFlagsPanel";
 import { LlmSettingsModal } from "./LlmSettingsModal";
 import { AdminAccessModal } from "./AdminAccessModal";
 import { getAdminToken, onAdminTokenChange } from "../api/adminToken";
+import { Switch } from "./Switch";
 
 /** Settings cog button + dropdown: account (utente Portafogli + esci) +
  * impostazioni macro (LLM, flag, dedollar). Riusato in topbar (mobile) e
@@ -206,36 +207,7 @@ function MenuToggle({ label, sub, on, onChange }: MenuToggleProps) {
           <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{sub}</div>
         )}
       </div>
-      <button
-        onClick={() => onChange(!on)}
-        role="switch"
-        aria-checked={on}
-        style={{
-          width: 36,
-          height: 20,
-          background: on ? "var(--reflation)" : "var(--stroke)",
-          border: "none",
-          borderRadius: 12,
-          position: "relative",
-          cursor: "pointer",
-          transition: "background 0.2s",
-          padding: 0,
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            top: 2,
-            left: on ? 18 : 2,
-            width: 16,
-            height: 16,
-            background: "white",
-            borderRadius: 8,
-            transition: "left 0.2s",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-          }}
-        />
-      </button>
+      <Switch on={on} onChange={onChange} label={label} />
     </div>
   );
 }

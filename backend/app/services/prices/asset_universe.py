@@ -150,6 +150,18 @@ ASSET_TICKERS: dict[str, dict[str, str | None]] = {
 
 
 # Indici di riferimento extra (non asset class ma utili come benchmark/feature)
+# Asset usati SOLO dai bot dell'AI Portfolio, fuori dall'universo dello scoring: nessuno di
+# questi entra in calibrazione, flussi o backtest dello scoring (che scorrono ASSET_TICKERS).
+# 2026-10-21: il bot «S&P a rischio gestito» teneva e misurava `us_equities_growth` = QQQ,
+# cioè il Nasdaq-100, sia dal vivo sia nel backtest che lo giustificava.
+BOT_ONLY_TICKERS: dict[str, dict[str, str | None]] = {
+    "us_equities_sp500": {
+        "ticker": "SPY",
+        "backfill_proxy": "^GSPC",
+        "description": "S&P 500 (solo bot a rischio gestito)",
+    },
+}
+
 BENCHMARK_TICKERS = {
     "sp500": "^GSPC",  # 1928+
     "nasdaq": "^IXIC",  # 1971+

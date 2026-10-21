@@ -37,6 +37,19 @@ class Instrument:
     half_spread: float  # stima, frazione (0.0005 = 0,05%)
     distributes: bool   # paga cedole (accreditate in cassa alla data di stacco)
 
+    @property
+    def tax_rate(self) -> float:
+        """Aliquota sulle plusvalenze e sulle cedole: 12,5% sui fondi di titoli di Stato USA
+        (white list, ~100% del patrimonio), 26% sul resto."""
+        return 0.125 if self.key in _GOVT_BOND_FUNDS else 0.26
+
+    @property
+    def tax_class(self) -> str:
+        """`oicr` = fondo/ETF: la plusvalenza è reddito di CAPITALE, non si compensa con le
+        minusvalenze; la minusvalenza invece entra nello zainetto. `diversi` = ETC/ETN/ETP: la
+        plusvalenza è reddito DIVERSO e si compensa con lo zainetto."""
+        return "diversi" if self.kind in ("ETC", "ETP") else "oicr"
+
 
 _I = Instrument
 
@@ -66,10 +79,17 @@ INSTRUMENTS: dict[str, Instrument] = {i.key: i for i in (
     _I("IUQA", "iShares Edge MSCI USA Quality Factor UCITS ETF (Acc)", "QDVB", "QDVB.DE", "IE00BD1F4L37", "Xetra", "ETF", 0.0015, False),
     _I("IUVL", "iShares Edge MSCI USA Value Factor UCITS ETF (Acc)", "QDVI", "QDVI.DE", "IE00BD1F4M44", "Xetra", "ETF", 0.0015, False),
     _I("VUAA", "Vanguard S&P 500 UCITS ETF (Acc)", "VUAA", "VUAA.DE", "IE00BFMXXD54", "Xetra", "ETF", 0.0005, False),
+    # 2026-10-21: benchmark MSCI ACWI (Erik: «più simile al mio portafoglio»). ISIN da due fonti:
+    # nome Yahoo di IUSQ.DE + ricerca per ISIN che restituisce ISAC.L (stesso fondo a Londra).
+    _I("IUSQ", "iShares MSCI ACWI UCITS ETF (Acc)", "IUSQ", "IUSQ.DE", "IE00B6R52259", "Xetra", "ETF", 0.0005, False),
 )}
 
-# Benchmark in euro del libro reale: l'S&P 500 come lo comprerebbe un investitore italiano.
-BENCHMARK_KEY = "VUAA"
+_GOVT_BOND_FUNDS = {"IBTS", "IDTL", "ITPS"}
+
+# Benchmark in euro del libro reale, come li comprerebbe un investitore italiano.
+BENCHMARK_KEY = "VUAA"          # S&P 500
+BENCHMARK_ACWI_KEY = "IUSQ"     # MSCI ACWI (azionario mondiale, paesi emergenti compresi)
+BENCHMARK_BOND_KEY = "IDTL"     # la gamba 40 del 60/40 (stessa definizione dei bot: Treasury 20+ anni)
 
 # asset class (scoring engine) → (strumento, etichetta pubblica in italiano)
 # ⚠️ `energy` e `sector_energy` hanno lo STESSO segnale (XLE) ⇒ stesso strumento.
@@ -77,6 +97,7 @@ BENCHMARK_KEY = "VUAA"
 # correggere le decisioni dei bot, altrimenti non misurerebbe più loro.
 ASSET_MAP: dict[str, tuple[str, str]] = {
     "us_equities_growth": ("EQQQ", "Azioni USA growth (Nasdaq-100)"),
+    "us_equities_sp500": ("VUAA", "Azioni USA (S&P 500)"),  # solo bot a rischio gestito
     "us_equities_value": ("ZPRU", "Azioni USA value"),
     "international_dm_equities": ("IXUA", "Azioni paesi sviluppati ex-USA"),
     "em_equities": ("EIMI", "Azioni mercati emergenti"),

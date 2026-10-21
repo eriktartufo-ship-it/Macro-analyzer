@@ -684,6 +684,10 @@ def daily_scan(
 
         _apply(db, asset, position, action, size_pct, llm_score, regime, target_date, summary)
 
+    # tetto per strumento (energy + sector_energy = stesso XLE): guardia sull'esito, a fine giro
+    from app.services.ai_portfolio.instrument_cap import enforce_instrument_cap
+    summary["n_cap_trims"] = enforce_instrument_cap(db, STRATEGY_TYPE, target_date, regime)
+
     db.commit()
     summary["n_positions_after"] = (
         db.query(AiPortfolioPosition)

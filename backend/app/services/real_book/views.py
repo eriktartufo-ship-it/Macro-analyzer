@@ -26,6 +26,7 @@ KIND_IT = {
     "stop_loss": "Stop loss",
     "take_profit": "Presa di profitto",
     "riallineamento": "Riallineamento",
+    "cap_trim": "Riduzione per tetto",
     "dividend": "Cedola",
 }
 STATUS_IT = {"pending": "in attesa dell'apertura", "filled": "eseguito",
@@ -66,6 +67,7 @@ def movement_view(mv: RbMovement, admin: bool) -> dict:
         "weight_after_pct": mv.weight_after_pct,
         "realized_pnl_eur": mv.realized_pnl_eur,
         "realized_pnl_pct": (mv.realized_pnl_eur / cost) if cost else None,
+        "tax_eur": mv.tax_eur or 0.0,
         "narrative": mv.narrative,
         "narrative_source": mv.narrative_source,
         "exit_plan": mv.exit_plan,
@@ -148,18 +150,35 @@ def overview(db: Session, admin: bool) -> dict:
             "initial_capital_eur": book.initial_capital_eur,
             "nav": None if nav is None else {
                 "date": str(nav.date), "nav_eur": nav.nav_eur, "cash_eur": nav.cash_eur,
-                "invested_eur": nav.invested_eur, "cumulative_return_pct": nav.cumulative_return_pct,
-                "bot_return_pct": nav.bot_return_pct, "benchmark_return_pct": nav.benchmark_return_pct,
-                "reality_gap_pct": (nav.cumulative_return_pct - nav.bot_return_pct)
-                if nav.bot_return_pct is not None else None,
+                "invested_eur": nav.invested_eur, "n_positions": nav.n_positions,
+                "bot_return_pct": nav.bot_return_pct,
                 "fees_cum_eur": nav.fees_cum_eur, "spread_cum_eur": nav.spread_cum_eur,
-                "dividends_cum_eur": nav.dividends_cum_eur, "n_positions": nav.n_positions,
+                "dividends_cum_eur": nav.dividends_cum_eur,
+                "taxes_cum_eur": nav.taxes_cum_eur, "latent_tax_eur": nav.latent_tax_eur,
+                "zainetto_eur": nav.zainetto_eur,
+                # due viste: la pagina sceglie col toggle «Tasse» (di base acceso = netto)
+                "gross": {
+                    "value_eur": nav.nav_eur + nav.taxes_cum_eur,
+                    "return_pct": nav.return_gross_pct,
+                    "sp500_pct": nav.bench_sp_gross_pct, "acwi_pct": nav.bench_acwi_gross_pct,
+                    "6040_pct": nav.bench_6040_gross_pct,
+                    "reality_gap_pct": (nav.return_gross_pct - nav.bot_return_pct)
+                    if nav.bot_return_pct is not None else None,
+                },
+                "net": {
+                    "value_eur": nav.nav_eur - nav.latent_tax_eur,
+                    "return_pct": nav.return_net_pct,
+                    "sp500_pct": nav.bench_sp_net_pct, "acwi_pct": nav.bench_acwi_net_pct,
+                    "6040_pct": nav.bench_6040_net_pct,
+                    "reality_gap_pct": (nav.return_net_pct - nav.bot_return_pct)
+                    if nav.bot_return_pct is not None else None,
+                },
             },
             "positions": pos_view,
             "concentration": conc,
             "pending_orders": pending,
         }
-    return {"strategies": result, "admin": admin, "benchmark_label": "S&P 500 in euro"}
+    return {"strategies": result, "admin": admin}
 
 
 def nav_series(db: Session, strategy: str, days: int) -> list[dict]:
@@ -168,5 +187,8 @@ def nav_series(db: Session, strategy: str, days: int) -> list[dict]:
     since = date.today() - timedelta(days=days)
     rows = (db.query(RbNav).filter(RbNav.strategy_type == strategy, RbNav.date >= since)
             .order_by(RbNav.date).all())
-    return [{"date": str(r.date), "nav_eur": r.nav_eur, "cumulative_return_pct": r.cumulative_return_pct,
-             "bot_return_pct": r.bot_return_pct, "benchmark_return_pct": r.benchmark_return_pct} for r in rows]
+    return [{"date": str(r.date), "nav_eur": r.nav_eur, "return_gross_pct": r.return_gross_pct,
+             "return_net_pct": r.return_net_pct, "bot_return_pct": r.bot_return_pct,
+             "sp500_gross_pct": r.bench_sp_gross_pct, "sp500_net_pct": r.bench_sp_net_pct,
+             "acwi_gross_pct": r.bench_acwi_gross_pct, "acwi_net_pct": r.bench_acwi_net_pct,
+             "6040_gross_pct": r.bench_6040_gross_pct, "6040_net_pct": r.bench_6040_net_pct} for r in rows]

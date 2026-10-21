@@ -112,6 +112,9 @@ def why_template(f: dict) -> str:
                 f"investito: la sua regola di investimento minimo schiera la differenza sugli asset col "
                 f"punteggio migliore fra quelli favoriti dal regime. {a} ha punteggio {_n(f.get('punteggio'))}/100. "
                 f"Questa regola non guarda l'andamento del prezzo.")
+    if kind == "cap_trim":
+        return (f"Riduco {a}: un altro asset del {STRATEGY_IT.get(strat, 'bot')} è lo stesso ETF, e insieme superavano "
+                f"il tetto del 25% per strumento. Vendo solo l'eccesso, in proporzione.")
     if kind == "riallineamento":
         return ("La posizione del bot è cambiata senza una decisione registrata: riallineo il libro "
                 "invece di lasciarlo divergere in silenzio.")

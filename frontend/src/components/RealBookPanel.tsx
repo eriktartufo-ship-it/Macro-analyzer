@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { RealBookMovement, RealBookOverview, RealBookStrategy } from "../types";
+import { Switch } from "./Switch";
+
+const TAX_KEY = "rb_with_taxes";
+
+function readTaxPref(): boolean {
+  try {
+    return localStorage.getItem(TAX_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Libro reale (2026-10-21): lo stesso bot, ma con un portafoglio che si potrebbe tenere davvero
@@ -56,6 +67,16 @@ export function RealBookPanel({ strategy, label, color }: { strategy: StrategyTy
   const [journal, setJournal] = useState<RealBookMovement[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Erik 2026-10-21: le plusvalenze si tolgono e si mettono col toggle; di base contano
+  const [withTaxes, setWithTaxes] = useState<boolean>(readTaxPref);
+  const toggleTaxes = (v: boolean) => {
+    setWithTaxes(v);
+    try {
+      localStorage.setItem(TAX_KEY, v ? "1" : "0");
+    } catch {
+      // preferenza solo locale: senza storage resta il default
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -75,6 +96,9 @@ export function RealBookPanel({ strategy, label, color }: { strategy: StrategyTy
 
   const book: RealBookStrategy | null | undefined = overview?.strategies?.[strategy];
   const admin = overview?.admin ?? false;
+  const view = book?.nav ? (withTaxes ? book.nav.net : book.nav.gross) : null;
+  const vs = (b: number | null | undefined) =>
+    view && b != null ? `libro ${((view.return_pct - b) * 100).toFixed(2).replace(".", ",")} pp` : undefined;
   const shown = showAll ? journal : journal.slice(0, 15);
 
   return (
@@ -90,10 +114,24 @@ export function RealBookPanel({ strategy, label, color }: { strategy: StrategyTy
       <p style={{ fontSize: 12, lineHeight: 1.5, color: "var(--muted)", margin: "6px 0 10px" }}>
         Lo stesso bot con un portafoglio vero in euro: ETF quotati su Xetra o Milano, quote intere, ordine
         al mercato per l'apertura delle 09:00, commissione 0,99 € e spread stimato, cedole accreditate.
-        {book ? <> Partito il {day(book.started_on)} con {eur(book.initial_capital_eur, 0)}.</> : null} Tasse e interessi sulla
-        liquidità non sono ancora simulati. Le soglie d'uscita i bot le misurano sull'ETF americano, in dollari: sul nostro
-        strumento in euro scattano a livelli un po' diversi.
+        {book ? <> Partito il {day(book.started_on)} con {eur(book.initial_capital_eur, 0)}.</> : null} Tasse italiane in
+        regime amministrato (26%, 12,5% sui fondi di titoli di Stato, zainetto delle minusvalenze); bollo e interessi sulla
+        liquidità no. Le soglie d'uscita i bot le misurano sull'ETF americano, in dollari: sul nostro strumento in euro
+        scattano a livelli un po' diversi.
       </p>
+      {book?.nav && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", marginBottom: 10, background: "var(--surface-sunk)", border: "1px solid var(--stroke)", borderRadius: 8 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>Tasse sulle plusvalenze</div>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>
+              {withTaxes
+                ? "Valori netti: come se vendessi tutto oggi, libro e benchmark."
+                : "Valori lordi: come se le tasse non esistessero."}
+            </div>
+          </div>
+          <Switch on={withTaxes} onChange={toggleTaxes} label="Tasse sulle plusvalenze" />
+        </div>
+      )}
 
       {error && <div className="error">{error}</div>}
       {!error && overview && !book && (
@@ -104,12 +142,17 @@ export function RealBookPanel({ strategy, label, color }: { strategy: StrategyTy
 
       {book && (
         <>
-          {book.nav ? (
+          {book.nav && view ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
-              <Tile title="Valore del libro" value={eur(book.nav.nav_eur, 0)} sub={pctIt(book.nav.cumulative_return_pct, 2, true)} subColor={signColor(book.nav.cumulative_return_pct)} />
-              <Tile title="Il bot sulla carta" value={pctIt(book.nav.bot_return_pct, 2, true)} valueColor={signColor(book.nav.bot_return_pct)} sub="stesso periodo, in dollari" />
-              <Tile title="Costo della realtà" value={book.nav.reality_gap_pct == null ? "—" : `${(book.nav.reality_gap_pct * 100).toFixed(2).replace(".", ",")} pp`} valueColor={signColor(book.nav.reality_gap_pct)} sub="libro − bot di carta" />
-              <Tile title={overview?.benchmark_label ?? "S&P 500 in euro"} value={pctIt(book.nav.benchmark_return_pct, 2, true)} valueColor={signColor(book.nav.benchmark_return_pct)} sub="comprato il primo giorno" />
+              <Tile title="Valore del libro" value={eur(view.value_eur, 0)} sub={`${pctIt(view.return_pct, 2, true)} ${withTaxes ? "netto" : "lordo"}`} subColor={signColor(view.return_pct)} />
+              <Tile title="Il bot sulla carta" value={pctIt(book.nav.bot_return_pct, 2, true)} valueColor={signColor(book.nav.bot_return_pct)} sub="stesso periodo, in dollari, senza tasse" />
+              <Tile title="Costo della realtà" value={view.reality_gap_pct == null ? "—" : `${(view.reality_gap_pct * 100).toFixed(2).replace(".", ",")} pp`} valueColor={signColor(view.reality_gap_pct)} sub={withTaxes ? "libro netto − bot di carta" : "libro lordo − bot di carta"} />
+              <Tile title="S&P 500 in euro" value={pctIt(view.sp500_pct, 2, true)} valueColor={signColor(view.sp500_pct)} sub={vs(view.sp500_pct)} />
+              <Tile title="MSCI ACWI in euro" value={pctIt(view.acwi_pct, 2, true)} valueColor={signColor(view.acwi_pct)} sub={vs(view.acwi_pct)} />
+              <Tile title="60/40 in euro" value={pctIt(view["6040_pct"], 2, true)} valueColor={signColor(view["6040_pct"])} sub={vs(view["6040_pct"])} />
+              {withTaxes && (
+                <Tile title="Tasse" value={eur(book.nav.taxes_cum_eur + book.nav.latent_tax_eur)} sub={`pagate ${eur(book.nav.taxes_cum_eur)} · se vendessi oggi ${eur(book.nav.latent_tax_eur)} · zainetto ${eur(book.nav.zainetto_eur)}`} />
+              )}
               <Tile title="Costi pagati" value={eur(book.nav.fees_cum_eur + book.nav.spread_cum_eur)} sub={`commissioni ${eur(book.nav.fees_cum_eur)} · spread ${eur(book.nav.spread_cum_eur)}`} />
               <Tile title="Liquidità" value={eur(book.nav.cash_eur, 0)} sub={`${pctIt(book.nav.nav_eur ? book.nav.cash_eur / book.nav.nav_eur : null)} · cedole ${eur(book.nav.dividends_cum_eur)}`} />
             </div>
@@ -207,6 +250,7 @@ function JournalEntry({ m, admin }: { m: RealBookMovement; admin: boolean }) {
           {m.realized_pnl_eur != null && (
             <span style={{ color: signColor(m.realized_pnl_eur) }}> · risultato {eur(m.realized_pnl_eur)} ({pctIt(m.realized_pnl_pct, 1, true)})</span>
           )}
+          {m.tax_eur > 0 && <> · tasse trattenute {eur(m.tax_eur)}</>}
         </div>
       )}
       {admin && m.instrument && m.side !== "dividend" && (

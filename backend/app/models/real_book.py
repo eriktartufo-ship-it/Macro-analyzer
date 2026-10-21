@@ -33,8 +33,11 @@ class RbBook(Base):
     initial_capital_eur: Mapped[float] = mapped_column(Float, nullable=False)
     # NAV del bot "di carta" il giorno di partenza: serve a dire quanto costa la realtà
     bot_nav_start: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # S&P 500 in euro (VUAA) all'apertura del primo giorno eseguito: benchmark onesto in EUR
+    # Benchmark in euro all'apertura del primo giorno eseguito: S&P 500 (VUAA), MSCI ACWI (IUSQ),
+    # e la gamba obbligazionaria del 60/40 (IDTL)
     benchmark_start_price_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
+    acwi_start_price_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bond_start_price_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -78,6 +81,10 @@ class RbMovement(Base):
     fee_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     spread_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     realized_pnl_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # tasse trattenute dal broker (regime amministrato) e movimenti dello zainetto
+    tax_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    zainetto_used_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    zainetto_added_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     cash_after_eur: Mapped[float | None] = mapped_column(Float, nullable=True)
     weight_after_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     position_qty_after: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -131,9 +138,20 @@ class RbNav(Base):
     cash_eur: Mapped[float] = mapped_column(Float, nullable=False)
     invested_eur: Mapped[float] = mapped_column(Float, nullable=False)
     n_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    cumulative_return_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    # lordo = come se le tasse non esistessero (tasse pagate rimesse in cassa, nessuna latente)
+    # netto = valore se si vendesse tutto oggi (tasse pagate + tasse latenti sulle plusvalenze)
+    return_gross_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    return_net_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    taxes_cum_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    latent_tax_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    zainetto_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     bot_return_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
-    benchmark_return_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bench_sp_gross_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bench_sp_net_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bench_acwi_gross_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bench_acwi_net_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bench_6040_gross_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    bench_6040_net_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     fees_cum_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     spread_cum_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     dividends_cum_eur: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

@@ -2057,6 +2057,14 @@ def ai_portfolio_daily_scan():
 
     logger.info("AI portfolio HORSERACE daily scan starting...")
     with SessionLocal() as db:
+        # 2026-10-21: senza una chiusura nuova i bot decidevano due volte sugli stessi prezzi
+        # (weekend) e lo snapshot ricontava il venerdì. Weekend e festivi si saltano da soli.
+        from app.services.ai_portfolio.market_calendar import bots_should_run
+
+        run, why = bots_should_run(db)
+        logger.info(f"AI portfolio: {why}")
+        if not run:
+            return
         # 3 strategie indipendenti — capitale $100k cadauno
         # (data_driven rimosso 2026-07-15; risk_managed_sp aggiunto 2026-07-15)
         for strategist_mod, label in (

@@ -84,6 +84,9 @@ export interface AiPortfolioPerformanceSnap {
   drawdown_pct: number;
   benchmark_60_40_return_pct: number | null;
   benchmark_sp500_return_pct: number | null;
+  // 2026-10-21: MSCI ACWI dai prezzi; storico corretto alla lettura (venerdì ricontato)
+  benchmark_acwi_return_pct?: number | null;
+  duplicate_neutralized?: boolean;
 }
 
 export interface AiPortfolioPerformanceCurrent extends AiPortfolioPerformanceSnap {
@@ -1039,6 +1042,7 @@ export interface RealBookMovement {
   weight_after_pct: number | null;
   realized_pnl_eur: number | null;
   realized_pnl_pct: number | null;
+  tax_eur: number;
   narrative: string | null;
   narrative_source: string | null;
   exit_plan: string | null;
@@ -1074,22 +1078,33 @@ export interface RealBookStrategy {
     nav_eur: number;
     cash_eur: number;
     invested_eur: number;
-    cumulative_return_pct: number;
+    n_positions: number;
     bot_return_pct: number | null;
-    benchmark_return_pct: number | null;
-    reality_gap_pct: number | null;
     fees_cum_eur: number;
     spread_cum_eur: number;
     dividends_cum_eur: number;
-    n_positions: number;
+    taxes_cum_eur: number;
+    latent_tax_eur: number;
+    zainetto_eur: number;
+    gross: RealBookView;
+    net: RealBookView;
   } | null;
   positions: RealBookPosition[];
   concentration: { assets: string[]; weight_pct: number; instrument_key?: string }[];
   pending_orders: number;
 }
 
+// lordo = come se le tasse non esistessero; netto = valore se si vendesse tutto oggi
+export interface RealBookView {
+  value_eur: number;
+  return_pct: number;
+  sp500_pct: number | null;
+  acwi_pct: number | null;
+  "6040_pct": number | null;
+  reality_gap_pct: number | null;
+}
+
 export interface RealBookOverview {
   strategies: Record<string, RealBookStrategy | null>;
   admin: boolean;
-  benchmark_label: string;
 }

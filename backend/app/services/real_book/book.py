@@ -30,6 +30,8 @@ from app.models.regime_classifications import RegimeClassification
 from app.services.real_book import ledger as L
 from app.services.real_book import narrator as N
 from app.services.real_book.instruments import (
+    BENCHMARK_ACWI_KEY,
+    BENCHMARK_BOND_KEY,
     BENCHMARK_KEY,
     INSTRUMENTS,
     instrument_for,
@@ -183,8 +185,10 @@ def ledger_state(db: Session, strategy: str, initial: float, until: date | None 
         elif mv.side == "sell" and mv.asset_class in state.lots:
             L.apply_sell(state, mv.asset_class,
                          L.Fill(int(mv.quantity), mv.fill_price_eur or 0.0, mv.gross_eur, mv.spread_eur, mv.fee_eur))
+            L.replay_tax(state, mv.tax_eur or 0.0, mv.zainetto_used_eur or 0.0, mv.zainetto_added_eur or 0.0,
+                         mv.fill_date.year)
         elif mv.side == "dividend":
-            L.apply_dividend(state, mv.gross_eur)
+            L.apply_dividend(state, mv.gross_eur, mv.tax_eur or 0.0)
     return state
 
 
@@ -318,6 +322,10 @@ def mirror(db: Session, strategy: str, market: Market, now: datetime) -> list[Rb
             buy(asset, "floor", dw, None, pos.tranches_filled, pos.tranches_total)
         elif dw > _EPS_W:
             buy(asset, "riallineamento", dw, None, pos.tranches_filled, pos.tranches_total)
+        elif dw < -_EPS_W and pos.last_action == "CAP_TRIM":
+            dec = _decision_for(db, strategy, asset, ("CAP_TRIM",), since=pos.last_action_date)
+            sell(asset, "cap_trim", 1 - pos.current_weight_pct / snap.current_weight_pct, dec,
+                 pos.tranches_filled, pos.tranches_total, dw)
         elif dw < -_EPS_W:
             sell(asset, "riallineamento", 1 - pos.current_weight_pct / snap.current_weight_pct, None, dw=dw)
 
@@ -366,6 +374,8 @@ def fill_pending(db: Session, strategy: str, market: Market, today: date) -> int
                 continue
             lot, realized = L.apply_sell(state, mv.asset_class, f)
             mv.realized_pnl_eur = realized
+            mv.tax_eur, mv.zainetto_used_eur, mv.zainetto_added_eur = L.tax_on_realized(
+                state, realized, inst.tax_class, inst.tax_rate, d.year)
         else:
             f = L.execute_buy(int(mv.quantity), o, inst.half_spread, state.cash)
             if f is None:
@@ -432,13 +442,15 @@ def credit_dividends(db: Session, strategy: str, market: Market, today: date, no
             if qty <= 0:
                 continue
             amount = qty * float(per_share)
+            tax = amount * inst.tax_rate
             db.add(RbMovement(
                 strategy_type=strategy, asset_class=asset, instrument_key=key, side="dividend",
                 kind="dividend", status="filled", decided_on=ex_date, decided_at=now,
                 fill_date=ex_date, fill_at=open_time_utc(ex_date), quantity=qty,
-                fill_price_eur=float(per_share), gross_eur=amount,
-                narrative=(f"Stacco cedola su {label_for(asset)}: {N._n(amount, 2)} € accreditati in cassa. "
-                           f"Importo lordo: le tasse non sono ancora simulate."),
+                fill_price_eur=float(per_share), gross_eur=amount, tax_eur=tax,
+                narrative=(f"Stacco cedola su {label_for(asset)}: {N._n(amount, 2)} € lordi, "
+                           f"{N._n(amount - tax, 2)} € netti in cassa dopo la ritenuta del "
+                           f"{N._n(inst.tax_rate * 100, 1)}%."),
                 narrative_source="template", facts_json="{}",
                 note=f"{N._n(qty, 0)} quote × {N._n(float(per_share), 4)} € per quota",
             ))
@@ -451,11 +463,50 @@ def credit_dividends(db: Session, strategy: str, market: Market, today: date, no
 # 4. Valore del libro alla chiusura
 # ---------------------------------------------------------------------------
 
+def _start_open(market: Market, key: str, start: date, today: date) -> float | None:
+    first = first_bar_on_or_after(market, INSTRUMENTS[key].yahoo, start, today)
+    return first[1] if first else None
+
+
+def _net_gain(g: float, rate: float) -> float:
+    """Guadagno dopo le tasse se si vendesse oggi (una perdita resta perdita)."""
+    return g * (1 - rate) if g > 0 else g
+
+
+def benchmarks(market: Market, book: RbBook, today: date) -> dict[str, float | None]:
+    """S&P 500, MSCI ACWI e 60/40 in euro, comprati all'apertura del primo giorno e tenuti.
+    Netto = venduti oggi in regime amministrato (azioni 26%, Treasury 12,5%, cedole tassate)."""
+    out: dict[str, float | None] = {k: None for k in (
+        "sp_gross", "sp_net", "acwi_gross", "acwi_net", "6040_gross", "6040_net")}
+    for attr, key in (("benchmark_start_price_eur", BENCHMARK_KEY), ("acwi_start_price_eur", BENCHMARK_ACWI_KEY),
+                      ("bond_start_price_eur", BENCHMARK_BOND_KEY)):
+        if getattr(book, attr) is None:
+            setattr(book, attr, _start_open(market, key, book.started_on, today))
+
+    def gross(key: str, start_px: float | None) -> float | None:
+        c = close_on(market, INSTRUMENTS[key].yahoo, today) or last_close_on_or_before(market, INSTRUMENTS[key].yahoo, today)
+        return (c / start_px - 1) if (c and start_px) else None
+
+    sp, acwi = gross(BENCHMARK_KEY, book.benchmark_start_price_eur), gross(BENCHMARK_ACWI_KEY, book.acwi_start_price_eur)
+    if sp is not None:
+        out["sp_gross"], out["sp_net"] = sp, _net_gain(sp, 0.26)
+    if acwi is not None:
+        out["acwi_gross"], out["acwi_net"] = acwi, _net_gain(acwi, 0.26)
+    bond = INSTRUMENTS[BENCHMARK_BOND_KEY]
+    bond_price = gross(BENCHMARK_BOND_KEY, book.bond_start_price_eur)
+    if sp is not None and bond_price is not None and book.bond_start_price_eur:
+        divs = market.dividends(bond.yahoo, book.started_on, today)
+        coupon = float(sum(v for d, v in divs.items() if d > book.started_on)) / book.bond_start_price_eur
+        out["6040_gross"] = 0.6 * sp + 0.4 * (bond_price + coupon)
+        out["6040_net"] = 0.6 * _net_gain(sp, 0.26) + 0.4 * (_net_gain(bond_price, bond.tax_rate)
+                                                             + coupon * (1 - bond.tax_rate))
+    return out
+
+
 def snapshot_nav(db: Session, strategy: str, market: Market, today: date) -> RbNav | None:
     book = _book(db, strategy)
     bench = INSTRUMENTS[BENCHMARK_KEY]
-    bench_close = close_on(market, bench.yahoo, today)
-    if book is None or bench_close is None:
+    if book is None or close_on(market, bench.yahoo, today) is None:
         return None  # mercato chiuso o dato non ancora uscito: nessun valore inventato
     state = ledger_state(db, strategy, book.initial_capital_eur, until=today)
     prices: dict[str, float] = {}
@@ -466,12 +517,9 @@ def snapshot_nav(db: Session, strategy: str, market: Market, today: date) -> RbN
             if p:
                 prices[lot.instrument_key] = p
     total, invested = L.nav(state, prices)
-
-    if book.benchmark_start_price_eur is None:
-        first = first_bar_on_or_after(market, bench.yahoo, book.started_on, today)
-        if first is not None:
-            book.benchmark_start_price_eur = first[1]
-    bench_ret = (bench_close / book.benchmark_start_price_eur - 1) if book.benchmark_start_price_eur else None
+    tax_info = {k: (i.tax_class, i.tax_rate) for k, i in INSTRUMENTS.items()}
+    latent = L.latent_tax(state, prices, tax_info, today.year)
+    bm = benchmarks(market, book, today)
     bot_now = _latest_bot_nav(db, strategy, today)
     bot_ret = (bot_now / book.bot_nav_start - 1) if (bot_now and book.bot_nav_start) else None
 
@@ -481,8 +529,14 @@ def snapshot_nav(db: Session, strategy: str, market: Market, today: date) -> RbN
         db.add(row)
     row.nav_eur, row.cash_eur, row.invested_eur = total, state.cash, invested
     row.n_positions = sum(1 for lot in state.lots.values() if lot.qty > 0)
-    row.cumulative_return_pct = total / book.initial_capital_eur - 1
-    row.bot_return_pct, row.benchmark_return_pct = bot_ret, bench_ret
+    row.return_gross_pct = (total + state.taxes) / book.initial_capital_eur - 1
+    row.return_net_pct = (total - latent) / book.initial_capital_eur - 1
+    row.taxes_cum_eur, row.latent_tax_eur = state.taxes, latent
+    row.zainetto_eur = L.zainetto_available(state, today.year)
+    row.bot_return_pct = bot_ret
+    row.bench_sp_gross_pct, row.bench_sp_net_pct = bm["sp_gross"], bm["sp_net"]
+    row.bench_acwi_gross_pct, row.bench_acwi_net_pct = bm["acwi_gross"], bm["acwi_net"]
+    row.bench_6040_gross_pct, row.bench_6040_net_pct = bm["6040_gross"], bm["6040_net"]
     row.fees_cum_eur, row.spread_cum_eur, row.dividends_cum_eur = state.fees, state.spread, state.dividends
     positions = []
     for asset, lot in sorted(state.lots.items()):

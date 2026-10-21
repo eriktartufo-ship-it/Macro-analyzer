@@ -454,7 +454,9 @@ def test_valore_del_libro_solo_nei_giorni_di_borsa_e_benchmark_in_euro(db):
     px = 110.0 * (1 + I.INSTRUMENTS["SGLD"].half_spread)
     assert row.nav_eur == pytest.approx(100_000 - 200 * px - 0.99 + 200 * 113.0)
     # benchmark: S&P in euro dall'apertura del primo giorno (110) alla chiusura (113)
-    assert row.benchmark_return_pct == pytest.approx(113 / 110 - 1)
+    assert row.bench_sp_gross_pct == pytest.approx(113 / 110 - 1)
+    assert row.bench_sp_net_pct == pytest.approx((113 / 110 - 1) * 0.74)
+    assert row.bench_acwi_gross_pct == pytest.approx(113 / 110 - 1)  # mercato finto: stessi prezzi
     assert json.loads(row.positions_json)[0]["asset_class"] == "gold"
 
 
@@ -495,3 +497,90 @@ def test_concentrazione_segnalata_quando_due_asset_finiscono_sullo_stesso_etf(db
     assert c["weight_pct"] == pytest.approx(300 * 111.0 / nav)
     assert c["weight_pct"] > 0.30
     assert "instrument_key" not in c
+
+
+# ---------------------------------------------------------------------------
+# Tasse, riduzione per tetto, valore lordo/netto e benchmark (2026-10-21)
+# ---------------------------------------------------------------------------
+
+def test_vendita_in_guadagno_su_etc_trattiene_il_26(db):
+    from app.services.real_book import book
+
+    m = FakeMarket(DAYS)
+    p = _pos(db, "gold", 0.15, 3, 3)
+    book.mirror(db, "model_driven", m, datetime(2026, 10, 15, 0, 30))
+    book.fill_pending(db, "model_driven", m, date(2026, 10, 15))
+    p.current_weight_pct, p.tranches_filled, p.last_action, p.last_action_date = 0.10, 2, "CLOSE_TRANCHE", date(2026, 10, 17)
+    db.commit()
+    _dec(db, "gold", "CLOSE_TRANCHE", date(2026, 10, 17), "partial TP PnL 16.8%", pnl=0.168)
+    book.mirror(db, "model_driven", m, SAT)
+    book.fill_pending(db, "model_driven", m, date(2026, 10, 19))
+    db.commit()
+    [s] = _mov(db, side="sell")
+    assert s.realized_pnl_eur > 0
+    assert s.tax_eur == pytest.approx(s.realized_pnl_eur * 0.26)  # SGLD è un ETC: reddito diverso, 26%
+    # lo stato ricostruito dai movimenti ha la stessa cassa scritta sul movimento
+    st = book.ledger_state(db, "model_driven", 100_000)
+    assert st.cash == pytest.approx(s.cash_after_eur) and st.taxes == pytest.approx(s.tax_eur)
+
+
+def test_vendita_in_perdita_su_etf_va_nello_zainetto(db):
+    from app.services.real_book import book
+
+    falling = {date(2026, 10, 15): (100.0, 100.0), date(2026, 10, 19): (90.0, 90.0), date(2026, 10, 20): (90.0, 90.0)}
+    m = FakeMarket(falling)
+    p = _pos(db, "sector_staples", 0.10, 1, 1)
+    book.mirror(db, "model_driven", m, datetime(2026, 10, 15, 0, 30))
+    book.fill_pending(db, "model_driven", m, date(2026, 10, 15))
+    db.delete(p)
+    db.commit()
+    _dec(db, "sector_staples", "STOP_LOSS", date(2026, 10, 17), "stop loss PnL -10.0%", pnl=-0.10)
+    book.mirror(db, "model_driven", m, SAT)
+    book.fill_pending(db, "model_driven", m, date(2026, 10, 19))
+    db.commit()
+    [s] = _mov(db, side="sell")
+    assert s.kind == "stop_loss" and s.tax_eur == 0
+    assert s.zainetto_added_eur == pytest.approx(-s.realized_pnl_eur)
+    row = book.snapshot_nav(db, "model_driven", m, date(2026, 10, 20))
+    assert row.zainetto_eur == pytest.approx(-s.realized_pnl_eur)
+
+
+def test_riduzione_per_tetto_diventa_una_vendita_spiegata(db):
+    from app.services.real_book import book
+
+    m = FakeMarket(DAYS)
+    e = _pos(db, "energy", 0.09, 2, 2)
+    se = _pos(db, "sector_energy", 0.21, 3, 3)
+    book.mirror(db, "model_driven", m, datetime(2026, 10, 15, 0, 30))
+    book.fill_pending(db, "model_driven", m, date(2026, 10, 15))
+    from app.services.ai_portfolio.instrument_cap import enforce_instrument_cap
+    enforce_instrument_cap(db, "model_driven", date(2026, 10, 17), "stagflation")
+    db.commit()
+    book.mirror(db, "model_driven", m, SAT)
+    db.commit()
+    sells = _mov(db, side="sell")
+    assert {x.kind for x in sells} == {"cap_trim"} and len(sells) == 2
+    assert all("tetto del 25%" in x.narrative for x in sells)
+    assert all("stesso ETF" in json.loads(x.facts_json)["motivo_del_bot"] for x in sells)
+
+
+def test_valore_lordo_netto_e_tre_benchmark_in_euro(db):
+    from app.services.real_book import book
+
+    idtl = I.INSTRUMENTS["IDTL"].yahoo
+    per = {I.INSTRUMENTS["IUSQ"].yahoo: {date(2026, 10, 19): (50.0, 50.0), date(2026, 10, 20): (55.0, 55.0)},
+           idtl: {date(2026, 10, 19): (10.0, 10.0), date(2026, 10, 20): (9.0, 9.0)}}
+    m = FakeMarket(DAYS, per_symbol=per, divs={idtl: {date(2026, 10, 20): 0.5}})
+    _pos(db, "gold", 0.20, 3, 3)
+    book.mirror(db, "model_driven", m, SAT)
+    book.fill_pending(db, "model_driven", m, date(2026, 10, 19))
+    row = book.snapshot_nav(db, "model_driven", m, date(2026, 10, 20))
+    sp = 113 / 110 - 1
+    assert row.bench_acwi_gross_pct == pytest.approx(55 / 50 - 1)
+    assert row.bench_acwi_net_pct == pytest.approx((55 / 50 - 1) * 0.74)
+    # 60/40: 60% S&P + 40% Treasury (prezzo −10% + cedola 5%); netto: azioni 26%, Treasury 12,5%
+    assert row.bench_6040_gross_pct == pytest.approx(0.6 * sp + 0.4 * (-0.10 + 0.05))
+    assert row.bench_6040_net_pct == pytest.approx(0.6 * sp * 0.74 + 0.4 * (-0.10 + 0.05 * 0.875))
+    # libro: oro (ETC) in guadagno latente ⇒ netto < lordo
+    assert row.latent_tax_eur > 0 and row.return_net_pct < row.return_gross_pct
+    assert row.return_gross_pct == pytest.approx((row.nav_eur + row.taxes_cum_eur) / 100_000 - 1)

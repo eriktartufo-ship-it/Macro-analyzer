@@ -237,6 +237,9 @@ def daily_scan(
     deploy_boost.apply_deployment_floor(
         db, STRATEGY_TYPE, scoreboard, regime_top, target_date, dominant_regime,
     )
+    # tetto per strumento (energy + sector_energy = stesso XLE): guardia sull'esito, a fine giro
+    from app.services.ai_portfolio.instrument_cap import enforce_instrument_cap
+    summary["n_cap_trims"] = enforce_instrument_cap(db, STRATEGY_TYPE, target_date, dominant_regime)
 
     db.commit()
 

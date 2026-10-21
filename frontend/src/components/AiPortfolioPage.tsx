@@ -246,14 +246,16 @@ export function AiPortfolioPage() {
         )}
         {lbHead && (() => {
           // Quante delle 3 strategie battono ciascun benchmark (cum > benchmark cum)
-          const beats = (key: "benchmark_sp500_return_pct" | "benchmark_60_40_return_pct") =>
+          const beats = (key: "benchmark_sp500_return_pct" | "benchmark_60_40_return_pct" | "benchmark_acwi_return_pct") =>
             STRATEGY_ORDER.filter((s) => {
               const c = perfByStrat[s]?.current;
-              return c != null && c.cumulative_return_pct > (c[key] ?? 0);
+              return c != null && c[key] != null && c.cumulative_return_pct > (c[key] ?? 0);
             }).length;
           const withPerf = STRATEGY_ORDER.filter((s) => perfByStrat[s]?.current != null).length;
           const nSp = beats("benchmark_sp500_return_pct");
           const n60 = beats("benchmark_60_40_return_pct");
+          const nAcwi = beats("benchmark_acwi_return_pct");
+          const corr = (perfByStrat.model_driven as any)?.correction as { corrected: boolean; duplicates: number } | undefined;
           const verdict = (label: string, n: number) => (
             <span style={{ color: n > withPerf / 2 ? "var(--reflation)" : "var(--deflation)", fontWeight: 600 }}>
               {n > withPerf / 2 ? "✅" : "❌"} {label} {n}/{withPerf}
@@ -267,7 +269,13 @@ export function AiPortfolioPage() {
               </div>
               {withPerf > 0 && (
                 <div style={{ marginTop: 4 }}>
-                  Le AI battono: {verdict("S&P 500", nSp)} · {verdict("60/40", n60)}
+                  Le AI battono: {verdict("S&P 500", nSp)} · {verdict("MSCI ACWI", nAcwi)} · {verdict("60/40", n60)}
+                </div>
+              )}
+              {corr?.corrected && corr.duplicates > 0 && (
+                <div style={{ marginTop: 6, color: "var(--subtle)" }}>
+                  Storico corretto il 21/10: fino a quel giorno il valore ricontava il venerdì nei giri senza una
+                  chiusura nuova ({corr.duplicates} giorni neutralizzati). I benchmark sono ricalcolati dai prezzi.
                 </div>
               )}
             </div>
@@ -529,6 +537,7 @@ function LeaderCard({
       </div>
       <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--stroke)" }}>
         <AlphaRow label="S&P 500" alpha={current.cumulative_return_pct - (current.benchmark_sp500_return_pct ?? 0)} />
+        <AlphaRow label="MSCI ACWI" alpha={current.benchmark_acwi_return_pct == null ? null : current.cumulative_return_pct - current.benchmark_acwi_return_pct} />
         <AlphaRow label="60/40" alpha={current.cumulative_return_pct - (current.benchmark_60_40_return_pct ?? 0)} />
       </div>
     </div>
@@ -537,7 +546,15 @@ function LeaderCard({
 
 /** Riga alpha vs un benchmark: verde+✅ se la strategia batte, rosso+❌ se sotto.
  * `alpha` = cumulative_return della strategia − cumulative_return del benchmark. */
-function AlphaRow({ label, alpha }: { label: string; alpha: number }) {
+function AlphaRow({ label, alpha }: { label: string; alpha: number | null }) {
+  if (alpha == null) {
+    return (
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 3 }}>
+        <span style={{ color: "var(--muted)" }}>vs {label}</span>
+        <span style={{ color: "var(--muted)" }}>—</span>
+      </div>
+    );
+  }
   const beats = alpha >= 0;
   return (
     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 3 }}>
@@ -593,7 +610,7 @@ function EquityChart5({
   // Use the longer history for x axis
   const len = Math.max(model.length, llm.length, riskSp.length);
   const allVals = [
-    ...model.flatMap((h) => [h.cumulative_return_pct, h.benchmark_60_40_return_pct ?? 0, h.benchmark_sp500_return_pct ?? 0]),
+    ...model.flatMap((h) => [h.cumulative_return_pct, h.benchmark_60_40_return_pct ?? 0, h.benchmark_sp500_return_pct ?? 0, h.benchmark_acwi_return_pct ?? 0]),
     ...llm.flatMap((h) => [h.cumulative_return_pct]),
     ...riskSp.flatMap((h) => [h.cumulative_return_pct]),
   ];
@@ -606,7 +623,7 @@ function EquityChart5({
 
   const linePath = (
     series: AiPortfolioPerformanceResponse["history"],
-    key: "cumulative_return_pct" | "benchmark_60_40_return_pct" | "benchmark_sp500_return_pct",
+    key: "cumulative_return_pct" | "benchmark_60_40_return_pct" | "benchmark_sp500_return_pct" | "benchmark_acwi_return_pct",
   ) =>
     series
       .map((h, i) => {
@@ -624,6 +641,7 @@ function EquityChart5({
 
       <path d={linePath(model, "benchmark_sp500_return_pct")} fill="none" stroke="var(--deflation)" strokeWidth={1.5} strokeDasharray="4 3" />
       <path d={linePath(model, "benchmark_60_40_return_pct")} fill="none" stroke="var(--muted)" strokeWidth={1.5} strokeDasharray="2 3" />
+      <path d={linePath(model, "benchmark_acwi_return_pct")} fill="none" stroke="var(--accent)" strokeWidth={1.5} strokeDasharray="6 3" />
       <path d={linePath(model, "cumulative_return_pct")} fill="none" stroke="var(--reflation)" strokeWidth={2.5} />
       <path d={linePath(llm, "cumulative_return_pct")} fill="none" stroke="var(--stagflation)" strokeWidth={2.5} />
       <path d={linePath(riskSp, "cumulative_return_pct")} fill="none" stroke="var(--goldilocks)" strokeWidth={2.5} />
@@ -639,6 +657,8 @@ function EquityChart5({
         <text x={18} y={48} fill="var(--text)">60/40</text>
         <rect width={12} height={3} y={56} fill="var(--deflation)" />
         <text x={18} y={62} fill="var(--text)">S&amp;P 500</text>
+        <rect width={12} height={3} y={70} fill="var(--accent)" />
+        <text x={18} y={76} fill="var(--text)">MSCI ACWI</text>
       </g>
     </svg>
   );

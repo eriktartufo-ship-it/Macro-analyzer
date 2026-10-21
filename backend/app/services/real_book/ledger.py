@@ -7,6 +7,16 @@ Regole, scritte una volta sola:
 - costo medio di carico COMPRENSIVO di commissioni (come lo calcola il fisco italiano);
 - niente leva: un acquisto che non sta nella cassa si riduce, non va in negativo
   ([[feedback_no_leverage_margin]]).
+
+Tasse italiane (2026-10-21, Erik: «di base conta che ci sia»), regime amministrato: il broker
+trattiene alla fonte, a ogni vendita e a ogni cedola.
+- ETF/fondi (`oicr`): plusvalenza = reddito di CAPITALE, tassata subito (26%, 12,5% sui fondi di
+  titoli di Stato) e NON compensabile; la minusvalenza è reddito diverso ⇒ entra nello zainetto.
+- ETC/ETN/ETP (`diversi`): plusvalenza = reddito DIVERSO ⇒ prima consuma lo zainetto, poi 26%.
+- Zainetto: scade il 31/12 del quarto anno successivo; le perdite su strumenti al 12,5% entrano al
+  48,08% (12,5/26), come per i titoli di Stato.
+- Cedole: trattenuta all'aliquota dello strumento.
+Semplificazioni dichiarate: niente bollo (0,2%/anno), niente interessi sulla liquidità.
 """
 from __future__ import annotations
 
@@ -47,6 +57,82 @@ class LedgerState:
     fees: float = 0.0
     spread: float = 0.0
     dividends: float = 0.0
+    taxes: float = 0.0
+    # zainetto: [importo residuo, anno di scadenza]
+    zainetto: list[list[float]] = field(default_factory=list)
+
+
+GOVT_LOSS_FACTOR = 0.125 / 0.26  # 48,08%
+
+
+def zainetto_available(state: LedgerState, year: int) -> float:
+    return sum(z[0] for z in state.zainetto if z[1] >= year)
+
+
+def tax_on_realized(state: LedgerState, realized: float, tax_class: str, rate: float,
+                    year: int) -> tuple[float, float, float]:
+    """Tassa una plusvalenza o registra una minusvalenza. Muta la cassa e lo zainetto.
+    Ritorna (tassa trattenuta, zainetto usato, zainetto aggiunto)."""
+    if realized < 0:
+        added = -realized * (GOVT_LOSS_FACTOR if rate < 0.26 else 1.0)
+        state.zainetto.append([added, year + 4])
+        return 0.0, 0.0, added
+    if realized == 0:
+        return 0.0, 0.0, 0.0
+    used = 0.0
+    taxable = realized
+    if tax_class == "diversi":
+        for z in sorted(state.zainetto, key=lambda z: z[1]):
+            if z[1] < year or taxable <= 0:
+                continue
+            take = min(z[0], taxable)
+            z[0] -= take
+            taxable -= take
+            used += take
+        state.zainetto = [z for z in state.zainetto if z[0] > 1e-9]
+    tax = taxable * rate
+    state.cash -= tax
+    state.taxes += tax
+    return tax, used, 0.0
+
+
+def replay_tax(state: LedgerState, tax: float, used: float, added: float, year: int) -> None:
+    """Rigioca una tassazione già calcolata (ricostruzione dello stato dai movimenti)."""
+    state.cash -= tax
+    state.taxes += tax
+    for z in sorted(state.zainetto, key=lambda z: z[1]):
+        if used <= 0:
+            break
+        if z[1] < year:
+            continue
+        take = min(z[0], used)
+        z[0] -= take
+        used -= take
+    state.zainetto = [z for z in state.zainetto if z[0] > 1e-9]
+    if added > 0:
+        state.zainetto.append([added, year + 4])
+
+
+def latent_tax(state: LedgerState, prices: dict[str, float], tax_info: dict[str, tuple[str, float]],
+               year: int) -> float:
+    """Tasse che si pagherebbero vendendo tutto oggi (per il valore netto di liquidazione).
+    Le perdite latenti non valgono soldi: genererebbero solo zainetto."""
+    pool = zainetto_available(state, year)
+    total = 0.0
+    for lot in state.lots.values():
+        p = prices.get(lot.instrument_key)
+        if lot.qty <= 0 or not p:
+            continue
+        gain = lot.qty * p - lot.cost_eur
+        if gain <= 0:
+            continue
+        cls, rate = tax_info.get(lot.instrument_key, ("oicr", 0.26))
+        if cls == "diversi":
+            use = min(pool, gain)
+            pool -= use
+            gain -= use
+        total += gain * rate
+    return total
 
 
 def fill_price(open_price: float, half_spread: float, side: str) -> float:
@@ -133,9 +219,11 @@ def apply_sell(state: LedgerState, asset: str, f: Fill) -> tuple[Lot, float]:
     return lot, realized
 
 
-def apply_dividend(state: LedgerState, amount: float) -> None:
-    state.cash += amount
+def apply_dividend(state: LedgerState, amount: float, tax: float = 0.0) -> None:
+    """Cedola lorda `amount`, ritenuta `tax` trattenuta alla fonte."""
+    state.cash += amount - tax
     state.dividends += amount
+    state.taxes += tax
 
 
 def nav(state: LedgerState, prices: dict[str, float]) -> tuple[float, float]:
