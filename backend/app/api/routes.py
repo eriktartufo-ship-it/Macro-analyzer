@@ -1679,6 +1679,58 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
     }
 
 
+# ---------------------------------------------------------------------------
+# Libro reale (2026-10-21): i 3 bot copiati su ETF UCITS in euro. Letture pubbliche per
+# asset class; strumento/ISIN/quantità solo col token admin (scelta Erik: niente
+# raccomandazioni su strumenti specifici sul sito pubblico).
+# ---------------------------------------------------------------------------
+
+_RB_STRATEGIES = ("model_driven", "llm_driven", "risk_managed_sp")
+
+
+@router.get("/real-book/overview")
+def get_real_book_overview(db: Session = Depends(get_db), admin: bool = Depends(is_admin)):
+    from app.services.real_book import views
+    return views.overview(db, admin=admin)
+
+
+@router.get("/real-book/journal")
+def get_real_book_journal(
+    strategy: str | None = Query(default=None),
+    limit: int = Query(default=60, ge=1, le=500),
+    db: Session = Depends(get_db),
+    admin: bool = Depends(is_admin),
+):
+    from app.services.real_book import views
+    if strategy is not None and strategy not in _RB_STRATEGIES:
+        raise HTTPException(status_code=400, detail=f"strategia sconosciuta: {strategy}")
+    return views.journal(db, strategy=strategy, limit=limit, admin=admin)
+
+
+@router.get("/real-book/nav")
+def get_real_book_nav(
+    strategy: str = Query(default="model_driven"),
+    days: int = Query(default=365, ge=1, le=3650),
+    db: Session = Depends(get_db),
+):
+    from app.services.real_book import views
+    if strategy not in _RB_STRATEGIES:
+        raise HTTPException(status_code=400, detail=f"strategia sconosciuta: {strategy}")
+    return views.nav_series(db, strategy=strategy, days=days)
+
+
+@router.post("/real-book/run", dependencies=[Depends(require_admin)])
+def post_real_book_run(
+    phase: str = Query(default="scan", pattern="^(scan|close)$"),
+    db: Session = Depends(get_db),
+):
+    """Lancio manuale: `scan` crea gli ordini dallo stato dei bot, `close` esegue + cedole + valore."""
+    from app.services.real_book import book
+    if phase == "scan":
+        return {"phase": phase, "summary": book.run_after_scan(db)}
+    return {"phase": phase, "summary": book.run_after_close(db)}
+
+
 @router.get("/fomc/report", response_model=FOMCReportResponse)
 def get_fomc_report(
     limit: int = Query(default=6, ge=1, le=12),

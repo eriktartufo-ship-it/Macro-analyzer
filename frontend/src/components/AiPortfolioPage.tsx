@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
 import { useCurrentLlmModel } from "../hooks/useCurrentLlmModel";
+import { RealBookPanel } from "./RealBookPanel";
 import type {
   AiPortfolioDecision,
   AiPortfolioLearning,
@@ -347,6 +348,9 @@ export function AiPortfolioPage() {
           <div style={{ fontSize: 10, color: "var(--muted)" }}>Provider: {reasoning.provider}</div>
         </div>
       )}
+
+      {/* Libro reale: lo stesso bot su ETF UCITS in euro (2026-10-21) */}
+      <RealBookPanel strategy={activeStrategy} label={meta.label} color={meta.color} />
 
       {/* Positions table */}
       <div className="card" style={{ marginTop: 12 }}>

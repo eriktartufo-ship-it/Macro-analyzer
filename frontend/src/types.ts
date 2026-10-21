@@ -1002,3 +1002,94 @@ export interface DataQuality {
   results: DataQualityResult[];
   history?: { checked_at: string; n_ok: number; n_fail: number; n_na: number }[];
 }
+
+// ---------------------------------------------------------------------------
+// Libro reale (2026-10-21): i 3 bot copiati su ETF UCITS in euro.
+// I campi `instrument`, `quantity`, prezzi unitari e `note` arrivano SOLO col token admin.
+// ---------------------------------------------------------------------------
+
+export interface RealBookInstrument {
+  key: string;
+  name: string;
+  ticker: string;
+  isin: string;
+  exchange: string;
+  kind: string;
+}
+
+export interface RealBookMovement {
+  id: number;
+  strategy: string;
+  asset_class: string;
+  asset_label: string;
+  side: "buy" | "sell" | "dividend";
+  kind: string;
+  kind_label: string;
+  status: "pending" | "filled" | "cancelled" | "skipped";
+  status_label: string;
+  tranche_index: number;
+  tranches_total: number;
+  decided_on: string;
+  decided_at: string | null;
+  fill_date: string | null;
+  fill_at: string | null;
+  gross_eur: number;
+  fee_eur: number;
+  spread_eur: number;
+  weight_after_pct: number | null;
+  realized_pnl_eur: number | null;
+  realized_pnl_pct: number | null;
+  narrative: string | null;
+  narrative_source: string | null;
+  exit_plan: string | null;
+  instrument?: RealBookInstrument | null;
+  quantity?: number;
+  est_price_eur?: number | null;
+  fill_price_eur?: number | null;
+  avg_price_after_eur?: number | null;
+  position_qty_after?: number | null;
+  cash_after_eur?: number | null;
+  note?: string | null;
+}
+
+export interface RealBookPosition {
+  asset_class: string;
+  asset_label: string;
+  value_eur: number | null;
+  weight_pct: number | null;
+  pnl_pct: number | null;
+  tranches_filled: number | null;
+  tranches_total: number | null;
+  instrument?: RealBookInstrument | null;
+  qty?: number;
+  price_eur?: number | null;
+  avg_price_eur?: number | null;
+}
+
+export interface RealBookStrategy {
+  started_on: string;
+  initial_capital_eur: number;
+  nav: {
+    date: string;
+    nav_eur: number;
+    cash_eur: number;
+    invested_eur: number;
+    cumulative_return_pct: number;
+    bot_return_pct: number | null;
+    benchmark_return_pct: number | null;
+    reality_gap_pct: number | null;
+    fees_cum_eur: number;
+    spread_cum_eur: number;
+    dividends_cum_eur: number;
+    n_positions: number;
+  } | null;
+  positions: RealBookPosition[];
+  concentration: { assets: string[]; weight_pct: number; instrument_key?: string }[];
+  pending_orders: number;
+}
+
+export interface RealBookOverview {
+  strategies: Record<string, RealBookStrategy | null>;
+  admin: boolean;
+  benchmark_label: string;
+}
