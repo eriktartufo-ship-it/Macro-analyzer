@@ -2040,11 +2040,15 @@ def monthly_calibration_refresh():
         logger.error(f"monthly_calibration_refresh failed: {e}")
 
 
+AI_SCAN_HOUR_UTC = 5
+AI_SCAN_MINUTE_UTC = 30
+
+
 def ai_portfolio_daily_scan():
     """Daily AI Portfolio scan + performance snapshot.
 
-    Runs dopo daily_macro_refresh (30 minuti dopo) per usare gli ultimi
-    DailySignal + RegimeClassification.
+    Gira alle 05:30 UTC (vedi start_scheduler): dopo daily_macro_refresh (DailySignal +
+    RegimeClassification già aggiornati) e con la chiusura di Wall Street già pubblicata da Yahoo.
     """
     from app.database import SessionLocal
     from app.services.ai_portfolio import (
@@ -2133,12 +2137,17 @@ def start_scheduler():
         id="daily_macro_refresh",
         replace_existing=True,
     )
-    # AI Portfolio: 30 minuti dopo daily_refresh, usa i dati appena aggiornati
+    # AI Portfolio alle 05:30 UTC (2026-10-22; prima: 30 minuti dopo daily_refresh, cioè 00:30 UTC).
+    # Alle 00:30 UTC sono le 20:30 a New York dello STESSO giorno e Yahoo non ha ancora la seduta
+    # chiusa: il 22/10 il cancello ha visto come ultima chiusura il 20 e i bot hanno saltato il giro
+    # (alle 06:26 UTC il 21 c'era). Alle 05:30 la chiusura c'è, i dati macro delle 00:00 pure, e si è
+    # ancora prima dell'apertura di Xetra (07:00 UTC d'estate, 08:00 d'inverno): il libro reale
+    # esegue la mattina stessa.
     scheduler.add_job(
         ai_portfolio_daily_scan,
         "cron",
-        hour=settings.scheduler_hour,
-        minute=(settings.scheduler_minute + 30) % 60,
+        hour=AI_SCAN_HOUR_UTC,
+        minute=AI_SCAN_MINUTE_UTC,
         id="ai_portfolio_daily_scan",
         replace_existing=True,
     )
@@ -2192,7 +2201,8 @@ def start_scheduler():
     logger.info(
         f"Scheduler avviato: macro refresh alle "
         f"{settings.scheduler_hour:02d}:{settings.scheduler_minute:02d} UTC, "
-        f"insider refresh alle 03:00 UTC"
+        f"insider refresh alle 03:00 UTC, bot AI alle {AI_SCAN_HOUR_UTC:02d}:{AI_SCAN_MINUTE_UTC:02d} UTC, "
+        f"libro reale dopo la chiusura alle 17:15 UTC"
     )
 
 

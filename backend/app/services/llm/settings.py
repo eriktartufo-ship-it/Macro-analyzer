@@ -46,6 +46,12 @@ DEFAULT_MODEL = "gemini-3.8-flash"
 # Modelli Gemini disponibili (doc ai.google.dev/gemini-api/docs/models, 2026-09-05).
 # Selezione: text reasoning models, no image/video/audio/embedding.
 AVAILABLE_MODELS = [
+    # Gemini 4 — 2026-10-22: «Gemini 4 Flash» NON esiste ancora (nessun annuncio Google, la chiave
+    # non lo vede). Esiste Gemini 4 Argon (annunciato 30/09): risponde con la nostra chiave, ma NON è
+    # un Flash e costa ~2,7× il 3.8-flash ($2/$10 promo fino al 30/11, poi $4/$20, fonti terze:
+    # la pagina prezzi Google non letta). Selezionabile dal pannello; il default resta 3.8-flash
+    # finché la qualità sull'analisi macro non è misurata.
+    "gemini-4-argon",
     # Gemini 3.x — generazione corrente
     "gemini-3.8-flash",          # stable dal 02/09/2026, most intelligent (DEFAULT)
     "gemini-3.7-flash",          # stable, generazione precedente
@@ -62,8 +68,20 @@ AVAILABLE_MODELS = [
 
 
 def is_gemini_3(model: Optional[str] = None) -> bool:
-    """True se il modello è della linea 3.x (regole di config diverse dalla 2.x)."""
-    return (model or get_model()).lower().startswith("gemini-3")
+    """True se il modello è della linea 3.x O SUCCESSIVA (regole di config diverse dalla 2.x).
+
+    2026-10-22: era `startswith("gemini-3")`, quindi `gemini-4-argon` riceveva la config dei 2.x
+    (`temperature` + `thinkingBudget: 0`). Argon la accetta con un 200, che è proprio il guasto
+    della S48: parametri accettati e ignorati, una leva che si crede accesa. Sonda del 22/10 su
+    Argon: thinkingLevel low/medium/high = 200, minimal = 400 (come il 3.8).
+    """
+    import re
+
+    m = re.match(r"gemini-(\d+)", (model or get_model()).lower())
+    if m:
+        return int(m.group(1)) >= 3
+    # alias senza numero (`gemini-flash-latest`, `gemini-pro-latest`) puntano all'ultima release
+    return (model or get_model()).lower().endswith("-latest")
 
 
 def generation_config(

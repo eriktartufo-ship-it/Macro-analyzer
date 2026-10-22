@@ -45,7 +45,8 @@ def corrected_history(rows: list, fetch=None) -> tuple[list[dict], dict]:
         return [_raw(r) for r in rows], {"corrected": False, "duplicates": 0}
 
     cal = close_dates(px["sp500"])
-    refs = [ref_close(cal, r.date) for r in rows]
+    # la chiusura salvata dallo snapshot vince sulla ricostruzione dal calendario (2026-10-22)
+    refs = [getattr(r, "price_date", None) or ref_close(cal, r.date) for r in rows]
     first_idx = cal.index(refs[0]) if refs[0] in cal else 0
     base = cal[max(0, first_idx - 1)]
 

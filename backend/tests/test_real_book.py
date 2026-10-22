@@ -584,3 +584,16 @@ def test_valore_lordo_netto_e_tre_benchmark_in_euro(db):
     # libro: oro (ETC) in guadagno latente ⇒ netto < lordo
     assert row.latent_tax_eur > 0 and row.return_net_pct < row.return_gross_pct
     assert row.return_gross_pct == pytest.approx((row.nav_eur + row.taxes_cum_eur) / 100_000 - 1)
+
+
+def test_ordine_deciso_dopo_l_apertura_parte_il_giorno_dopo(db):
+    # un giro rilanciato a mano a metà mattina non può comprare al prezzo delle 09:00 di quel giorno
+    from app.services.real_book import book
+
+    _pos(db, "gold", 0.20, 3, 3)
+    m = FakeMarket(DAYS)
+    book.mirror(db, "model_driven", m, datetime(2026, 10, 19, 9, 30))  # lunedì 09:30 UTC, dopo le 07:00
+    db.commit()
+    book.fill_pending(db, "model_driven", m, date(2026, 10, 20))
+    [mv] = _mov(db, side="buy")
+    assert mv.fill_date == date(2026, 10, 20)  # non il 19
