@@ -217,7 +217,7 @@ function SnapshotView({ section }: { section: "ragiona" | "dati" }) {
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
               I pesi di un regime non sommano per forza a 1: ogni condizione aggiunge al fit in proporzione al suo peso.
             </div>
-            <div className="segmented" style={{ marginBottom: 12 }} role="tablist" aria-label="Regime">
+            <div className="segmented seg-regimi" style={{ marginBottom: 12 }} role="tablist" aria-label="Regime">
               {REGIMES.map((r) => (
                 <button
                   key={r}
@@ -238,14 +238,14 @@ function SnapshotView({ section }: { section: "ragiona" | "dati" }) {
               <thead>
                 <tr>
                   <th>Condizione</th>
-                  <th className="num">Peso</th>
+                  <th className="num nowrap-cell">Peso</th>
                 </tr>
               </thead>
               <tbody>
                 {conds.map((c) => (
                   <tr key={c.name} title={c.name}>
                     <td style={{ fontSize: 13 }}>{c.description}</td>
-                    <td className="num">{formatValue(c.weight)}</td>
+                    <td className="num nowrap-cell">{formatValue(c.weight)}</td>
                   </tr>
                 ))}
               </tbody>
