@@ -175,3 +175,12 @@ class TestStatsPerVersione:
         assert out["version"] == "v1.1-sealed-2026-10-22"
         assert out["summary"]["n_evaluated"] == 1
         assert tutte["version"] is None and tutte["summary"]["n_evaluated"] == 4
+
+
+def test_versione_vuota_vuol_dire_tutte():
+    import app.api.routes as routes
+
+    db = TestStatsPerVersione()._db()
+    with patch("app.services.validation.prediction_logger._ensure_table_exists"):
+        out = routes.get_prediction_log_stats(horizon="3m", version="", db=db)
+    assert out["version"] is None and out["summary"]["n_evaluated"] == 4
