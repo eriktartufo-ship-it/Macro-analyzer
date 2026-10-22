@@ -16,6 +16,8 @@ const CONFIDENCE_COLORS: Record<string, string> = {
   low: "var(--stagflation)",
 };
 
+const CONFIDENCE_IT: Record<string, string> = { high: "alta", medium: "media", low: "bassa" };
+
 function timeAgo(iso: string): string {
   try {
     const ts = new Date(iso).getTime();
@@ -107,7 +109,7 @@ export function MacroLlmAnalysisPanel() {
             {/* `data.provider` e' il modello che ha scritto QUESTA analisi, non quello
                 impostato adesso: l'analisi e' in cache, quindi i due possono differire. */}
             {data.provider || "modello non registrato"} · {timeAgo(data.cached_at)}
-            {data.stale && " · stale"}
+            {data.stale && " · da aggiornare"}
           </span>
         </h2>
         <div style={{ display: "flex", gap: 6 }}>
@@ -124,7 +126,7 @@ export function MacroLlmAnalysisPanel() {
             }}
             title="Impostazioni LLM (API key + modello)"
           >
-            ⚙ Settings
+            ⚙ Impostazioni
           </button>
           <button
             onClick={() => load(true)}
@@ -221,11 +223,13 @@ export function MacroLlmAnalysisPanel() {
           Orizzonte: <strong style={{ color: "var(--text)" }}>{data.time_horizon}</strong>
         </span>
         <span>
-          Confidence:{" "}
-          <strong style={{ color: confColor }}>{data.confidence_qualitative}</strong>
+          Fiducia:{" "}
+          <strong style={{ color: confColor }}>
+            {CONFIDENCE_IT[data.confidence_qualitative.toLowerCase()] ?? data.confidence_qualitative}
+          </strong>
         </span>
         <span style={{ marginLeft: "auto", fontSize: 10 }}>
-          Cache 24h · {data.cache_hit ? "served from cache" : "fresh"}
+          {data.cache_hit ? "Analisi delle ultime 24 ore" : "Analisi appena generata"}
         </span>
       </div>
     </div>

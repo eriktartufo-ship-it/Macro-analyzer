@@ -30,15 +30,15 @@ DEFAULT_UNIVERSE = [
 EXTRA_FLOW_ASSETS = ["sector_semiconductors"]
 
 LABELS = {
-    "us_equities_growth": "US Growth", "us_equities_value": "US Value",
-    "international_dm_equities": "Intl DM", "em_equities": "Emerging",
-    "us_bonds_long": "Long Bonds", "tips_inflation_bonds": "TIPS",
-    "gold": "Gold", "silver": "Silver", "broad_commodities": "Commodities",
-    "energy": "Energy", "real_estate_reits": "REITs",
-    "sector_energy": "Sect. Energy", "sector_financials": "Financials",
-    "sector_utilities": "Utilities", "sector_technology": "Technology",
-    "sector_healthcare": "Healthcare", "sector_staples": "Staples",
-    "sector_semiconductors": "Semiconductors",
+    "us_equities_growth": "USA growth", "us_equities_value": "USA value",
+    "international_dm_equities": "Sviluppati ex-USA", "em_equities": "Emergenti",
+    "us_bonds_long": "Bond lunghi", "tips_inflation_bonds": "TIPS",
+    "gold": "Oro", "silver": "Argento", "broad_commodities": "Materie prime",
+    "energy": "Energia (mat.)", "real_estate_reits": "REIT",
+    "sector_energy": "Sett. energia", "sector_financials": "Finanziari",
+    "sector_utilities": "Utility", "sector_technology": "Tecnologia",
+    "sector_healthcare": "Sanità", "sector_staples": "Beni primari",
+    "sector_semiconductors": "Semiconduttori",
 }
 
 

@@ -16,6 +16,8 @@ default neutri possono attenuare il segnale. Best signal post-2010.
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 
 from sqlalchemy.orm import Session
@@ -94,7 +96,7 @@ def compute_crisis_history(
 
     dedollar_lookup = _load_dedollar_lookup(db)
 
-    out: list[CrisisHistoryPoint] = []
+    to_assess: list[tuple[RegimeClassification, dict]] = []
     for rec in records:
         meta = {}
         if rec.conditions_met:
@@ -106,32 +108,62 @@ def compute_crisis_history(
         if not indicators:
             # Senza indicators non si può valutare → skip
             continue
+        to_assess.append((rec, indicators))
 
-        ded = _dedollar_for_date(str(rec.date), dedollar_lookup)
-
-        try:
-            assessment = assess_crisis_risk(
-                indicators,
-                dedollar_combined=ded,
-                date=str(rec.date),
-            )
-        except Exception:
-            continue
-
-        fired = sum(1 for t in assessment.triggers if t.get("fired"))
-        out.append(CrisisHistoryPoint(
-            date=assessment.date,
-            risk_level=assessment.risk_level,
-            risk_score=assessment.risk_score,
-            crisis_type=assessment.crisis_type,
-            crisis_type_confidence=assessment.crisis_type_confidence,
-            historical_analog=assessment.historical_analog,
-            triggers_fired=fired,
-            triggers_total=len(assessment.triggers),
-            summary=assessment.summary,
-        ))
+    out: list[CrisisHistoryPoint] = []
+    with _ml_in_blocco([ind for _, ind in to_assess]):
+        for rec, indicators in to_assess:
+            point = _assess_point(rec, indicators, dedollar_lookup)
+            if point is not None:
+                out.append(point)
 
     return out
+
+
+@contextmanager
+def _ml_in_blocco(indicators_list: list[dict]) -> Generator[None, None, None]:
+    """Il classificatore dentro ogni valutazione chiama la foresta ML su un giorno alla
+    volta (~10 ms l'uno): qui si calcolano tutti i giorni in un colpo solo."""
+    from app.services.config_flags import use_ml_regime_blend
+
+    if not indicators_list or not use_ml_regime_blend():
+        yield
+        return
+    from app.services.regime.ml_classifier import batched_predictions
+    from app.services.regime.ml_ensemble import get_or_train_bundle
+
+    with batched_predictions(indicators_list, get_or_train_bundle()):
+        yield
+
+
+def _assess_point(
+    rec: RegimeClassification,
+    indicators: dict,
+    dedollar_lookup: dict[str, float],
+) -> CrisisHistoryPoint | None:
+    ded = _dedollar_for_date(str(rec.date), dedollar_lookup)
+
+    try:
+        assessment = assess_crisis_risk(
+            indicators,
+            dedollar_combined=ded,
+            date=str(rec.date),
+        )
+    except Exception:
+        return None
+
+    fired = sum(1 for t in assessment.triggers if t.get("fired"))
+    return CrisisHistoryPoint(
+        date=assessment.date,
+        risk_level=assessment.risk_level,
+        risk_score=assessment.risk_score,
+        crisis_type=assessment.crisis_type,
+        crisis_type_confidence=assessment.crisis_type_confidence,
+        historical_analog=assessment.historical_analog,
+        triggers_fired=fired,
+        triggers_total=len(assessment.triggers),
+        summary=assessment.summary,
+    )
 
 
 def aggregate_crisis_stats(points: list[CrisisHistoryPoint]) -> dict:

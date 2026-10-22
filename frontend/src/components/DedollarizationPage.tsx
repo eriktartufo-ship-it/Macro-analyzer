@@ -24,11 +24,11 @@ function scoreColor(score: number): string {
 }
 
 function scoreLabel(score: number): string {
-  if (score >= 0.75) return "Extreme";
-  if (score >= 0.6) return "High";
-  if (score >= 0.4) return "Moderate";
-  if (score >= 0.25) return "Low";
-  return "Minimal";
+  if (score >= 0.75) return "Estremo";
+  if (score >= 0.6) return "Alto";
+  if (score >= 0.4) return "Moderato";
+  if (score >= 0.25) return "Basso";
+  return "Minimo";
 }
 
 function renderInline(text: string): React.ReactNode[] {
@@ -91,33 +91,33 @@ const PLAYER_HINTS: Record<string, string> = {
 type HorizonMeta = Record<string, { label: string; hint: string }>;
 
 const CYCLICAL_META: HorizonMeta = {
-  usd_weakness: { label: "USD Weakness (12m)", hint: "Variazione dollaro 12m: calo = dedollarizzazione ciclica" },
-  gold_strength: { label: "Gold Strength (12m)", hint: "Crescita oro 12m: alta = domanda di safe-haven" },
-  gold_oil_ratio: { label: "Gold / Oil Ratio", hint: "Oro/petrolio: alto = preferenza per riserva di valore vs energia" },
-  debt_burden: { label: "Debt Burden", hint: "Debito/PIL USA: >100% = zona critica per sostenibilita" },
-  real_rate_signal: { label: "Real Rate Signal", hint: "Tasso reale (FedFunds - CPI): negativo = svalutazione monetaria" },
-  monetary_debasement: { label: "M2 Debasement (12m)", hint: "Crescita M2 12m: alta = diluizione del valore del dollaro" },
+  usd_weakness: { label: "Dollaro debole (12 mesi)", hint: "Variazione dollaro 12m: calo = dedollarizzazione ciclica" },
+  gold_strength: { label: "Oro forte (12 mesi)", hint: "Crescita oro 12m: alta = domanda di safe-haven" },
+  gold_oil_ratio: { label: "Rapporto oro / petrolio", hint: "Oro/petrolio: alto = preferenza per riserva di valore vs energia" },
+  debt_burden: { label: "Peso del debito", hint: "Debito/PIL USA: >100% = zona critica per sostenibilita" },
+  real_rate_signal: { label: "Tasso reale", hint: "Tasso reale (FedFunds - CPI): negativo = svalutazione monetaria" },
+  monetary_debasement: { label: "Massa monetaria M2 (12 mesi)", hint: "Crescita M2 12m: alta = diluizione del valore del dollaro" },
 };
 
 const STRUCTURAL_META: HorizonMeta = {
-  usd_secular: { label: "USD Decline (5Y)", hint: "Trend dollaro su 5 anni: calo persistente = declino strutturale" },
-  gold_secular: { label: "Gold Rise (5Y)", hint: "Trend oro su 5 anni: crescita = sfiducia strutturale nel fiat" },
-  debt_trajectory: { label: "Debt Trajectory (5Y)", hint: "Variazione Debito/PIL su 5 anni: +20pp = espansione insostenibile" },
-  m2_cumulative: { label: "M2 Cumulative (5Y)", hint: "Crescita M2 cumulata 5 anni: alta = debasement persistente" },
+  usd_secular: { label: "Dollaro in calo (5 anni)", hint: "Trend dollaro su 5 anni: calo persistente = declino strutturale" },
+  gold_secular: { label: "Oro in salita (5 anni)", hint: "Trend oro su 5 anni: crescita = sfiducia strutturale nel fiat" },
+  debt_trajectory: { label: "Andamento del debito (5 anni)", hint: "Variazione Debito/PIL su 5 anni: +20pp = espansione insostenibile" },
+  m2_cumulative: { label: "M2 cumulata (5 anni)", hint: "Crescita M2 cumulata 5 anni: alta = debasement persistente" },
 };
 
 const DECADE_META: HorizonMeta = {
-  usd_decade: { label: "USD Decline (10Y)", hint: "Trend dollaro su 10 anni: calo secolare confermato" },
-  gold_decade: { label: "Gold Rise (10Y)", hint: "Trend oro su 10 anni: super-ciclo rialzista" },
-  debt_decade: { label: "Debt Growth (10Y)", hint: "Crescita debito/PIL in un decennio: +30pp = esplosione" },
-  m2_decade: { label: "M2 Expansion (10Y)", hint: "Espansione M2 decennale: strutturale e difficile da invertire" },
+  usd_decade: { label: "Dollaro in calo (10 anni)", hint: "Trend dollaro su 10 anni: calo secolare confermato" },
+  gold_decade: { label: "Oro in salita (10 anni)", hint: "Trend oro su 10 anni: super-ciclo rialzista" },
+  debt_decade: { label: "Debito in crescita (10 anni)", hint: "Crescita debito/PIL in un decennio: +30pp = esplosione" },
+  m2_decade: { label: "Espansione M2 (10 anni)", hint: "Espansione M2 decennale: strutturale e difficile da invertire" },
 };
 
 const TWENTY_META: HorizonMeta = {
-  usd_20y: { label: "USD Decline (20Y)", hint: "Trend dollaro su 20 anni: declino generazionale" },
-  gold_20y: { label: "Gold Rise (20Y)", hint: "Trend oro su 20 anni: crescita secolare plurigenerazionale" },
-  debt_20y: { label: "Debt Growth (20Y)", hint: "Crescita debito/PIL su 20 anni: traiettoria storica" },
-  m2_20y: { label: "M2 Expansion (20Y)", hint: "Espansione M2 su 20 anni: misura la stampa monetaria cumulata" },
+  usd_20y: { label: "Dollaro in calo (20 anni)", hint: "Trend dollaro su 20 anni: declino generazionale" },
+  gold_20y: { label: "Oro in salita (20 anni)", hint: "Trend oro su 20 anni: crescita secolare plurigenerazionale" },
+  debt_20y: { label: "Debito in crescita (20 anni)", hint: "Crescita debito/PIL su 20 anni: traiettoria storica" },
+  m2_20y: { label: "Espansione M2 (20 anni)", hint: "Espansione M2 su 20 anni: misura la stampa monetaria cumulata" },
 };
 
 // ── Componenti UI ──
@@ -177,13 +177,13 @@ function SignalRow({ signal }: { signal: PlayerSignal }) {
                 color: "var(--deflation)",
               }}
             >
-              RED FLAG
+              ALLARME
             </span>
           )}
         </span>
         {hasValue && (
           <span style={{ fontSize: 12, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
-            w: {(signal.weight * 100).toFixed(0)}%
+            peso {(signal.weight * 100).toFixed(0)}%
           </span>
         )}
         {hasValue && (
@@ -226,7 +226,8 @@ function PlayerSection({
   player: PlayerScore;
   history: Array<{ date: string; players: Record<string, number> }>;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  // Chiuso di default: 11 gruppi aperti facevano 4.300 px. In testa restano punteggio e allarmi.
+  const [expanded, setExpanded] = useState(false);
   const [chartOpen, setChartOpen] = useState(false);
   const redFlags = player.signals.filter((s) => s.red_flag).length;
   const validSignals = player.signals.filter((s) => s.value !== null).length;
@@ -256,7 +257,7 @@ function PlayerSection({
           {hint && <span style={{ flex: 1, minWidth: 140 }}>{hint}</span>}
           {redFlags > 0 && (
             <span className="chip chip-danger" data-nowrap>
-              {redFlags} RED FLAG{redFlags > 1 ? "S" : ""}
+              {redFlags} {redFlags > 1 ? "ALLARMI" : "ALLARME"}
             </span>
           )}
           <span data-nowrap>
@@ -277,7 +278,7 @@ function PlayerSection({
               }}
               data-nowrap
             >
-              {chartOpen ? "▾ chart" : "▸ chart"}
+              {chartOpen ? "▾ grafico" : "▸ grafico"}
             </span>
           )}
         </span>
@@ -364,10 +365,10 @@ function HorizonBars({
 
 const HORIZON_COLS = [
   { key: "now", label: "Oggi" },
-  { key: "1y", label: "1Y" },
-  { key: "5y", label: "5Y" },
-  { key: "10y", label: "10Y" },
-  { key: "20y", label: "20Y" },
+  { key: "1y", label: "1 anno" },
+  { key: "5y", label: "5 anni" },
+  { key: "10y", label: "10 anni" },
+  { key: "20y", label: "20 anni" },
 ];
 
 const cellStyle: React.CSSProperties = {
@@ -435,21 +436,21 @@ function PlayerHorizonRow({
 }
 
 function accelLabel(accel: number): { text: string; color: string } {
-  if (accel > 0.3) return { text: "Accelerating fast", color: "var(--deflation)" };
-  if (accel > 0.1) return { text: "Accelerating", color: "var(--goldilocks)" };
-  if (accel > -0.1) return { text: "Stable pace", color: "var(--muted)" };
-  if (accel > -0.3) return { text: "Decelerating", color: "var(--reflation)" };
-  return { text: "Reversing", color: "var(--reflation)" };
+  if (accel > 0.3) return { text: "Accelera forte", color: "var(--deflation)" };
+  if (accel > 0.1) return { text: "Accelera", color: "var(--goldilocks)" };
+  if (accel > -0.1) return { text: "Passo stabile", color: "var(--muted)" };
+  if (accel > -0.3) return { text: "Rallenta", color: "var(--reflation)" };
+  return { text: "Si inverte", color: "var(--reflation)" };
 }
 
 // ── Pagina principale ──
 
 const DEDOLLAR_SERIES: ChartSeries[] = [
-  { key: "combined_score", label: "Combined", color: "var(--accent)" },
-  { key: "cyclical_score", label: "Cyclical 1Y", color: "var(--reflation)" },
-  { key: "structural_score", label: "Structural 5Y", color: "var(--goldilocks)" },
-  { key: "decade_score", label: "Decade 10Y", color: "var(--stagflation)" },
-  { key: "geopolitical_score", label: "Geopolitical", color: "var(--deflation)" },
+  { key: "combined_score", label: "Complessivo", color: "var(--accent)" },
+  { key: "cyclical_score", label: "Ciclico 1 anno", color: "var(--reflation)" },
+  { key: "structural_score", label: "Strutturale 5 anni", color: "var(--goldilocks)" },
+  { key: "decade_score", label: "Decennale", color: "var(--stagflation)" },
+  { key: "geopolitical_score", label: "Geopolitico", color: "var(--deflation)" },
 ];
 
 export function DedollarizationPage({ data }: Props) {
@@ -535,14 +536,14 @@ export function DedollarizationPage({ data }: Props) {
 
       {/* Top scores grid */}
       <div className="grid grid-6" style={{ gap: 12, marginBottom: 20 }}>
-        <HorizonScore label="Cyclical (1Y)" value={data.score} />
-        <HorizonScore label="Structural (5Y)" value={data.structural_score} />
-        <HorizonScore label="Decade (10Y)" value={data.decade_score} />
-        <HorizonScore label="20-Year" value={data.twenty_year_score} />
-        <HorizonScore label="Geopolitical" value={data.geopolitical_score} />
+        <HorizonScore label="Ciclico (1 anno)" value={data.score} />
+        <HorizonScore label="Strutturale (5 anni)" value={data.structural_score} />
+        <HorizonScore label="Decennale (10 anni)" value={data.decade_score} />
+        <HorizonScore label="Ventennale" value={data.twenty_year_score} />
+        <HorizonScore label="Geopolitico" value={data.geopolitical_score} />
         <div>
           <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", marginBottom: 4 }}>
-            Acceleration
+            Accelerazione
           </div>
           <div style={{ fontSize: 22, fontWeight: 700, color: accel.color }}>
             {data.acceleration > 0 ? "+" : ""}{(data.acceleration * 100).toFixed(0)}%
@@ -553,13 +554,13 @@ export function DedollarizationPage({ data }: Props) {
 
       <div className="surface" style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>Combined Score</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>Punteggio complessivo</span>
           <span style={{ fontSize: 20, fontWeight: 700, color: scoreColor(data.combined_score) }}>
             {(data.combined_score * 100).toFixed(0)}% — {scoreLabel(data.combined_score)}
           </span>
           {totalRedFlags > 0 && (
             <span className="chip chip-danger">
-              {totalRedFlags} RED FLAG{totalRedFlags > 1 ? "S" : ""} ATTIVI
+              {totalRedFlags} {totalRedFlags > 1 ? "ALLARMI ACCESI" : "ALLARME ACCESO"}
             </span>
           )}
         </div>
@@ -573,8 +574,8 @@ export function DedollarizationPage({ data }: Props) {
       {historyPoints.length > 1 && (
         <div style={{ marginBottom: 18 }}>
           <MultiLineChart
-            title="Dedollarization Timeline"
-            subtitle="12 mesi storici — score per orizzonte"
+            title="Dedollarizzazione nel tempo"
+            subtitle="ultimi 12 mesi — punteggio per orizzonte"
             points={historyPoints}
             series={DEDOLLAR_SERIES}
             yDomain={[0, 1]}
@@ -589,13 +590,13 @@ export function DedollarizationPage({ data }: Props) {
           onClick={() => setView("players")}
           className={view === "players" ? "active" : ""}
         >
-          Per Macro-Player
+          Per area
         </button>
         <button
           onClick={() => setView("horizon")}
           className={view === "horizon" ? "active" : ""}
         >
-          Per Orizzonte
+          Per orizzonte
         </button>
         <button
           onClick={() => setView("ai")}

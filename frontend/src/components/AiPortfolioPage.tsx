@@ -4,7 +4,7 @@ import { ScrollShadow } from "./ScrollShadow";
 import { useCurrentLlmModel } from "../hooks/useCurrentLlmModel";
 import { RealBookPanel } from "./RealBookPanel";
 import { Switch } from "./Switch";
-import { assetName } from "../lib/assets";
+import { assetName, regimeLabel } from "../lib/assets";
 import type {
   AiPortfolioDecision,
   AiPortfolioLearning,
@@ -55,6 +55,34 @@ const MOMENTUM_COLORS: Record<string, string> = {
   NEUTRAL: "var(--muted)",
   BEARISH: "var(--deflation)",
 };
+
+const ACTION_LABEL: Record<string, string> = {
+  OPEN_TRANCHE: "Apre tranche",
+  CLOSE_TRANCHE: "Chiude tranche",
+  FULL_CLOSE: "Chiude tutto",
+  STOP_LOSS: "Stop loss",
+  TAKE_PROFIT: "Prende profitto",
+  CAP_TRIM: "Taglio al tetto",
+  HOLD: "Mantiene",
+  SKIP_NO_SIGNAL: "Nessun segnale",
+};
+
+const MOMENTUM_LABEL: Record<string, string> = { BULLISH: "Rialzo", NEUTRAL: "Neutro", BEARISH: "Ribasso" };
+
+const ASSET_TYPE_LABEL: Record<string, string> = {
+  equity: "azioni", commodity: "materie prime", bond: "obbligazioni", bonds: "obbligazioni",
+  crypto: "cripto", cash: "liquidità", real_estate: "immobiliare", factor: "fattori", sector: "settori",
+};
+
+/** "regime=stagflation,asset_type=commodity,momentum=NEUTRAL" → "Stagflazione · materie prime · momentum neutro" */
+function formatPattern(key: string): string {
+  const parts: Record<string, string> = Object.fromEntries(key.split(",").map((kv) => kv.split("=")));
+  if (!parts.regime) return key;
+  const out = [regimeLabel(parts.regime)];
+  if (parts.asset_type) out.push(ASSET_TYPE_LABEL[parts.asset_type] ?? parts.asset_type);
+  if (parts.momentum) out.push(`momentum ${(MOMENTUM_LABEL[parts.momentum] ?? parts.momentum).toLowerCase()}`);
+  return out.join(" · ");
+}
 
 function pct(v: number | null | undefined, digits = 2): string {
   if (v == null) return "—";
@@ -392,28 +420,28 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
               <thead>
                 <tr>
                   <th>Asset</th>
-                  <th className="num">Peso %</th>
-                  <th className="num">Target %</th>
-                  <th className="num">Tranches</th>
-                  <th className="num">PnL est.</th>
-                  <th>Regime entry</th>
-                  <th className="num">Score entry</th>
+                  <th className="num">Peso</th>
+                  <th className="num">Obiettivo</th>
+                  <th className="num">Tranche</th>
+                  <th className="num">Guadagno stimato</th>
+                  <th>Regime all'ingresso</th>
+                  <th className="num">Score all'ingresso</th>
                   <th className="num">Giorni</th>
                 </tr>
               </thead>
               <tbody>
                 {positions.map((p) => (
                   <tr key={p.asset_class}>
-                    <td>{formatAsset(p.asset_class)}</td>
-                    <td className="num">{pct(p.current_weight_pct, 1)}</td>
-                    <td className="num">{pct(p.target_weight_pct, 1)}</td>
-                    <td className="num">{p.tranches_filled}/{p.tranches_total}</td>
-                    <td className="num" style={{ color: p.estimated_pnl_pct >= 0 ? "var(--reflation)" : "var(--deflation)" }}>
+                    <td className="td-main">{formatAsset(p.asset_class)}</td>
+                    <td className="num" data-label="Peso">{pct(p.current_weight_pct, 1)}</td>
+                    <td className="num" data-label="Obiettivo">{pct(p.target_weight_pct, 1)}</td>
+                    <td className="num" data-label="Tranche">{p.tranches_filled}/{p.tranches_total}</td>
+                    <td className="num" data-label="Guadagno" style={{ color: p.estimated_pnl_pct >= 0 ? "var(--reflation)" : "var(--deflation)" }}>
                       {pct(p.estimated_pnl_pct, 1)}
                     </td>
-                    <td>{p.entry_regime}</td>
-                    <td className="num">{p.avg_entry_score.toFixed(1)}</td>
-                    <td className="num">{p.days_held}</td>
+                    <td data-label="Regime ingresso">{regimeLabel(p.entry_regime)}</td>
+                    <td className="num" data-label="Score ingresso">{p.avg_entry_score.toFixed(1)}</td>
+                    <td className="num" data-label="Giorni">{p.days_held}</td>
                   </tr>
                 ))}
               </tbody>
@@ -447,33 +475,34 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
                 <tr>
                   <th>Data</th>
                   <th>Asset</th>
-                  <th>Action</th>
+                  <th>Operazione</th>
                   <th className="num">Score</th>
-                  <th className="num">Conf</th>
-                  <th>Mom.</th>
-                  <th>Reason</th>
+                  <th className="num">Fiducia</th>
+                  <th>Momentum</th>
+                  <th>Motivo</th>
                 </tr>
               </thead>
               <tbody>
                 {logRows.slice(0, logLimit).map((d, i) => (
                   <tr key={i}>
-                    <td style={{ fontSize: 11, color: "var(--muted)" }}>{d.date}</td>
-                    <td style={{ fontSize: 12 }}>{formatAsset(d.asset_class)}</td>
-                    <td>
+                    <td className="td-date" style={{ fontSize: 11, color: "var(--muted)" }}>{d.date}</td>
+                    <td className="td-main" style={{ fontSize: 12 }}>{formatAsset(d.asset_class)}</td>
+                    <td data-label="Operazione">
                       <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 6px", background: ACTION_COLORS[d.action] || "var(--muted)", color: "white", borderRadius: 4, textTransform: "uppercase" }}>
-                        {d.action.replace(/_/g, " ")}
+                        {ACTION_LABEL[d.action] ?? d.action.replace(/_/g, " ")}
                       </span>
                     </td>
-                    <td className="num">{d.score.toFixed(1)}</td>
-                    <td className="num">{(d.confidence * 100).toFixed(0)}%</td>
-                    <td>
+                    <td className="num" data-label="Score">{d.score.toFixed(1)}</td>
+                    <td className="num" data-label="Fiducia">{(d.confidence * 100).toFixed(0)}%</td>
+                    <td data-label="Momentum">
                       <span style={{ color: MOMENTUM_COLORS[d.momentum_signal] || "var(--muted)", fontSize: 10, fontWeight: 600 }}>
-                        {d.momentum_signal}
+                        {MOMENTUM_LABEL[d.momentum_signal] ?? d.momentum_signal}
                       </span>
                     </td>
-                    <td style={{ fontSize: 11, color: "var(--muted)" }}>
+                    <td className="td-wide" style={{ fontSize: 11, color: "var(--muted)" }}>
                       {d.reason_short}
-                      {reasoning?.decisions_reasoning?.[d.asset_class] && (
+                      {/* il commento AI è del giorno dell'analisi: sotto le decisioni di altri giorni direbbe il falso */}
+                      {reasoning?.date === d.date && reasoning.decisions_reasoning?.[d.asset_class] && (
                         <div style={{ marginTop: 4, fontSize: 11, color: "var(--accent)", fontStyle: "italic" }}>
                           🧠 {reasoning.decisions_reasoning[d.asset_class]}
                         </div>
@@ -501,25 +530,25 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
             <table className="table table-responsive">
               <thead>
                 <tr>
-                  <th>Pattern</th>
-                  <th className="num">W/L</th>
-                  <th className="num">Win rate</th>
-                  <th className="num">Avg PnL</th>
-                  <th className="num">Threshold shift</th>
+                  <th>Situazione</th>
+                  <th className="num">Vinte / perse</th>
+                  <th className="num">% vinte</th>
+                  <th className="num">Guadagno medio</th>
+                  <th className="num">Soglia d'ingresso</th>
                 </tr>
               </thead>
               <tbody>
                 {learnings.map((L) => (
                   <tr key={L.pattern_key}>
-                    <td style={{ fontSize: 11 }}>{L.pattern_key}</td>
-                    <td className="num">
-                      <span style={{ color: "var(--reflation)" }}>{L.n_wins}</span> / <span style={{ color: "var(--deflation)" }}>{L.n_losses}</span>
+                    <td className="td-main" style={{ fontSize: 12 }} title={L.pattern_key}>{formatPattern(L.pattern_key)}</td>
+                    <td className="num" data-label="Vinte / perse">
+                      <span><span style={{ color: "var(--reflation)" }}>{L.n_wins}</span> / <span style={{ color: "var(--deflation)" }}>{L.n_losses}</span></span>
                     </td>
-                    <td className="num">{(L.win_rate * 100).toFixed(0)}%</td>
-                    <td className="num" style={{ color: L.avg_pnl_pct >= 0 ? "var(--reflation)" : "var(--deflation)" }}>
+                    <td className="num" data-label="% vinte">{(L.win_rate * 100).toFixed(0)}%</td>
+                    <td className="num" data-label="Guadagno medio" style={{ color: L.avg_pnl_pct >= 0 ? "var(--reflation)" : "var(--deflation)" }}>
                       {(L.avg_pnl_pct * 100).toFixed(1)}%
                     </td>
-                    <td className="num" style={{ color: L.entry_threshold_shift > 0 ? "var(--deflation)" : L.entry_threshold_shift < 0 ? "var(--reflation)" : "var(--muted)", fontWeight: 600 }}>
+                    <td className="num" data-label="Soglia" style={{ color: L.entry_threshold_shift > 0 ? "var(--deflation)" : L.entry_threshold_shift < 0 ? "var(--reflation)" : "var(--muted)", fontWeight: 600 }}>
                       {L.entry_threshold_shift > 0 ? "+" : ""}{L.entry_threshold_shift.toFixed(1)}
                     </td>
                   </tr>

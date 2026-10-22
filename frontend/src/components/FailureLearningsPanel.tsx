@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { regimeLabel } from "../lib/assets";
 
 interface FailurePattern {
   name: string;
@@ -93,24 +94,24 @@ export function FailureLearningsPanel() {
               className={horizon === h ? "chip chip-active" : "chip"}
               style={{ cursor: "pointer", border: 0 }}
             >
-              {h}
+              {h === "1m" ? "1 mese" : h === "3m" ? "3 mesi" : "6 mesi"}
             </button>
           ))}
         </div>
       </div>
 
       <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: 12 }}>
-        Reverse engineering automatico dei trade failed. Pattern-detection per
-        migliorare il modello iterativamente.
+        Ogni previsione che ha perso contro il 60/40 viene smontata in automatico, per trovare gli
+        errori che si ripetono e correggere il modello.
       </div>
 
       {error && (
         <div style={{ padding: 10, background: "rgba(255,80,80,0.1)", borderRadius: 6 }}>
-          Error: {error}
+          Errore: {error}
         </div>
       )}
 
-      {loading && !data && <div style={{ opacity: 0.6 }}>Loading...</div>}
+      {loading && !data && <div style={{ opacity: 0.6 }}>Caricamento…</div>}
 
       {data && (
         <>
@@ -123,19 +124,19 @@ export function FailureLearningsPanel() {
             }}
           >
             <div className="metric-box">
-              <div className="metric-label">Failures</div>
+              <div className="metric-label">Previsioni sbagliate</div>
               <div className="metric-value">
                 {data.summary.n_failures}/{data.summary.n_evaluated}
               </div>
             </div>
             <div className="metric-box">
-              <div className="metric-label">Failure rate</div>
+              <div className="metric-label">Quota di errori</div>
               <div className="metric-value">
                 {(data.summary.failure_rate * 100).toFixed(0)}%
               </div>
             </div>
             <div className="metric-box">
-              <div className="metric-label">Mean failure alpha</div>
+              <div className="metric-label">Perdita media sul 60/40</div>
               <div className="metric-value" style={{ color: "var(--deflation)" }}>
                 {data.summary.mean_failure_alpha == null
                   ? "—"
@@ -144,14 +145,16 @@ export function FailureLearningsPanel() {
             </div>
           </div>
 
-          <div style={{ fontSize: "0.85rem", marginBottom: 12 }}>
-            <strong>Diagnostic:</strong> {data.summary.diagnostic}
-          </div>
+          {data.summary.n_failures === 0 && data.summary.n_evaluated > 0 && (
+            <div style={{ fontSize: "0.85rem", marginBottom: 12, color: "var(--text-muted)" }}>
+              Nessun errore da analizzare a questo orizzonte.
+            </div>
+          )}
 
           {data.summary.top_actions.length > 0 && (
             <>
               <h3 style={{ fontSize: "0.95rem", margin: "12px 0 6px" }}>
-                Top 3 suggested actions
+                Le 3 correzioni suggerite
               </h3>
               <ol style={{ fontSize: "0.9rem", paddingLeft: 20, marginTop: 0 }}>
                 {data.summary.top_actions.map((a, i) => (
@@ -164,7 +167,7 @@ export function FailureLearningsPanel() {
           {data.summary.patterns.length > 0 && (
             <>
               <h3 style={{ fontSize: "0.95rem", margin: "12px 0 6px" }}>
-                Failure patterns identified
+                Errori che si ripetono
               </h3>
               {data.summary.patterns.map((p) => (
                 <div
@@ -180,7 +183,7 @@ export function FailureLearningsPanel() {
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>
                     <code>{p.name}</code> ·{" "}
                     <span style={{ color: "var(--muted)" }}>
-                      {p.n} occurrences, mean α {(p.mean_alpha * 100).toFixed(1)}%
+                      {p.n} volte, extra medio {(p.mean_alpha * 100).toFixed(1)}%
                     </span>
                   </div>
                   <div style={{ color: "var(--text)", marginBottom: 4 }}>
@@ -197,7 +200,7 @@ export function FailureLearningsPanel() {
           {data.recent_failures.length > 0 && (
             <>
               <h3 style={{ fontSize: "0.95rem", margin: "16px 0 6px" }}>
-                Recent failures (post-mortem)
+                Ultimi errori, smontati
               </h3>
               {data.recent_failures.slice(0, 5).map((f) => (
                 <details
@@ -215,14 +218,14 @@ export function FailureLearningsPanel() {
                       [{f.severity}]
                     </span>{" "}
                     {f.date_predicted ?? "—"} ·{" "}
-                    <span className={`regime-${f.regime}`}>{f.regime}</span> ·{" "}
-                    α {(f.alpha * 100).toFixed(1)}% · conf{" "}
+                    <span className={`regime-${f.regime}`}>{regimeLabel(f.regime)}</span> ·{" "}
+                    extra {(f.alpha * 100).toFixed(1)}% · fiducia{" "}
                     {(f.confidence * 100).toFixed(0)}%
                   </summary>
                   <div style={{ paddingLeft: 12, paddingTop: 8 }}>
                     {f.findings.length > 0 && (
                       <>
-                        <strong>Findings:</strong>
+                        <strong>Cosa è andato storto:</strong>
                         <ul style={{ marginTop: 4, marginBottom: 8 }}>
                           {f.findings.map((x, i) => (
                             <li key={i}>{x}</li>
@@ -232,7 +235,7 @@ export function FailureLearningsPanel() {
                     )}
                     {f.suggestions.length > 0 && (
                       <>
-                        <strong>Suggestions:</strong>
+                        <strong>Cosa cambiare:</strong>
                         <ul style={{ marginTop: 4, marginBottom: 0, color: "var(--accent)" }}>
                           {f.suggestions.map((x, i) => (
                             <li key={i}>{x}</li>

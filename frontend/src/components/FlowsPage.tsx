@@ -9,7 +9,7 @@ const AREA_COLOR: Record<FlowArea, string> = {
   usa: "#3f82ff", world: "#a855f7", em: "#f59e0b", global: "#14b8a6",
 };
 const AREA_LABEL: Record<FlowArea, string> = {
-  usa: "USA", world: "World ex-US", em: "Emergenti", global: "Globale",
+  usa: "USA", world: "Sviluppati ex-USA", em: "Emergenti", global: "Globale",
 };
 const POS = "#10b981";
 const NEG = "#ef4444";
@@ -54,11 +54,11 @@ function RrgChart({ frames, wi, meta, order }: { frames: FlowFrame[]; wi: number
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: "100%", display: "block", borderRadius: 8 }}>
       <rect x={cx} y={PAD.t} width={PAD.l + iw - cx} height={cy - PAD.t} fill={POS} opacity={0.05} />
       <rect x={PAD.l} y={cy} width={cx - PAD.l} height={PAD.t + ih - cy} fill={NEG} opacity={0.05} />
-      <text x={PAD.l + iw - 6} y={PAD.t + 13} fontSize="10.5" fill="var(--muted)" textAnchor="end">Leading</text>
-      <text x={PAD.l + 6} y={PAD.t + ih - 5} fontSize="10.5" fill="var(--muted)">Lagging</text>
+      <text x={PAD.l + iw - 6} y={PAD.t + 13} fontSize="10.5" fill="var(--muted)" textAnchor="end">In testa</text>
+      <text x={PAD.l + 6} y={PAD.t + ih - 5} fontSize="10.5" fill="var(--muted)">In coda</text>
       <line x1={cx} y1={PAD.t} x2={cx} y2={PAD.t + ih} stroke="var(--border)" strokeDasharray="3 3" />
       <line x1={PAD.l} y1={cy} x2={PAD.l + iw} y2={cy} stroke="var(--border)" strokeDasharray="3 3" />
-      <text x={PAD.l + iw / 2} y={H - 6} fontSize="10" fill="var(--muted)" textAnchor="middle">RS-Ratio (forza) →</text>
+      <text x={PAD.l + iw / 2} y={H - 6} fontSize="10" fill="var(--muted)" textAnchor="middle">Forza relativa →</text>
       {/* scia 8 settimane (aggiornata per frame, non transizionata) */}
       {present.map((a) => {
         const col = AREA_COLOR[meta[a]?.area ?? "global"];
@@ -170,8 +170,8 @@ function SpectrumChart({ frame, assets }: { frame: FlowFrame; assets: FlowAssetM
       </defs>
       <rect x={PAD.l} y={PAD.t} width={iw} height={ih} fill="url(#spec-grad)" rx={6} />
       <line x1={PAD.l} y1={cy} x2={PAD.l + iw} y2={cy} stroke="var(--border)" strokeDasharray="3 3" />
-      <text x={PAD.l} y={H - 10} fontSize="10.5" fontWeight={600} fill="#10b981">◄ SAFE (cash, bond)</text>
-      <text x={PAD.l + iw} y={H - 10} fontSize="10.5" fontWeight={600} fill="#ef4444" textAnchor="end">RISKY (bitcoin) ►</text>
+      <text x={PAD.l} y={H - 10} fontSize="10.5" fontWeight={600} fill="#10b981">◄ RIFUGI (liquidità, bond)</text>
+      <text x={PAD.l + iw} y={H - 10} fontSize="10.5" fontWeight={600} fill="#ef4444" textAnchor="end">RISCHIOSI (bitcoin) ►</text>
       <text x={PAD.l - 6} y={PAD.t + 10} fontSize="9.5" fill={POS} textAnchor="end">flusso +</text>
       <text x={PAD.l - 6} y={PAD.t + ih - 2} fontSize="9.5" fill={NEG} textAnchor="end">flusso −</text>
       {shown.map((a) => {
@@ -283,15 +283,15 @@ export function FlowsPage() {
       <div className="card" style={{ position: "sticky", top: 8, zIndex: 5 }}>
         <h2 style={{ marginBottom: 2 }}>Rotazione: dove si muove il capitale</h2>
         <p style={{ color: "var(--muted)", fontSize: 13, margin: "0 0 12px", maxWidth: 680 }}>
-          Sposta il cursore (o premi Play) per vedere l'evoluzione settimana per settimana. Colore = area
-          geografica. Rotazione relativa, non $. In <strong style={{ color: "#facc15" }}>giallo</strong> i candidati
-          asimmetrici: asset safe-ish col flusso negativo esaurito che inizia a girare su.
+          Sposta il cursore (o premi Avvia) per vedere l'evoluzione settimana per settimana. Colore = area
+          geografica. Rotazione relativa, non in dollari. In <strong style={{ color: "#facc15" }}>giallo</strong> i candidati
+          asimmetrici: asset quasi-rifugio che smettono di perdere flussi e iniziano a riceverne.
         </p>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <button onClick={() => setPlaying((p) => !p)}
             style={{ border: "none", cursor: "pointer", borderRadius: 999, padding: "7px 16px", fontSize: 13,
               fontWeight: 700, background: "var(--accent, #3f82ff)", color: "#fff", minWidth: 96, transition: `transform .1s ${EASE}` }}>
-            {playing ? "❚❚ Pausa" : "▶ Play"}
+            {playing ? "❚❚ Pausa" : "▶ Avvia"}
           </button>
           <input type="range" min={0} max={tl.frames.length - 1} value={wi}
             onChange={(e) => { setPlaying(false); setWi(Number(e.target.value)); }}
@@ -315,7 +315,7 @@ export function FlowsPage() {
       <div className="card">
         <h2>Rete di rotazione</h2>
         <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: -4 }}>
-          Chi cede forza relativa → chi la attrae. Posizione verticale = rischiosità (safe in alto). Ruotato ≈{frame.rotated_pp.toFixed(1)}pp.
+          Chi cede forza relativa → chi la attrae. Posizione verticale = rischiosità (rifugi in alto). Ruotato ≈{frame.rotated_pp.toFixed(1)}pp.
         </p>
         <NetChart frame={frame} meta={meta} order={tl.assets} />
       </div>
@@ -323,14 +323,14 @@ export function FlowsPage() {
       <div className="card">
         <h2>Spettro del rischio: dai rifugi agli asset rischiosi</h2>
         <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: -4 }}>
-          Ogni asset alla sua rischiosità (safe → risky), altezza = flusso. Cerchiati in <strong style={{ color: "#facc15" }}>giallo</strong> i candidati asimmetrici.
+          Ogni asset alla sua rischiosità (dai rifugi ai più rischiosi), altezza = flusso. Cerchiati in <strong style={{ color: "#facc15" }}>giallo</strong> i candidati asimmetrici.
         </p>
         <SpectrumChart frame={frame} assets={tl.assets} />
       </div>
 
       <div className="card">
         <h2>Rotazione geografica</h2>
-        <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: -4 }}>Flusso netto per area: dove va il capitale tra USA, World ex-US, Emergenti e asset globali.</p>
+        <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: -4 }}>Flusso netto per area: dove va il capitale tra USA, sviluppati ex-USA, emergenti e asset globali.</p>
         <GeoChart frame={frame} assets={tl.assets} />
       </div>
 

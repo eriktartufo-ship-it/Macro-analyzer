@@ -198,6 +198,35 @@ DEDOLLAR_REGIME_PRESSURE = {
 }
 
 
+# Etichette italiane delle forze mostrate sul sito ("Cosa spinge il regime").
+_TREND_LABEL_IT: dict[str, str] = {
+    "cpi_rising": "Inflazione in salita",
+    "cpi_falling": "Inflazione in calo",
+    "gdp_decelerating": "Crescita del PIL in frenata",
+    "gdp_accelerating": "Crescita del PIL in accelerazione",
+    "unemployment_rising": "Disoccupazione in salita",
+    "unemployment_falling": "Disoccupazione in calo",
+    "yield_curve_inverting": "Curva dei tassi che si inverte",
+    "yield_curve_steepening": "Curva dei tassi che si irripidisce",
+    "claims_rising": "Richieste di sussidio in salita",
+    "claims_falling": "Richieste di sussidio in calo",
+    "breakeven_rising": "Inflazione attesa in salita",
+    "breakeven_falling": "Inflazione attesa in calo",
+    "vix_spiking": "Volatilità (VIX) in impennata",
+    "vix_compressed": "Volatilità (VIX) molto bassa",
+    "nfci_tightening": "Condizioni finanziarie che si stringono",
+    "nfci_easing": "Condizioni finanziarie che si allentano",
+}
+_NEWS_LABEL_IT = {
+    "very_bearish": "molto negativo",
+    "bearish": "negativo",
+    "bullish": "positivo",
+    "very_bullish": "molto positivo",
+}
+_INSIDER_LABEL_IT = {"strong_buying": "comprano molto", "strong_selling": "vendono molto"}
+_DEDOLLAR_LABEL_IT = {"high": "alta", "moderate": "moderata", "low": "bassa"}
+
+
 def _detect_indicator_trends(indicators: dict[str, float]) -> list[str]:
     """Identifica i trend attivi dagli indicatori."""
     trends = []
@@ -339,7 +368,7 @@ def calculate_trajectory(
             pressure[regime] += weight
 
         if top_regime and total_pressure > 0:
-            human_name = trend_name.replace("_", " ").capitalize()
+            human_name = _TREND_LABEL_IT.get(trend_name, trend_name.replace("_", " ").capitalize())
             forces.append({
                 "name": trend_name,
                 "type": "indicator",
@@ -360,7 +389,7 @@ def calculate_trajectory(
             forces.append({
                 "name": f"news_{news_cat}",
                 "type": "news",
-                "description": f"News sentiment: {news_cat.replace('_', ' ')}",
+                "description": f"Tono delle notizie: {_NEWS_LABEL_IT.get(news_cat, news_cat)}",
                 "pushes_toward": top_regime,
                 "strength": round(mapping[top_regime], 2),
             })
@@ -386,7 +415,7 @@ def calculate_trajectory(
             forces.append({
                 "name": f"insider_{insider_cat}",
                 "type": "insider",
-                "description": f"Insider smart money: {insider_cat.replace('_', ' ')} (score {insider_score:+.2f})",
+                "description": f"Insider: {_INSIDER_LABEL_IT[insider_cat]} (punteggio {insider_score:+.2f})",
                 "pushes_toward": top_regime,
                 "strength": round(mapping[top_regime] * score_scale, 2),
             })
@@ -404,7 +433,7 @@ def calculate_trajectory(
             forces.append({
                 "name": f"dedollar_{dedollar_cat}",
                 "type": "dedollarization",
-                "description": f"Dedollarization: {dedollar_cat}",
+                "description": f"De-dollarizzazione: {_DEDOLLAR_LABEL_IT.get(dedollar_cat, dedollar_cat)}",
                 "pushes_toward": top_regime,
                 "strength": round(mapping[top_regime], 2),
             })

@@ -16,6 +16,8 @@ Pattern:
 """
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -306,10 +308,49 @@ def train_classifier(
     )
     rf.fit(X, y)
     gb.fit(X, y)
+    # Inference a riga singola: con n_jobs=-1 joblib apre e chiude un pool a ogni
+    # predict_proba (~55 ms contro ~3 ms) e lo storico crisi ne fa ~500 di fila.
+    # Le probabilità non cambiano: n_jobs tocca solo il parallelismo.
+    rf.set_params(n_jobs=1)
     return MLModelBundle(
         rf_model=rf, gb_model=gb,
         feature_names=feat_names, classes=list(rf.classes_),
     )
+
+
+def _bundle_features(indicators: dict[str, Any], bundle: MLModelBundle) -> np.ndarray:
+    # T9-FIX-2: usa extractor coerente con feature_names del bundle
+    if len(bundle.feature_names) <= 12:  # minimal 8-feature bundle
+        feat, _ = extract_features_minimal(indicators)
+    else:
+        feat, _ = extract_features(indicators)
+    return feat
+
+
+# Probabilità grezze RF/GB già calcolate in blocco da `batched_predictions`,
+# per (bundle, vettore delle feature). Vive solo dentro il `with`.
+_BATCH_MEMO: dict[tuple[int, bytes], tuple[np.ndarray, np.ndarray]] = {}
+
+
+@contextmanager
+def batched_predictions(indicators_list: list[dict[str, Any]], bundle: MLModelBundle) -> Generator[None, None, None]:
+    """Calcola le probabilità di molti giorni con UNA predict_proba per modello.
+
+    A riga singola ogni chiamata paga ~10 ms di overhead sui 200 alberi della foresta;
+    in blocco il costo è quasi fisso. Dentro il `with`, `predict_regime` trova il
+    risultato già pronto per lo stesso vettore di feature: le probabilità sono le stesse.
+    """
+    feats = [_bundle_features(ind, bundle) for ind in indicators_list]
+    if feats:
+        X = np.vstack(feats)
+        proba_rf = bundle.rf_model.predict_proba(X)
+        proba_gb = bundle.gb_model.predict_proba(X)
+        for f, p_rf, p_gb in zip(feats, proba_rf, proba_gb):
+            _BATCH_MEMO[(id(bundle), f.tobytes())] = (p_rf, p_gb)
+    try:
+        yield
+    finally:
+        _BATCH_MEMO.clear()
 
 
 def predict_regime(
@@ -322,15 +363,14 @@ def predict_regime(
     Args:
         weights: (w_rf, w_gb) per ensemble. Default 50/50.
     """
-    # T9-FIX-2: usa extractor coerente con feature_names del bundle
-    n_features_expected = len(bundle.feature_names)
-    if n_features_expected <= 12:  # minimal 8-feature bundle
-        feat, _ = extract_features_minimal(indicators)
+    feat = _bundle_features(indicators, bundle)
+    hit = _BATCH_MEMO.get((id(bundle), feat.tobytes()))
+    if hit is not None:
+        proba_rf, proba_gb = hit
     else:
-        feat, _ = extract_features(indicators)
-    feat_2d = feat.reshape(1, -1)
-    proba_rf = bundle.rf_model.predict_proba(feat_2d)[0]
-    proba_gb = bundle.gb_model.predict_proba(feat_2d)[0]
+        feat_2d = feat.reshape(1, -1)
+        proba_rf = bundle.rf_model.predict_proba(feat_2d)[0]
+        proba_gb = bundle.gb_model.predict_proba(feat_2d)[0]
     w_rf, w_gb = weights
     blend = w_rf * proba_rf + w_gb * proba_gb
     blend = blend / blend.sum()  # safety renorm

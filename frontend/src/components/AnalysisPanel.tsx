@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { MacroIndicatorsHistoryItem, RegimeExplain } from "../types";
 import { api } from "../api/client";
 import { MultiLineChart, type ChartPoint } from "./MultiLineChart";
+import { regimeLabel } from "../lib/assets";
 
 interface Props {
   explain: RegimeExplain;
@@ -15,16 +16,21 @@ const SIGNAL_COLORS: Record<string, string> = {
 };
 
 const SIGNAL_LABELS: Record<string, string> = {
-  strong: "Strong",
-  moderate: "Moderate",
-  weak: "Weak",
-  neutral: "Neutral",
+  strong: "Forte",
+  moderate: "Media",
+  weak: "Debole",
+  neutral: "Spenta",
 };
 
+// Le condizioni arrivano ordinate per peso × intensità: le prime dicono il perché,
+// le altre (fino a ~35) restano a richiesta.
+const TOP_DRIVERS = 8;
+
 const FORCE_TYPE_ICONS: Record<string, string> = {
-  indicator: "MACRO",
-  news: "NEWS",
-  dedollarization: "DEDOL",
+  indicator: "DATI",
+  news: "NOTIZIE",
+  insider: "INSIDER",
+  dedollarization: "DOLLARO",
 };
 
 interface IndicatorMeta {
@@ -36,7 +42,7 @@ interface IndicatorMeta {
 
 const INDICATOR_META: Record<string, IndicatorMeta> = {
   gdp_roc: {
-    label: "GDP Growth",
+    label: "Crescita del PIL",
     unit: "%",
     type: "roc",
     explain: (v) =>
@@ -45,7 +51,7 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
       "Economia in contrazione",
   },
   pmi: {
-    label: "PMI Manufacturing",
+    label: "PMI manifatturiero",
     unit: "",
     type: "level",
     explain: (v) =>
@@ -55,7 +61,7 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
       "Manifatturiero in forte contrazione",
   },
   cpi_yoy: {
-    label: "Inflazione (CPI YoY)",
+    label: "Inflazione a 12 mesi (CPI)",
     unit: "%",
     type: "roc",
     explain: (v) =>
@@ -85,7 +91,7 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
       "Disoccupazione in rapido aumento — segnale recessivo",
   },
   yield_curve_10y2y: {
-    label: "Yield Curve (10Y-2Y)",
+    label: "Curva dei tassi (10 anni − 2 anni)",
     unit: "%",
     type: "level",
     explain: (v) =>
@@ -110,12 +116,12 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
     type: "roc",
     explain: (v) =>
       v > 5 ? "LEI in forte salita — crescita attesa nei prossimi 6-12 mesi" :
-      v > 0 ? "LEI in miglioramento — outlook positivo" :
+      v > 0 ? "LEI in miglioramento — prospettive positive" :
       v > -3 ? "LEI in calo — rallentamento atteso" :
       "LEI in forte calo — recessione probabile",
   },
   fed_funds_rate: {
-    label: "Fed Funds Rate",
+    label: "Tasso della Fed",
     unit: "%",
     type: "level",
     explain: (v) =>
@@ -125,7 +131,7 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
       "Politica accomodante — stimolo all'economia",
   },
   breakeven_10y: {
-    label: "10Y Breakeven Inflation",
+    label: "Inflazione attesa a 10 anni",
     unit: "%",
     type: "level",
     explain: (v) =>
@@ -142,17 +148,17 @@ const INDICATOR_META: Record<string, IndicatorMeta> = {
       v > 30 ? "Stress acuto — paura diffusa sui mercati" :
       v > 20 ? "Volatilità elevata — incertezza sopra la norma" :
       v > 15 ? "Volatilità normale" :
-      "Volatilità compressa — calma e risk-on",
+      "Volatilità compressa — calma e propensione al rischio",
   },
   nfci: {
-    label: "Chicago Fed NFCI",
+    label: "Condizioni finanziarie (NFCI)",
     unit: "",
     type: "level",
     explain: (v) =>
-      v > 0.5 ? "Condizioni finanziarie molto strette — credit crunch" :
+      v > 0.5 ? "Condizioni finanziarie molto strette — credito razionato" :
       v > 0 ? "Condizioni finanziarie strette" :
       v > -0.5 ? "Condizioni finanziarie accomodanti" :
-      "Condizioni finanziarie molto loose — liquidità abbondante",
+      "Condizioni finanziarie molto larghe — liquidità abbondante",
   },
 };
 
@@ -176,6 +182,8 @@ export function AnalysisPanel({ explain }: Props) {
 
   const [history, setHistory] = useState<MacroIndicatorsHistoryItem[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [allDrivers, setAllDrivers] = useState(false);
+  const drivers = allDrivers ? explain.top_drivers : explain.top_drivers.slice(0, TOP_DRIVERS);
 
   useEffect(() => {
     let alive = true;
@@ -202,7 +210,7 @@ export function AnalysisPanel({ explain }: Props) {
       {hasForces && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10, fontWeight: 600 }}>
-            DRIVING FORCES
+            COSA LO STA SPINGENDO
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {traj!.forces.map((f, i) => {
@@ -234,9 +242,9 @@ export function AnalysisPanel({ explain }: Props) {
                   <span
                     data-nowrap
                     className={`regime-${f.pushes_toward}`}
-                    style={{ fontSize: 13, fontWeight: 700, textTransform: "capitalize" }}
+                    style={{ fontSize: 13, fontWeight: 700 }}
                   >
-                    {f.pushes_toward}
+                    {regimeLabel(f.pushes_toward)}
                   </span>
                   <span
                     data-nowrap
@@ -258,10 +266,10 @@ export function AnalysisPanel({ explain }: Props) {
       {/* Top drivers */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10, fontWeight: 600 }}>
-          KEY DRIVERS
+          LE CONDIZIONI CHE PESANO DI PIÙ
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {explain.top_drivers.map((d) => (
+          {drivers.map((d) => (
             <div
               key={d.name}
               className="card-row"
@@ -288,13 +296,18 @@ export function AnalysisPanel({ explain }: Props) {
             </div>
           ))}
         </div>
+        {explain.top_drivers.length > TOP_DRIVERS && (
+          <button className="btn-more" onClick={() => setAllDrivers((v) => !v)}>
+            {allDrivers ? "Mostra solo le più importanti" : `Mostra tutte le ${explain.top_drivers.length} condizioni`}
+          </button>
+        )}
       </div>
 
       {/* Raw indicators with explanations */}
       {hasIndicators && (
         <div>
           <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 10, fontWeight: 600 }}>
-            MACRO INDICATORS
+            INDICATORI MACRO
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {Object.entries(explain.indicators).map(([key, value]) => {

@@ -211,3 +211,93 @@ class TestComputeCrisisHistory:
         assert isinstance(out[0], dict)
         assert out[0]["date"] == "2020-01-01"
         assert out[0]["risk_level"] == "low"
+
+
+class TestCrisisHistoryEndpointCache:
+    """Lo storico costa ~500 valutazioni: la seconda visita col dato invariato non le rifà,
+    un giorno nuovo sì."""
+
+    def _db(self, last_rc, n_rc, last_ded):
+        db = MagicMock()
+        db.query.return_value.one.return_value = (last_rc, n_rc)
+        db.query.return_value.filter.return_value.scalar.return_value = last_ded
+        return db
+
+    def test_ricalcola_solo_quando_cambia_il_dato(self, monkeypatch):
+        import app.api.routes as routes
+        import app.services.regime.crisis_indicator_history as hist
+
+        calls = []
+
+        def fake_compute(db, days, limit):
+            calls.append(days)
+            return [_pt("2026-10-21", "low", "no_crisis")]
+
+        monkeypatch.setattr(hist, "compute_crisis_history", fake_compute)
+        monkeypatch.setattr(routes, "_CRISIS_HISTORY_CACHE", {})
+
+        first = routes.get_crisis_risk_history(days=3650, limit=None, db=self._db(date(2026, 10, 21), 476, date(2026, 10, 21)))
+        again = routes.get_crisis_risk_history(days=3650, limit=None, db=self._db(date(2026, 10, 21), 476, date(2026, 10, 21)))
+        assert len(calls) == 1
+        assert again == first
+
+        routes.get_crisis_risk_history(days=3650, limit=None, db=self._db(date(2026, 10, 22), 477, date(2026, 10, 21)))
+        assert len(calls) == 2
+        # La versione col dato vecchio è stata buttata: una sola chiave per finestra.
+        assert len([k for k in routes._CRISIS_HISTORY_CACHE if k.startswith("3650|None|")]) == 1
+
+        routes.get_crisis_risk_history(days=365, limit=None, db=self._db(date(2026, 10, 22), 477, date(2026, 10, 21)))
+        assert len(calls) == 3
+
+
+def test_foresta_ml_predice_su_un_solo_processo():
+    """Con n_jobs=-1 ogni predict_proba a riga singola apre un pool (~55 ms invece di ~3):
+    lo storico crisi passava da 24 s per questo."""
+    from app.services.regime.ml_classifier import train_classifier
+
+    assert train_classifier().rf_model.n_jobs == 1
+
+
+def test_storico_calcola_la_foresta_in_blocco_con_punti_identici(monkeypatch):
+    """Lo storico chiede la foresta ML per ogni giorno: in blocco i punti devono restare
+    identici a quelli calcolati uno alla volta, e nessuna predizione deve restare a riga singola."""
+    import contextlib
+    import random
+
+    import app.services.regime.crisis_indicator_history as hist
+    import app.services.regime.ml_classifier as mlc
+    from app.services.regime.ml_ensemble import get_or_train_bundle
+
+    monkeypatch.setattr("app.services.config_flags.use_ml_regime_blend", lambda: True)
+    monkeypatch.setattr("app.services.regime.classifier.use_ml_regime_blend", lambda: True)
+    base = {
+        "gdp_roc": 1.8, "cpi_yoy": 3.1, "unrate": 4.3, "unrate_roc": 2.0, "vix": 19.0,
+        "baa_spread": 1.9, "yield_curve_10y2y": 0.4, "breakeven_10y": 2.3, "nfci": -0.4,
+    }
+    rnd = random.Random(7)
+    records = [
+        _make_mock_record(
+            date(2020, 1, 1) + timedelta(days=7 * i),
+            {k: v * rnd.uniform(0.5, 1.5) for k, v in base.items()},
+        )
+        for i in range(40)
+    ]
+    bundle = get_or_train_bundle()
+    real_predict = bundle.rf_model.predict_proba
+    single_rows = []
+
+    def counting_predict(X):
+        if X.shape[0] == 1:
+            single_rows.append(1)
+        return real_predict(X)
+
+    monkeypatch.setattr(bundle.rf_model, "predict_proba", counting_predict)
+
+    in_blocco = hist.compute_crisis_history(_make_mock_db(records), days=365 * 30)
+    assert single_rows == []
+    assert mlc._BATCH_MEMO == {}
+
+    monkeypatch.setattr(hist, "_ml_in_blocco", lambda _l: contextlib.nullcontext())
+    uno_alla_volta = hist.compute_crisis_history(_make_mock_db(records), days=365 * 30)
+    assert len(single_rows) == 40
+    assert serialize_points(in_blocco) == serialize_points(uno_alla_volta)

@@ -65,9 +65,10 @@ class TestAssessTransition:
         out = assess_transition(probs, confidence=0.10)  # T9: confidence stretto
         # Tutti 3 trigger fired
         assert out.triggers_count == 3
-        assert any("max_prob" in t for t in out.triggers_fired)
-        assert any("entropy" in t for t in out.triggers_fired)
-        assert any("confidence" in t for t in out.triggers_fired)
+        # ogni segnale porta il suo valore (testo per il sito, in italiano)
+        assert any("prevale" in t and "25%" in t for t in out.triggers_fired)
+        assert any("incertezza 2.00" in t for t in out.triggers_fired)
+        assert any("fiducia 10%" in t for t in out.triggers_fired)
 
 
 class TestDefensiveAllocation:

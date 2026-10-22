@@ -92,42 +92,42 @@ def assess_transition(
     max_p = max(probs.values()) if probs else 0.0
     if max_p < max_prob_threshold:
         triggers.append(
-            f"max_prob={max_p:.3f} < {max_prob_threshold} (no dominant regime)"
+            f"Nessun regime prevale: il più probabile è al {max_p:.0%}, sotto la soglia del {max_prob_threshold:.0%}"
         )
 
     ent = shannon_entropy(probs)
     if ent > entropy_threshold:
         triggers.append(
-            f"entropy={ent:.3f} > {entropy_threshold} (high uncertainty)"
+            f"Probabilità sparse fra i regimi: incertezza {ent:.2f} oltre la soglia di {entropy_threshold:.2f}"
         )
 
     if confidence < confidence_threshold:
         triggers.append(
-            f"confidence={confidence:.3f} < {confidence_threshold} (model unsure)"
+            f"Modello poco sicuro: fiducia {confidence:.0%}, sotto la soglia del {confidence_threshold:.0%}"
         )
 
     # T9-AUDIT-FIX: financial-stress veto FORZA transition (bypass require_all_three).
     # Cattura 2018 Q4 / 2023 SVB dove regime classifier dice goldilocks/reflation
     # ma market+credit stress reale → defensive allocation obbligata.
     if financial_stress_vetoed:
-        triggers.append("financial_stress_veto active (forced transition)")
+        triggers.append("Stress finanziario in corso: transizione forzata")
 
     min_triggers = 3 if require_all_three else 2
     is_transition = financial_stress_vetoed or len(triggers) >= min_triggers
 
     if is_transition:
         reason = (
-            "veto-forced" if financial_stress_vetoed
-            else f"{len(triggers)}/3 trigger"
+            "forzata dallo stress finanziario" if financial_stress_vetoed
+            else f"{len(triggers)} segnali su 3"
         )
         desc = (
             f"Transizione rilevata ({reason}). "
-            f"Suggerimento difensivo: cash 35% + bonds 40% + gold 15% + TIPS 10%."
+            f"Suggerimento difensivo: liquidità 35% + bond 40% + oro 15% + TIPS 10%."
         )
     else:
         desc = (
-            f"Regime stabile ({len(triggers)}/3 trigger). "
-            f"Allocazione regime-based affidabile."
+            f"Regime stabile ({len(triggers)} segnali su 3). "
+            f"Ci si può fidare dell'allocazione per regime."
         )
 
     return TransitionAssessment(

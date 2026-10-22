@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import type { MLForecastResponse } from "../types";
+import { assetName, regimeLabel } from "../lib/assets";
 
 /**
  * Tier 9 — ML Forecast Panel.
@@ -33,16 +34,16 @@ export function Tier9ForecastPanel() {
       <div className="card">
         <h3 style={{ margin: 0, marginBottom: 8 }}>Previsione del regime a 1-12 mesi</h3>
         <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: 12 }}>
-          ML forecast con transition matrix empirica. On-demand per ridurre
-          page load latency.
+          Dove potrebbe andare il regime fra 1, 3, 6 e 12 mesi, dalle transizioni osservate in passato.
+          Si calcola su richiesta perché richiede qualche secondo.
         </p>
-        <button onClick={load} className="btn">Esegui forecast</button>
+        <button onClick={load} className="btn">Calcola la previsione</button>
         {error && <p style={{ color: "var(--deflation)", marginTop: 8 }}>Errore: {error}</p>}
       </div>
     );
   }
   if (loading) {
-    return <div className="card">Computing ML forecast...</div>;
+    return <div className="card">Calcolo la previsione…</div>;
   }
   if (!data) return null;
 
@@ -58,7 +59,7 @@ export function Tier9ForecastPanel() {
             fontSize: 11,
             fontWeight: 600,
           }}>
-            ML blend ON
+            Modello ML attivo
           </span>
         )}
       </div>
@@ -67,13 +68,13 @@ export function Tier9ForecastPanel() {
         <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
           Stato corrente
         </div>
-        <div style={{ fontSize: 18, fontWeight: 700, textTransform: "capitalize" }}>
-          {data.current_regime}
+        <div style={{ fontSize: 18, fontWeight: 700 }}>
+          {regimeLabel(data.current_regime)}
         </div>
         <div style={{ fontSize: 12 }}>
           {Object.entries(data.current_probs)
             .sort((a, b) => b[1] - a[1])
-            .map(([r, p]) => `${r}: ${(p * 100).toFixed(0)}%`)
+            .map(([r, p]) => `${regimeLabel(r)} ${(p * 100).toFixed(0)}%`)
             .join(" · ")}
         </div>
       </div>
@@ -87,28 +88,28 @@ export function Tier9ForecastPanel() {
             background: "var(--card-bg-subtle)",
           }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
-              Horizon {fc.horizon_months}m
+              Fra {fc.horizon_months} {fc.horizon_months === 1 ? "mese" : "mesi"}
             </div>
-            <div style={{ fontSize: 16, fontWeight: 700, textTransform: "capitalize", marginBottom: 4 }}>
-              {fc.expected_regime}
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+              {regimeLabel(fc.expected_regime)}
             </div>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
-              entropy {fc.entropy.toFixed(2)}
+              incertezza {fc.entropy.toFixed(2).replace(".", ",")} su 2
             </div>
             <div style={{ fontSize: 11, marginBottom: 6 }}>
               {Object.entries(fc.probs)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 2)
-                .map(([r, p]) => `${r.slice(0, 4)}: ${(p * 100).toFixed(0)}%`)
+                .map(([r, p]) => `${regimeLabel(r)} ${(p * 100).toFixed(0)}%`)
                 .join(" · ")}
             </div>
             <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>
-              Top-5 asset
+              I 5 asset migliori
             </div>
             <ol style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
               {fc.top_assets.slice(0, 5).map((a) => (
                 <li key={a.asset}>
-                  {a.asset.replace(/_/g, " ")}{" "}
+                  {assetName(a.asset)}{" "}
                   <span style={{ color: "var(--text-muted)" }}>
                     ({a.weighted_score.toFixed(0)})
                   </span>
