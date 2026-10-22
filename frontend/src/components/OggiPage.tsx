@@ -11,7 +11,6 @@ import type {
   DataQuality,
   EuropeEnergy,
   MacroLlmAnalysis,
-  PredictionLogStats,
   RegimeExplain,
   RegimeHistoryItem,
   RiskOnOff,
@@ -30,6 +29,7 @@ import {
   scoreTone,
 } from "../lib/assets";
 import { to, toAsset, type Route } from "../lib/nav";
+import { loadTrackRecord, sealDate, type TrackRecord } from "../lib/trackRecord";
 import { RegimeBand, regimeSince } from "./RegimeBand";
 import { RegimeQuadrant } from "./RegimeQuadrant";
 import { Icon } from "./Icon";
@@ -93,7 +93,7 @@ export function OggiPage({ regime, explain, scoreboard, crisis, history, navigat
   const [llmDone, setLlmDone] = useState(false);
   const [energy, setEnergy] = useState<EuropeEnergy | null>(null);
   const [risk, setRisk] = useState<RiskOnOff | null>(null);
-  const [track, setTrack] = useState<PredictionLogStats | null>(null);
+  const [track, setTrack] = useState<TrackRecord | null>(null);
   const [board, setBoard] = useState<Leaderboard | null>(null);
   const [dq, setDq] = useState<DataQuality | null>(null);
   const [side, setSide] = useState<"up" | "down">("up");
@@ -107,7 +107,7 @@ export function OggiPage({ regime, explain, scoreboard, crisis, history, navigat
     });
     safe(api.europeEnergy()).then((v) => alive && setEnergy(v));
     safe(api.flowsRiskOnOff(13)).then((v) => alive && setRisk(v));
-    safe(api.predictionLogStats("3m")).then((v) => alive && setTrack(v));
+    safe(loadTrackRecord("3m")).then((v) => alive && setTrack(v));
     safe(api.aiPortfolioLeaderboard()).then((v) => alive && setBoard(v));
     safe(api.dataQuality()).then((v) => alive && setDq(v));
     return () => {
@@ -337,10 +337,23 @@ export function OggiPage({ regime, explain, scoreboard, crisis, history, navigat
 
       <section className="card oggi-proof">
         <span className="lbl">Il modello finora</span>
-        {track?.summary?.mean_alpha != null && (
+        {track && track.active.summary.mean_alpha != null && (
           <span>
-            <b className={track.summary.mean_alpha >= 0 ? "tone-up" : "tone-down"}>{fmtPctSigned(track.summary.mean_alpha, 2)}</b>{" "}
-            medio sul 60/40 a 3 mesi · {track.summary.n_evaluated} previsioni verificate
+            <b className={track.active.summary.mean_alpha >= 0 ? "tone-up" : "tone-down"}>{fmtPctSigned(track.active.summary.mean_alpha, 2)}</b>{" "}
+            medio sul 60/40 a 3 mesi · {track.active.summary.n_evaluated} previsioni verificate
+          </span>
+        )}
+        {/* Nuovo sigillo senza ancora verifiche: si dice che è ripartito e si mostra lo storico, etichettato */}
+        {track && track.active.summary.n_evaluated === 0 && track.previous && (
+          <span>
+            Track record ripartito col sigillo del {sealDate(track.activeSnapshot)}
+            {track.previous.summary.mean_alpha != null && (
+              <>
+                {" "}· sigillo precedente{" "}
+                <b className={track.previous.summary.mean_alpha >= 0 ? "tone-up" : "tone-down"}>{fmtPctSigned(track.previous.summary.mean_alpha, 2)}</b>{" "}
+                sul 60/40 su {track.previous.summary.n_evaluated} previsioni
+              </>
+            )}
           </span>
         )}
         {md?.cumulative_return_pct != null && (

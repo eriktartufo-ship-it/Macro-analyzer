@@ -3,10 +3,7 @@ import { api } from "../api/client";
 import { useDedollarBonus } from "../hooks/useDedollarBonus";
 import { ScrollShadow } from "./ScrollShadow";
 import type { DedollarComparison } from "../types";
-
-function formatAsset(name: string): string {
-  return name.replace(/_/g, " ");
-}
+import { assetName, fmt, fmtSigned, regimeLabel } from "../lib/assets";
 
 function deltaColor(delta: number): string {
   if (Math.abs(delta) < 0.5) return "var(--muted)";
@@ -73,9 +70,9 @@ export function DedollarComparisonPanel() {
     <div className="card">
       <h2>Score degli asset senza e con il bonus dollaro</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-        Il <strong>pure score</strong> e' calcolato solo da regime probabilities × performance hardcoded
-        (data-driven puro). L'<strong>adjusted score</strong> aggiunge il bonus dedollar (sensitivity ×
-        combined score). Il <strong>delta</strong> mostra esattamente quanto la dedollarizzazione sposta
+        Lo <strong>score puro</strong> viene solo dal regime e dai rendimenti storici. Lo{" "}
+        <strong>score con bonus</strong> aggiunge l'effetto della de-dollarizzazione (sensibilità
+        dell'asset × punteggio complessivo). La <strong>differenza</strong> dice quanto il dollaro sposta
         ogni asset.
       </div>
 
@@ -84,28 +81,26 @@ export function DedollarComparisonPanel() {
         background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, flexWrap: "wrap",
       }}>
         <div>
-          <div style={{ fontSize: 10, color: "var(--muted)" }}>Regime corrente</div>
-          <div style={{ fontSize: 16, fontWeight: 600, textTransform: "capitalize" }}>{data.regime}</div>
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>Regime attuale</div>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>{regimeLabel(data.regime)}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10, color: "var(--muted)" }}>Dedollar combined</div>
-          <div style={{ fontSize: 16, fontWeight: 600 }}>{data.dedollar_combined_score.toFixed(3)}</div>
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>De-dollarizzazione</div>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>{fmt(data.dedollar_combined_score, 3)}</div>
         </div>
         <div>
-          <div style={{ fontSize: 10, color: "var(--muted)" }}>Toggle UI corrente</div>
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>Nel sito adesso</div>
           <div style={{ fontSize: 14, fontWeight: 600, color: flagColor }}>
-            {userToggleActive ? "ADJUSTED (dedollar ON)" : "PURE (dedollar OFF)"}
+            {userToggleActive ? "Score con bonus" : "Score puro"}
           </div>
         </div>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: 10, color: "var(--muted)" }}>Come cambiare</div>
           <div style={{ fontSize: 11 }}>
-            usa il toggle <code>$</code> nell'header — applicato istantaneamente a
-            scoreboard, scenari, monte carlo e backtest.
+            Impostazioni › Bonus dollaro: vale subito per classifica, scenari, Monte Carlo e backtest.
             {data.use_dedollar_bonus_active && (
               <div style={{ marginTop: 4, color: "var(--muted)" }}>
-                (env server <code>USE_DEDOLLAR_BONUS=1</code> attivo: usato come default
-                quando il toggle non e' settato)
+                (il server ha il bonus acceso di base: vale quando non scegli tu)
               </div>
             )}
           </div>
@@ -117,11 +112,11 @@ export function DedollarComparisonPanel() {
           <thead>
             <tr>
               <th>Asset</th>
-              <th className="num">Sensitivity</th>
-              <th className="num">Pure score</th>
-              <th className="num">Adjusted</th>
-              <th className="num">Δ dedollar</th>
-              <th>Impatto</th>
+              <th className="num">Sensibilità</th>
+              <th className="num">Score puro</th>
+              <th className="num">Con bonus</th>
+              <th className="num">Differenza</th>
+              <th>Effetto</th>
             </tr>
           </thead>
           <tbody>
@@ -129,14 +124,14 @@ export function DedollarComparisonPanel() {
               const color = deltaColor(it.dedollar_delta);
               return (
                 <tr key={it.asset}>
-                  <td><strong>{formatAsset(it.asset)}</strong></td>
+                  <td><strong>{assetName(it.asset)}</strong></td>
                   <td className="num" style={{ color: it.sensitivity > 0 ? "var(--reflation)" : it.sensitivity < 0 ? "var(--deflation)" : "var(--muted)" }}>
                     {it.sensitivity > 0 ? "+" : ""}{it.sensitivity.toFixed(0)}
                   </td>
-                  <td className="num" style={{ color: "var(--muted)" }}>{it.pure_score.toFixed(1)}</td>
-                  <td className="num"><strong>{it.adjusted_score.toFixed(1)}</strong></td>
+                  <td className="num" style={{ color: "var(--muted)" }}>{fmt(it.pure_score, 1)}</td>
+                  <td className="num"><strong>{fmt(it.adjusted_score, 1)}</strong></td>
                   <td className="num" style={{ color, fontWeight: 600 }}>
-                    {it.dedollar_delta > 0 ? "+" : ""}{it.dedollar_delta.toFixed(2)}
+                    {fmtSigned(it.dedollar_delta, 2)}
                   </td>
                   <td style={{ width: 140 }}>
                     {bar(it.dedollar_delta, maxAbsDelta, color)}
@@ -149,11 +144,10 @@ export function DedollarComparisonPanel() {
       </ScrollShadow>
 
       <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>
-        <strong>Lettura.</strong> Sensitivity positiva = asset benefit della dedollarizzazione (gold,
-        silver, BTC, EM). Negativa = penalizzato (USD, US bonds, cash). Δ dedollar = sensitivity ×
-        combined_score. Quando il flag <code>USE_DEDOLLAR_BONUS</code> e' OFF (default), il sistema
-        calcola gli asset score puramente dal regime + performance storiche, senza il bias dedollar.
-        L'utente puo' vedere qui esattamente di quanto cambierebbero gli score se attivasse il bias.
+        <strong>Come si legge.</strong> Sensibilità positiva = l'asset guadagna se il dollaro perde peso
+        (oro, argento, bitcoin, emergenti); negativa = ci perde (bond USA, liquidità). Differenza =
+        sensibilità × punteggio di de-dollarizzazione. Con il bonus spento (la scelta di base) gli score
+        vengono solo dal regime e dai rendimenti storici: qui vedi di quanto cambierebbero accendendolo.
       </div>
     </div>
   );

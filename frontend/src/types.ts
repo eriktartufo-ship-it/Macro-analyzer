@@ -732,6 +732,7 @@ export interface PredictionLogRegimeStats {
 
 export interface PredictionLogStats {
   horizon: "1m" | "3m" | "6m";
+  version?: string | null;
   summary: PredictionLogSummary;
   by_regime: Record<string, PredictionLogRegimeStats>;
 }

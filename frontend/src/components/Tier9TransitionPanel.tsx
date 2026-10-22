@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { TransitionCheckResponse } from "../types";
+import { assetName } from "../lib/assets";
 
 /**
  * Tier 9 — Transition Check Panel.
@@ -38,7 +39,7 @@ export function Tier9TransitionPanel() {
   }, []);
 
   if (loading) {
-    return <div className="card">Caricamento transition check...</div>;
+    return <div className="card">Caricamento del controllo di transizione…</div>;
   }
   if (error || !data) {
     return (
@@ -67,40 +68,40 @@ export function Tier9TransitionPanel() {
           fontWeight: 700,
           fontSize: 12,
         }}>
-          {isTransition ? "TRANSITION" : "STABLE"}
+          {isTransition ? "IN TRANSIZIONE" : "STABILE"}
         </span>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Max Prob
+            Regime più probabile
           </div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>
-            {(data.max_prob * 100).toFixed(1)}%
+            {(data.max_prob * 100).toFixed(1).replace(".", ",")}%
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            threshold 38%
+            soglia 38%
           </div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Entropy
+            Incertezza
           </div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>{data.entropy.toFixed(2)}</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{data.entropy.toFixed(2).replace(".", ",")}</div>
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            max 2.00 (uniforme)
+            massimo 2 (regimi alla pari)
           </div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Confidence
+            Fiducia
           </div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>
             {(data.confidence * 100).toFixed(0)}%
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            threshold 30%
+            soglia 30%
           </div>
         </div>
       </div>
@@ -112,7 +113,7 @@ export function Tier9TransitionPanel() {
       {data.triggers_fired.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6 }}>
-            Trigger fired ({data.triggers_count}/3)
+            Segnali accesi ({data.triggers_count} su 3)
           </div>
           <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
             {data.triggers_fired.map((t, i) => (
@@ -125,7 +126,7 @@ export function Tier9TransitionPanel() {
       {data.defensive_allocation && (
         <div style={{ marginTop: 16, padding: 12, background: "rgba(255,255,255,0.5)", borderRadius: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>
-            Defensive Allocation suggerita
+            Allocazione difensiva suggerita
           </div>
           <table style={{ width: "100%", fontSize: 13 }}>
             <tbody>
@@ -133,8 +134,8 @@ export function Tier9TransitionPanel() {
                 .sort((a, b) => b[1] - a[1])
                 .map(([asset, weight]) => (
                   <tr key={asset}>
-                    <td style={{ padding: "2px 0", textTransform: "capitalize" }}>
-                      {asset.replace(/_/g, " ")}
+                    <td style={{ padding: "2px 0" }}>
+                      {assetName(asset)}
                     </td>
                     <td style={{ textAlign: "right", fontWeight: 600 }}>
                       {(weight * 100).toFixed(0)}%

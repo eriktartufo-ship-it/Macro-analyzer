@@ -13,6 +13,7 @@ from app.models import DailySignal, RegimeClassification
 from app.models.news_signals import NewsSignal
 from app.models.secular_trends import SecularTrend
 from app.services.regime.classifier import classify_regime
+from app.services.regime.condition_labels_it import condition_description, condition_label_it
 from app.services.scoring.engine import calculate_final_scores, ASSET_CLASSES
 
 router = APIRouter(prefix="/api/v1")
@@ -528,7 +529,6 @@ def get_current_regime(db: Session = Depends(get_db)):
 @router.get("/regime/explain", response_model=RegimeExplainResponse)
 def get_regime_explain(db: Session = Depends(get_db)):
     """Spiegazione dettagliata del regime corrente: indicatori + driver principali."""
-    from app.services.regime.classifier import REGIME_CONDITIONS
 
     latest = (
         db.query(RegimeClassification)
@@ -554,7 +554,6 @@ def get_regime_explain(db: Session = Depends(get_db)):
 
     # Estrai i top driver per il regime dominante
     regime_conditions = conditions.get(latest.regime, {})
-    regime_meta = REGIME_CONDITIONS.get(latest.regime, {})
 
     drivers: list[ConditionDetail] = []
     for cond_name, cond_data in regime_conditions.items():
@@ -568,7 +567,7 @@ def get_regime_explain(db: Session = Depends(get_db)):
         else:
             signal = "neutral"
 
-        desc = regime_meta.get(cond_name, {}).get("description", cond_name)
+        desc = condition_label_it(condition_description(latest.regime, cond_name) or cond_name)
         drivers.append(ConditionDetail(
             name=cond_name,
             description=desc,
@@ -2015,6 +2014,10 @@ def trigger_refresh():
 @router.get("/prediction-log/stats")
 def get_prediction_log_stats(
     horizon: str = Query(default="3m", regex="^(1m|3m|6m)$"),
+    version: str | None = Query(
+        default=None, max_length=64,
+        description="Solo questa versione sigillata; 'active' = quella in vigore; assente = tutte",
+    ),
     db: Session = Depends(get_db),
 ):
     """Aggregate stats P&L live model vs benchmark 60/40.
@@ -2025,10 +2028,14 @@ def get_prediction_log_stats(
     from app.services.validation.prediction_logger import (
         stats_by_regime, summary_stats,
     )
-    summary = summary_stats(db, horizon=horizon)
-    by_regime = stats_by_regime(db, horizon=horizon)
+    if version == "active":
+        from app.services.validation.model_lock import get_active_version
+        version = get_active_version(db)
+    summary = summary_stats(db, horizon=horizon, version=version)
+    by_regime = stats_by_regime(db, horizon=horizon, version=version)
     return {
         "horizon": horizon,
+        "version": version,
         "summary": summary,
         "by_regime": by_regime,
     }
@@ -2783,6 +2790,12 @@ def get_vol_regime(db: Session = Depends(get_db)):
     }
 
 
+# Lo storico rifà la valutazione su ~500 giorni: si ricalcola solo quando cambia il dato
+# (nuovo giorno o nuova valutazione dedollar). Il TTL copre i backfill che riscrivono righe vecchie.
+_CRISIS_HISTORY_CACHE: dict[str, tuple[float, dict]] = {}
+_CRISIS_HISTORY_TTL = 6 * 3600.0
+
+
 @router.get("/regime/crisis-risk/history")
 def get_crisis_risk_history(
     days: int = Query(365 * 5, ge=30, le=365 * 30),
@@ -2800,11 +2813,27 @@ def get_crisis_risk_history(
     2000-01 dotcom). Indicatori pre-2000 hanno copertura parziale
     (no VIX/NFCI/breakeven) — segnale meno affidabile.
     """
+    import time
+
+    from sqlalchemy import func
+
     from app.services.regime.crisis_indicator_history import (
         aggregate_crisis_stats,
         compute_crisis_history,
         serialize_points,
     )
+
+    last_rc, n_rc = db.query(func.max(RegimeClassification.date), func.count(RegimeClassification.id)).one()
+    last_ded = (
+        db.query(func.max(SecularTrend.date))
+        .filter(SecularTrend.trend_name == "dedollarization")
+        .scalar()
+    )
+    key = f"{days}|{limit}|{last_rc}|{n_rc}|{last_ded}|{date.today()}"
+    now = time.time()
+    hit = _CRISIS_HISTORY_CACHE.get(key)
+    if hit and now - hit[0] < _CRISIS_HISTORY_TTL:
+        return hit[1]
 
     try:
         points = compute_crisis_history(db, days=days, limit=limit)
@@ -2813,7 +2842,7 @@ def get_crisis_risk_history(
 
     stats = aggregate_crisis_stats(points)
 
-    return {
+    result = {
         "n_points": stats["n_points"],
         "date_from": stats.get("date_from"),
         "date_to": stats.get("date_to"),
@@ -2822,6 +2851,11 @@ def get_crisis_risk_history(
         "notable_episodes": stats["notable_episodes"],
         "points": serialize_points(points),
     }
+    # Una sola versione per finestra: quelle con un dato vecchio non servono più.
+    for k in [k for k in _CRISIS_HISTORY_CACHE if k.startswith(f"{days}|{limit}|")]:
+        del _CRISIS_HISTORY_CACHE[k]
+    _CRISIS_HISTORY_CACHE[key] = (now, result)
+    return result
 
 
 @router.get("/alt-data/insider-activity")
@@ -3046,7 +3080,7 @@ def get_data_snapshot(db: Session = Depends(get_db)):
 
     regime_conditions = {
         regime: [
-            RegimeConditionMeta(name=name, weight=cfg["weight"], description=cfg["description"])
+            RegimeConditionMeta(name=name, weight=cfg["weight"], description=condition_label_it(cfg["description"]))
             for name, cfg in conds.items()
         ]
         for regime, conds in REGIME_CONDITIONS.items()

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import type { Regime, RegimeHistoryItem } from "../types";
+import { regimeLabel } from "../lib/assets";
 
 interface Props {
   history: RegimeHistoryItem[];
@@ -15,6 +16,9 @@ function regimeValue(item: RegimeHistoryItem, regime: Regime): number {
 const REGIMES: Regime[] = ["reflation", "goldilocks", "deflation", "stagflation"];
 
 const PROJECTION_DAYS = 90;
+// Il grafico dichiara «12 mesi storici»: la pagina gli passa 5 anni (le servono altrove),
+// e con 5 anni le etichette dei mesi si sovrapponevano in una riga illeggibile.
+const HISTORY_DAYS = 365;
 
 // SVG coordinate system (responsive via width:100% + preserveAspectRatio)
 const VB_W = 640;
@@ -38,7 +42,12 @@ function monthLabel(iso: string): string {
 
 export function RegimeTimelineChart({ history, projected }: Props) {
   const chart = useMemo(() => {
-    const sorted = [...history].sort((a, b) => (a.date < b.date ? -1 : 1));
+    const all = [...history].sort((a, b) => (a.date < b.date ? -1 : 1));
+    if (all.length < 2) return null;
+    const cutoff = new Date(new Date(all[all.length - 1].date).getTime() - HISTORY_DAYS * 86400000)
+      .toISOString()
+      .slice(0, 10);
+    const sorted = all.filter((p) => p.date >= cutoff);
     if (sorted.length < 2) return null;
 
     const firstDate = sorted[0].date;
@@ -106,8 +115,8 @@ export function RegimeTimelineChart({ history, projected }: Props) {
         {REGIMES.map((r) => (
           <span key={r} className="regime-chart-legend-item">
             <span className={`regime-chart-swatch bg-${r}`} />
-            <span className={`regime-${r}`} style={{ textTransform: "capitalize" }}>
-              {r}
+            <span className={`regime-${r}`}>
+              {regimeLabel(r)}
             </span>
           </span>
         ))}
@@ -118,7 +127,7 @@ export function RegimeTimelineChart({ history, projected }: Props) {
         viewBox={`0 0 ${VB_W} ${VB_H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label="Regime probability timeline"
+        aria-label="Probabilità dei regimi nel tempo"
       >
         {/* Horizontal gridlines at 25 / 50 / 75 / 100% */}
         {[0, 0.25, 0.5, 0.75, 1].map((p) => {

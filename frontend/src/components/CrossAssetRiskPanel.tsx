@@ -8,7 +8,7 @@ const LOOKBACKS = [4, 13, 26];
 const GAUGE_CLAMP = 20;       // pp: estremi del termometro
 
 const REGIME_LABEL: Record<string, string> = {
-  risk_on: "RISK-ON", neutral: "NEUTRALE", risk_off: "RISK-OFF",
+  risk_on: "SI CERCA RISCHIO", neutral: "NEUTRALE", risk_off: "SI CERCANO RIFUGI",
 };
 const REGIME_COL: Record<string, string> = {
   risk_on: RISK_COL, neutral: "#f59e0b", risk_off: OFF_COL,
@@ -27,11 +27,11 @@ function Gauge({ gauge, regime }: { gauge: number; regime: string }) {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11,
         color: "var(--muted)", marginTop: 6 }}>
-        <span>← Risk-off (rifugi)</span>
+        <span>← Rifugi</span>
         <strong style={{ color: REGIME_COL[regime], fontSize: 13 }}>
-          {REGIME_LABEL[regime]} · {gauge >= 0 ? "+" : ""}{gauge.toFixed(1)}pp
+          {REGIME_LABEL[regime]} · {gauge >= 0 ? "+" : "−"}{Math.abs(gauge).toFixed(1).replace(".", ",")} pp
         </strong>
-        <span>Risk-on (rischio) →</span>
+        <span>Rischio →</span>
       </div>
     </div>
   );
@@ -68,7 +68,7 @@ function ClassBar({ c, maxAbs, isRefuge }: { c: RiskClass; maxAbs: number; isRef
       <div style={{ width: 76, flexShrink: 0, textAlign: "right", fontSize: 12.5,
         fontVariantNumeric: "tabular-nums",
         color: na ? "var(--muted)" : pos ? RISK_COL : OFF_COL, fontWeight: 600 }}>
-        {na ? `~${c.weeks_available}w` : `${m >= 0 ? "+" : ""}${m.toFixed(1)}%`}
+        {na ? `~${c.weeks_available} sett.` : `${m >= 0 ? "+" : ""}${m.toFixed(1).replace(".", ",")}%`}
       </div>
     </div>
   );
@@ -132,7 +132,7 @@ export function CrossAssetRiskPanel() {
           </div>
           <p style={{ color: "var(--muted)", fontSize: 11, marginTop: 10 }}>
             Cripto ha storia breve: se le settimane disponibili sono meno del periodo, resta fuori dal
-            gauge (mostrata come <em>~Nw</em>).
+            calcolo (mostrata come <em>~N sett.</em>).
           </p>
         </>
       )}

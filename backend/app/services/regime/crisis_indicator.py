@@ -150,21 +150,21 @@ def _evaluate_triggers(
     """
     triggers = []
     checks = [
-        ("deflation_prob_high", regime_probs.get("deflation", 0.0), _THRESHOLDS["deflation_prob"], "ge", "Probabilita' deflation regime alta"),
-        ("stagflation_prob_high", regime_probs.get("stagflation", 0.0), _THRESHOLDS["stagflation_prob"], "ge", "Probabilita' stagflation regime alta"),
-        ("vix_elevated", ind.get("vix", 18.0), _THRESHOLDS["vix_elevated"], "ge", "VIX elevato (stress mercati)"),
-        ("vix_spike", ind.get("vix", 18.0), _THRESHOLDS["vix_spike"], "ge", "VIX spike (panic)"),
-        ("vix_compressed", ind.get("vix", 18.0), _THRESHOLDS["vix_compressed"], "le", "VIX compresso (complacency)"),
-        ("credit_spread_wide", ind.get("baa_spread", 2.0), _THRESHOLDS["credit_spread_wide"], "ge", "Credit spread largo"),
-        ("credit_spread_extreme", ind.get("baa_spread", 2.0), _THRESHOLDS["credit_spread_extreme"], "ge", "Credit spread estremo (2008-style)"),
-        ("cpi_hot", ind.get("cpi_yoy", 2.0), _THRESHOLDS["cpi_hot"], "ge", "CPI YoY caldo (inflation alta)"),
-        ("cpi_collapse", ind.get("cpi_yoy", 2.0), _THRESHOLDS["cpi_collapse"], "le", "CPI collasso (disinflation severa)"),
-        ("breakeven_low", ind.get("breakeven_10y", 2.0), _THRESHOLDS["breakeven_anchored_low"], "le", "Breakeven 10Y basso (deflation expect)"),
-        ("breakeven_high", ind.get("breakeven_10y", 2.0), _THRESHOLDS["breakeven_unanchored_high"], "ge", "Breakeven 10Y alto (debasement expect)"),
-        ("nfci_tight", ind.get("nfci", 0.0), _THRESHOLDS["nfci_tight"], "ge", "Financial conditions tight"),
-        ("yield_curve_inverted", ind.get("yield_curve_10y2y", 1.0), _THRESHOLDS["yield_curve_inverted"], "le", "Yield curve invertita (recession signal)"),
-        ("gdp_weak", ind.get("gdp_roc", 2.0), _THRESHOLDS["gdp_weak"], "le", "GDP QoQ debole"),
-        ("unrate_rising", ind.get("unrate_roc", 0.0), _THRESHOLDS["unrate_rising_fast"], "ge", "Unemployment in salita rapida"),
+        ("deflation_prob_high", regime_probs.get("deflation", 0.0), _THRESHOLDS["deflation_prob"], "ge", "Probabilità alta di deflazione"),
+        ("stagflation_prob_high", regime_probs.get("stagflation", 0.0), _THRESHOLDS["stagflation_prob"], "ge", "Probabilità alta di stagflazione"),
+        ("vix_elevated", ind.get("vix", 18.0), _THRESHOLDS["vix_elevated"], "ge", "Volatilità (VIX) alta: mercati sotto stress"),
+        ("vix_spike", ind.get("vix", 18.0), _THRESHOLDS["vix_spike"], "ge", "Volatilità (VIX) in picco: panico"),
+        ("vix_compressed", ind.get("vix", 18.0), _THRESHOLDS["vix_compressed"], "le", "Volatilità (VIX) troppo bassa: compiacenza"),
+        ("credit_spread_wide", ind.get("baa_spread", 2.0), _THRESHOLDS["credit_spread_wide"], "ge", "Spread del credito largo"),
+        ("credit_spread_extreme", ind.get("baa_spread", 2.0), _THRESHOLDS["credit_spread_extreme"], "ge", "Spread del credito estremo (come nel 2008)"),
+        ("cpi_hot", ind.get("cpi_yoy", 2.0), _THRESHOLDS["cpi_hot"], "ge", "Inflazione a 12 mesi alta"),
+        ("cpi_collapse", ind.get("cpi_yoy", 2.0), _THRESHOLDS["cpi_collapse"], "le", "Inflazione a 12 mesi crollata (disinflazione forte)"),
+        ("breakeven_low", ind.get("breakeven_10y", 2.0), _THRESHOLDS["breakeven_anchored_low"], "le", "Inflazione attesa a 10 anni bassa (si teme deflazione)"),
+        ("breakeven_high", ind.get("breakeven_10y", 2.0), _THRESHOLDS["breakeven_unanchored_high"], "ge", "Inflazione attesa a 10 anni alta (si teme svalutazione)"),
+        ("nfci_tight", ind.get("nfci", 0.0), _THRESHOLDS["nfci_tight"], "ge", "Condizioni finanziarie strette"),
+        ("yield_curve_inverted", ind.get("yield_curve_10y2y", 1.0), _THRESHOLDS["yield_curve_inverted"], "le", "Curva dei tassi invertita (segnale di recessione)"),
+        ("gdp_weak", ind.get("gdp_roc", 2.0), _THRESHOLDS["gdp_weak"], "le", "PIL trimestrale debole"),
+        ("unrate_rising", ind.get("unrate_roc", 0.0), _THRESHOLDS["unrate_rising_fast"], "ge", "Disoccupazione in salita rapida"),
     ]
     # S50: stress sovrano euro. Aggiunto solo se il dato esiste: un trigger sempre spento
     # diluirebbe il punteggio anche dove la curva BCE non c'e' (prima del 2004).
@@ -195,7 +195,7 @@ def _evaluate_triggers(
             "threshold": 0.70,
             "operator": "ge",
             "fired": is_breakdown,
-            "description": "Cross-asset correlation breakdown (flight to safety)",
+            "description": "Asset che si muovono tutti insieme (fuga verso i rifugi)",
         })
 
     return triggers
@@ -259,9 +259,9 @@ def _classify_crisis_type(
 
     # Historical analog per tipo
     analogs = {
-        "deflation_crash": "2008 GFC" if defl_score >= 0.6 else "2020 COVID" if defl_score >= 0.4 else "2001 Dotcom soft",
-        "stagflation_debasement": "1973 Oil shock" if stag_score >= 0.7 else "2022 Inflation surge" if stag_score >= 0.4 else "2008 commodity peak",
-        "bubble_goldilocks": "2000 Dotcom pre-burst" if benign_dom > 0.65 else "2021 SPAC mania",
+        "deflation_crash": "2008, crisi finanziaria" if defl_score >= 0.6 else "2020, Covid" if defl_score >= 0.4 else "2001, dot-com (versione lieve)",
+        "stagflation_debasement": "1973, shock petrolifero" if stag_score >= 0.7 else "2022, fiammata dell'inflazione" if stag_score >= 0.4 else "2008, picco delle materie prime",
+        "bubble_goldilocks": "2000, prima dello scoppio dot-com" if benign_dom > 0.65 else "2021, mania delle SPAC",
     }
     return top_type, min(1.0, top_score), analogs[top_type]
 
@@ -317,22 +317,27 @@ def _build_summary(
     regime_probs: dict[str, float],
 ) -> str:
     """1-2 frasi human-readable in italiano."""
+    level_it = _LEVEL_IT.get(level, level)
     if crisis_type == "no_crisis":
         dom = max(regime_probs, key=regime_probs.get)
         return (
-            f"Nessuna crisi in atto. Rischio sistema {level}. Regime dominante {dom} "
-            f"({regime_probs[dom]*100:.0f}%). Posizionamento bilanciato suggerito."
+            f"Nessuna crisi in atto. Rischio complessivo {level_it}. Regime dominante: "
+            f"{_REGIME_IT.get(dom, dom)} ({regime_probs[dom]*100:.0f}%). Conviene un portafoglio bilanciato."
         )
     type_label = {
         "deflation_crash": "crisi deflazionaria (crollo)",
-        "stagflation_debasement": "stagflation/debasement (mercati possono volare in nominale, perdere in real terms)",
-        "bubble_goldilocks": "bolla di compiacenza (rischio mean-reversion downside)",
+        "stagflation_debasement": "stagflazione con svalutazione (i mercati possono salire di prezzo ma perdere contro l'inflazione)",
+        "bubble_goldilocks": "bolla di compiacenza (rischio di una correzione al ribasso)",
     }[crisis_type]
-    analog_str = f" Analogia storica: {analog}." if analog else ""
+    analog_str = f" Somiglia a: {analog}." if analog else ""
     return (
-        f"Rischio {level}: {type_label}.{analog_str} "
-        f"Vedere positioning per asset overweight/underweight."
+        f"Rischio {level_it}: {type_label}.{analog_str} "
+        f"Sotto, cosa sovrappesare e cosa sottopesare."
     )
+
+
+_LEVEL_IT = {"low": "basso", "moderate": "moderato", "elevated": "elevato", "high": "alto", "extreme": "estremo"}
+_REGIME_IT = {"reflation": "reflazione", "stagflation": "stagflazione", "deflation": "deflazione", "goldilocks": "goldilocks"}
 
 
 def assess_crisis_risk(

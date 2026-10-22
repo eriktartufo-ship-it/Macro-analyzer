@@ -19,34 +19,34 @@ FLOW_ASSETS = [
 
 # label, area, risk_rank (0=safe .. 1=risky)
 META: dict[str, dict] = {
-    "cash_money_market":        {"label": "Cash",          "area": "global", "risk": 0.02},
+    "cash_money_market":        {"label": "Liquidità",     "area": "global", "risk": 0.02},
     "us_bonds_short":           {"label": "Bond breve",    "area": "usa",    "risk": 0.08},
     "tips_inflation_bonds":     {"label": "TIPS",          "area": "usa",    "risk": 0.16},
     "us_bonds_long":            {"label": "Bond lungo",    "area": "usa",    "risk": 0.24},
-    "sector_staples":           {"label": "Staples",       "area": "usa",    "risk": 0.34},
+    "sector_staples":           {"label": "Beni primari",  "area": "usa",    "risk": 0.34},
     "gold":                     {"label": "Oro",           "area": "global", "risk": 0.38},
-    "sector_utilities":         {"label": "Utilities",     "area": "usa",    "risk": 0.40},
+    "sector_utilities":         {"label": "Utility",       "area": "usa",    "risk": 0.40},
     "real_estate_reits":        {"label": "REITs",         "area": "usa",    "risk": 0.46},
-    "sector_healthcare":        {"label": "Healthcare",    "area": "usa",    "risk": 0.47},
-    "factor_quality":           {"label": "Quality",       "area": "usa",    "risk": 0.49},
-    "factor_value":             {"label": "Value (fct)",   "area": "usa",    "risk": 0.50},
-    "us_equities_value":        {"label": "US Value",      "area": "usa",    "risk": 0.52},
-    "international_dm_equities": {"label": "World ex-US",   "area": "world",  "risk": 0.55},
-    "sector_financials":        {"label": "Financials",    "area": "usa",    "risk": 0.56},
-    "factor_momentum":          {"label": "Momentum",      "area": "usa",    "risk": 0.58},
-    "us_equities_growth":       {"label": "US Growth",     "area": "usa",    "risk": 0.62},
+    "sector_healthcare":        {"label": "Sanità",        "area": "usa",    "risk": 0.47},
+    "factor_quality":           {"label": "Fatt. qualità", "area": "usa",    "risk": 0.49},
+    "factor_value":             {"label": "Fatt. value",   "area": "usa",    "risk": 0.50},
+    "us_equities_value":        {"label": "USA value",     "area": "usa",    "risk": 0.52},
+    "international_dm_equities": {"label": "Sviluppati ex-USA","area": "world",  "risk": 0.55},
+    "sector_financials":        {"label": "Finanziari",    "area": "usa",    "risk": 0.56},
+    "factor_momentum":          {"label": "Fatt. momentum","area": "usa",    "risk": 0.58},
+    "us_equities_growth":       {"label": "USA growth",    "area": "usa",    "risk": 0.62},
     "sector_energy":            {"label": "Sett. Energia", "area": "usa",    "risk": 0.64},
-    "broad_commodities":        {"label": "Commodities",   "area": "global", "risk": 0.68},
-    "energy":                   {"label": "Energia",       "area": "global", "risk": 0.70},
+    "broad_commodities":        {"label": "Materie prime", "area": "global", "risk": 0.68},
+    "energy":                   {"label": "Energia (mat.)","area": "global", "risk": 0.70},
     "em_equities":              {"label": "Emergenti",     "area": "em",     "risk": 0.74},
     "silver":                   {"label": "Argento",       "area": "global", "risk": 0.78},
-    "sector_technology":        {"label": "Technology",    "area": "usa",    "risk": 0.80},
+    "sector_technology":        {"label": "Tecnologia",    "area": "usa",    "risk": 0.80},
     "sector_semiconductors":    {"label": "Semiconduttori","area": "usa",    "risk": 0.86},
-    "crypto_broad":             {"label": "Cripto broad",  "area": "global", "risk": 0.93},
+    "crypto_broad":             {"label": "Cripto paniere","area": "global", "risk": 0.93},
     "bitcoin":                  {"label": "Bitcoin",       "area": "global", "risk": 1.00},
 }
 
-AREA_LABEL = {"usa": "USA", "world": "World ex-US", "em": "Emergenti", "global": "Globale"}
+AREA_LABEL = {"usa": "USA", "world": "Sviluppati ex-USA", "em": "Emergenti", "global": "Globale"}
 
 
 def label_of(asset: str) -> str:

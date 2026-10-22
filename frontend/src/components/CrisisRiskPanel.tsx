@@ -4,6 +4,7 @@ import type {
   CrisisType,
   PositioningStance,
 } from "../types";
+import { assetName, fmt } from "../lib/assets";
 
 interface Props {
   data: CrisisRiskAssessment;
@@ -26,25 +27,22 @@ const CRISIS_TYPE_META: Record<CrisisType, { label: string; tag: string; tagBg: 
     tagBg: "var(--success-bg)",
   },
   deflation_crash: {
-    label: "Deflation Crash (2008-style)",
-    tag: "DEFL",
+    label: "Crollo deflazionario (come nel 2008)",
+    tag: "DEFLAZIONE",
     tagBg: "var(--danger-bg)",
   },
   stagflation_debasement: {
-    label: "Stagflation / Debasement (1973-style)",
-    tag: "STAG",
+    label: "Stagflazione e svalutazione (come nel 1973)",
+    tag: "STAGFLAZIONE",
     tagBg: "var(--warn-bg)",
   },
   bubble_goldilocks: {
-    label: "Bubble / Goldilocks complacency (2000-style)",
-    tag: "BUBBLE",
+    label: "Bolla da compiacenza (come nel 2000)",
+    tag: "BOLLA",
     tagBg: "var(--accent-bg)",
   },
 };
 
-function formatAsset(name: string): string {
-  return name.replace(/_/g, " ");
-}
 
 function stanceWeight(s: PositioningStance): number {
   if (s === "overweight") return 1;
@@ -59,9 +57,9 @@ function stanceColor(s: PositioningStance): string {
 }
 
 function stanceLabel(s: PositioningStance): string {
-  if (s === "overweight") return "OW";
-  if (s === "underweight") return "UW";
-  return "Neutral";
+  if (s === "overweight") return "Sovrappeso";
+  if (s === "underweight") return "Sottopeso";
+  return "Neutro";
 }
 
 export function CrisisRiskPanel({ data }: Props) {
@@ -95,7 +93,7 @@ export function CrisisRiskPanel({ data }: Props) {
         }}
       >
         <h2 style={{ margin: 0 }}>Rischio crisi</h2>
-        <span style={{ fontSize: 12, color: "var(--muted)" }}>As of {data.date}</span>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>Aggiornato al {data.date}</span>
       </div>
 
       <div
@@ -142,7 +140,7 @@ export function CrisisRiskPanel({ data }: Props) {
               fontStyle: "italic",
             }}
           >
-            analog: {data.historical_analog}
+            Somiglia a: {data.historical_analog}
           </span>
         )}
       </div>
@@ -166,13 +164,13 @@ export function CrisisRiskPanel({ data }: Props) {
           marginBottom: 12,
         }}
       >
-        <Metric label="Risk score" value={`${(data.risk_score * 100).toFixed(0)}%`} />
+        <Metric label="Punteggio di rischio" value={`${(data.risk_score * 100).toFixed(0)}%`} />
         <Metric
-          label="Confidence tipo"
+          label="Sicurezza sul tipo"
           value={`${(data.crisis_type_confidence * 100).toFixed(0)}%`}
         />
         <Metric
-          label="Triggers fired"
+          label="Segnali accesi"
           value={`${data.triggers_fired.length} / ${data.triggers_all.length}`}
         />
       </div>
@@ -180,12 +178,12 @@ export function CrisisRiskPanel({ data }: Props) {
       {!isNoCrisis && (overweights.length > 0 || underweights.length > 0) && (
         <div className="grid grid-2" style={{ gap: 16, marginBottom: 8 }}>
           <PositioningList
-            title="Overweight"
+            title="Da sovrappesare"
             accent="var(--reflation)"
             items={overweights.slice(0, 6)}
           />
           <PositioningList
-            title="Underweight"
+            title="Da sottopesare"
             accent="var(--deflation)"
             items={underweights.slice(0, 6)}
           />
@@ -207,19 +205,20 @@ export function CrisisRiskPanel({ data }: Props) {
           color: "var(--muted)",
         }}
       >
-        {expanded ? "Nascondi dettagli" : "Mostra dettagli (triggers + positioning completo)"}
+        {expanded ? "Nascondi dettagli" : "Mostra i segnali e tutti gli asset"}
       </button>
 
       {expanded && (
         <div style={{ marginTop: 14 }}>
-          <SectionTitle>Triggers ({data.triggers_fired.length} attivi)</SectionTitle>
+          <SectionTitle>Segnali ({data.triggers_fired.length} accesi)</SectionTitle>
           <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 14 }}>
             {data.triggers_all.map((t) => (
               <div
                 key={t.name}
+                title={t.name}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "auto 1fr auto auto",
+                  gridTemplateColumns: "auto 1fr auto",
                   alignItems: "center",
                   gap: 10,
                   padding: "6px 10px",
@@ -233,10 +232,10 @@ export function CrisisRiskPanel({ data }: Props) {
                     fontSize: 10,
                     fontWeight: 700,
                     color: t.fired ? "var(--deflation)" : "var(--muted)",
-                    minWidth: 30,
+                    minWidth: 52,
                   }}
                 >
-                  {t.fired ? "FIRE" : "—"}
+                  {t.fired ? "ACCESO" : "—"}
                 </span>
                 <span style={{ fontSize: 12 }}>{t.description}</span>
                 <span
@@ -246,22 +245,13 @@ export function CrisisRiskPanel({ data }: Props) {
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {t.value.toFixed(2)} {t.operator === "ge" ? "≥" : "≤"} {t.threshold}
+                  {fmt(t.value, 2)} {t.operator === "ge" ? "≥" : "≤"} {fmt(t.threshold, 2)}
                 </span>
-                <code
-                  style={{
-                    fontSize: 10,
-                    color: "var(--muted)",
-                    fontFamily: "ui-monospace, monospace",
-                  }}
-                >
-                  {t.name}
-                </code>
               </div>
             ))}
           </div>
 
-          <SectionTitle>Positioning completo (15 asset class)</SectionTitle>
+          <SectionTitle>Tutti gli asset ({positioningSorted.length})</SectionTitle>
           <div
             style={{
               display: "grid",
@@ -283,7 +273,7 @@ export function CrisisRiskPanel({ data }: Props) {
                   fontSize: 12,
                 }}
               >
-                <span style={{ textTransform: "capitalize" }}>{formatAsset(p.asset)}</span>
+                <span>{assetName(p.asset)}</span>
                 <span
                   style={{
                     fontWeight: 700,
@@ -305,7 +295,7 @@ export function CrisisRiskPanel({ data }: Props) {
               fontStyle: "italic",
             }}
           >
-            Dedollar combined: {data.dedollar_combined.toFixed(2)}
+            Indice di de-dollarizzazione: {fmt(data.dedollar_combined, 2)}
             {data.notes.length > 0 && <> · {data.notes.join(" · ")}</>}
           </div>
         </div>
@@ -416,7 +406,7 @@ function PositioningList({ title, accent, items }: PositioningListProps) {
               fontSize: 13,
             }}
           >
-            <span style={{ textTransform: "capitalize" }}>{formatAsset(p.asset)}</span>
+            <span>{assetName(p.asset)}</span>
             <span style={{ color: accent, fontSize: 11, fontWeight: 700 }}>
               {stanceLabel(p.stance)}
             </span>

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type {
-  ActiveModelInfo,
-  PredictionLogRecent,
-  PredictionLogStats,
-} from "../types";
+import type { PredictionLogRecent } from "../types";
+import { fmtPctSigned, regimeLabel } from "../lib/assets";
+import { loadTrackRecord, sealDate, type TrackRecord } from "../lib/trackRecord";
+
+const HORIZON_LABEL = { "1m": "1 mese", "3m": "3 mesi", "6m": "6 mesi" } as const;
 
 /**
  * CRITICAL #1+#2 council 2026-05-27 — Live Track Record panel.
@@ -18,9 +18,8 @@ import type {
  */
 export function LiveTrackRecordPanel() {
   const [horizon, setHorizon] = useState<"1m" | "3m" | "6m">("3m");
-  const [stats, setStats] = useState<PredictionLogStats | null>(null);
+  const [track, setTrack] = useState<TrackRecord | null>(null);
   const [recent, setRecent] = useState<PredictionLogRecent[]>([]);
-  const [model, setModel] = useState<ActiveModelInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,16 +27,11 @@ export function LiveTrackRecordPanel() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([
-      api.predictionLogStats(horizon),
-      api.predictionLogRecent(10),
-      api.activeModel(),
-    ])
-      .then(([s, r, m]) => {
+    Promise.all([loadTrackRecord(horizon), api.predictionLogRecent(10)])
+      .then(([t, r]) => {
         if (cancelled) return;
-        setStats(s);
+        setTrack(t);
         setRecent(r);
-        setModel(m);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -51,10 +45,7 @@ export function LiveTrackRecordPanel() {
     };
   }, [horizon]);
 
-  const fmtPct = (v: number | null | undefined, digits = 2): string => {
-    if (v == null) return "—";
-    return `${(v * 100).toFixed(digits)}%`;
-  };
+  const fmtPct = (v: number | null | undefined): string => fmtPctSigned(v, 2);
 
   const fmtAlphaColor = (alpha: number | null): string => {
     if (alpha == null) return "var(--text-muted)";
@@ -63,7 +54,13 @@ export function LiveTrackRecordPanel() {
     return "var(--text-muted)";
   };
 
+  const model = track?.model ?? null;
+  const stats = track?.active ?? null;
+  const prev = track?.previous ?? null;
   const n = stats?.summary.n_evaluated ?? 0;
+  // L'impronta salvata quando il modello è stato sigillato: se diversa da quella attuale,
+  // le previsioni recenti non vengono più dal modello sigillato e va detto.
+  const sealedHash = track?.activeSnapshot?.classifier_hash ?? null;
 
   return (
     <div className="card">
@@ -77,24 +74,35 @@ export function LiveTrackRecordPanel() {
               className={horizon === h ? "chip chip-active" : "chip"}
               style={{ cursor: "pointer", border: 0 }}
             >
-              {h}
+              {HORIZON_LABEL[h]}
             </button>
           ))}
         </div>
       </div>
 
       <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: 12 }}>
-        Model sealed: <code>{model?.active_version ?? "—"}</code> · classifier hash{" "}
-        <code>{model?.current_classifier_hash?.slice(0, 8) ?? "—"}...</code>
+        Modello in vigore: <code>{model?.active_version ?? "—"}</code>, sigillato il {sealDate(track?.activeSnapshot ?? null)} ·
+        impronta del classificatore{" "}
+        <code>{model?.current_classifier_hash?.slice(0, 8) ?? "—"}</code>
+        {sealedHash && model && sealedHash !== model.current_classifier_hash && (
+          <>
+            {" "}
+            <span style={{ color: "var(--warn-text)" }}>
+              (al sigillo era <code>{sealedHash.slice(0, 8)}</code>: il classificatore è cambiato dopo il sigillo)
+            </span>
+          </>
+        )}
+        . Ogni previsione si confronta con un portafoglio 60/40 (60% azioni, 40% bond) a {HORIZON_LABEL[horizon]}.
+        {track?.previousSnapshot && <> I numeri qui sotto sono solo di questo sigillo: il track record è ripartito.</>}
       </div>
 
       {error && (
         <div style={{ padding: 12, background: "rgba(255,80,80,0.1)", borderRadius: 8 }}>
-          Error: {error}
+          Errore: {error}
         </div>
       )}
 
-      {loading && !stats && <div style={{ opacity: 0.6 }}>Loading...</div>}
+      {loading && !stats && <div style={{ opacity: 0.6 }}>Caricamento…</div>}
 
       {stats && (
         <>
@@ -107,16 +115,16 @@ export function LiveTrackRecordPanel() {
             }}
           >
             <div className="metric-box">
-              <div className="metric-label">Predictions evaluated</div>
+              <div className="metric-label">Previsioni verificate</div>
               <div className="metric-value">{n}</div>
               {n === 0 && (
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                  Awaiting first evaluation
+                  In attesa della prima verifica: arriva {HORIZON_LABEL[horizon]} dopo la prima previsione del sigillo
                 </div>
               )}
             </div>
             <div className="metric-box">
-              <div className="metric-label">Mean alpha vs 60/40</div>
+              <div className="metric-label">Extra-rendimento medio sul 60/40</div>
               <div
                 className="metric-value"
                 style={{ color: fmtAlphaColor(stats.summary.mean_alpha ?? null) }}
@@ -125,7 +133,7 @@ export function LiveTrackRecordPanel() {
               </div>
             </div>
             <div className="metric-box">
-              <div className="metric-label">Hit rate (alpha &gt; 0)</div>
+              <div className="metric-label">Quante battono il 60/40</div>
               <div className="metric-value">
                 {stats.summary.hit_rate == null
                   ? "—"
@@ -133,7 +141,7 @@ export function LiveTrackRecordPanel() {
               </div>
             </div>
             <div className="metric-box">
-              <div className="metric-label">Mean realized return</div>
+              <div className="metric-label">Rendimento medio ottenuto</div>
               <div className="metric-value">
                 {fmtPct(stats.summary.mean_realized_return)}
               </div>
@@ -143,20 +151,20 @@ export function LiveTrackRecordPanel() {
           {Object.keys(stats.by_regime).length > 0 && (
             <>
               <h3 style={{ fontSize: "0.95rem", margin: "12px 0 6px" }}>
-                By regime
+                Per regime previsto
               </h3>
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <table className="log-table" style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
                     <tr>
                       <th style={{ textAlign: "left", padding: 6 }}>Regime</th>
-                      <th style={{ textAlign: "right", padding: 6 }}>N</th>
+                      <th style={{ textAlign: "right", padding: 6 }}>Previsioni</th>
                       <th style={{ textAlign: "right", padding: 6 }}>
-                        Mean α
+                        Extra medio
                       </th>
-                      <th style={{ textAlign: "right", padding: 6 }}>Hit</th>
-                      <th style={{ textAlign: "right", padding: 6 }}>Worst</th>
-                      <th style={{ textAlign: "right", padding: 6 }}>Best</th>
+                      <th style={{ textAlign: "right", padding: 6 }}>Battono il 60/40</th>
+                      <th style={{ textAlign: "right", padding: 6 }}>Peggiore</th>
+                      <th style={{ textAlign: "right", padding: 6 }}>Migliore</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -169,7 +177,7 @@ export function LiveTrackRecordPanel() {
                           style={{ padding: 6 }}
                           className={`regime-${regime}`}
                         >
-                          {regime}
+                          {regimeLabel(regime)}
                         </td>
                         <td style={{ padding: 6, textAlign: "right" }}>
                           {r.n}
@@ -202,21 +210,42 @@ export function LiveTrackRecordPanel() {
         </>
       )}
 
+      {prev && track?.previousSnapshot && (
+        <div className="surface" style={{ marginTop: 16, padding: "10px 12px", fontSize: "0.85rem" }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            Storico del sigillo precedente · <code>{track.previousSnapshot.version}</code>
+          </div>
+          {prev.summary.n_evaluated === 0 ? (
+            <span style={{ color: "var(--text-muted)" }}>Nessuna previsione verificata a {HORIZON_LABEL[horizon]}.</span>
+          ) : (
+            <span style={{ color: "var(--text-muted)" }}>
+              {prev.summary.n_evaluated} previsioni verificate · extra medio sul 60/40{" "}
+              <b style={{ color: fmtAlphaColor(prev.summary.mean_alpha ?? null) }}>{fmtPct(prev.summary.mean_alpha)}</b> ·{" "}
+              {prev.summary.hit_rate == null ? "—" : `${(prev.summary.hit_rate * 100).toFixed(0)}%`} battono il 60/40 ·
+              rendimento medio {fmtPct(prev.summary.mean_realized_return)}
+            </span>
+          )}
+        </div>
+      )}
+
       {recent.length > 0 && (
         <>
           <h3 style={{ fontSize: "0.95rem", margin: "16px 0 6px" }}>
-            Recent predictions
+            Ultime previsioni
           </h3>
+          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: 6 }}>
+            «—» = non ancora verificabile: l'orizzonte non è ancora passato.
+          </div>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table className="log-table" style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ fontSize: "0.85rem" }}>
-                  <th style={{ textAlign: "left", padding: 6 }}>Date</th>
+                  <th style={{ textAlign: "left", padding: 6 }}>Data</th>
                   <th style={{ textAlign: "left", padding: 6 }}>Regime</th>
-                  <th style={{ textAlign: "right", padding: 6 }}>Conf</th>
-                  <th style={{ textAlign: "right", padding: 6 }}>α 1m</th>
-                  <th style={{ textAlign: "right", padding: 6 }}>α 3m</th>
-                  <th style={{ textAlign: "right", padding: 6 }}>α 6m</th>
+                  <th style={{ textAlign: "right", padding: 6 }}>Fiducia</th>
+                  <th style={{ textAlign: "right", padding: 6 }}>Extra 1 mese</th>
+                  <th style={{ textAlign: "right", padding: 6 }}>3 mesi</th>
+                  <th style={{ textAlign: "right", padding: 6 }}>6 mesi</th>
                 </tr>
               </thead>
               <tbody>
@@ -228,12 +257,17 @@ export function LiveTrackRecordPanel() {
                       fontSize: "0.85rem",
                     }}
                   >
-                    <td style={{ padding: 6 }}>{p.date_predicted ?? "—"}</td>
+                    <td style={{ padding: 6 }}>
+                      {p.date_predicted ?? "—"}
+                      {track?.previousSnapshot && p.model_version && p.model_version !== model?.active_version && (
+                        <span className="muted-s" title={p.model_version}> · sigillo precedente</span>
+                      )}
+                    </td>
                     <td
                       style={{ padding: 6 }}
                       className={`regime-${p.regime}`}
                     >
-                      {p.regime}
+                      {regimeLabel(p.regime)}
                     </td>
                     <td style={{ padding: 6, textAlign: "right" }}>
                       {(p.confidence * 100).toFixed(0)}%

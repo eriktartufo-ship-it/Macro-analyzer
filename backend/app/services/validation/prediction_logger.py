@@ -175,11 +175,21 @@ def evaluate_log(
     return updated
 
 
-def summary_stats(db: Session, horizon: str = "3m") -> dict:
+def _evaluated(db: Session, attr_alpha: str, version: str | None) -> list:
+    query = db.query(PredictionLog).filter(getattr(PredictionLog, attr_alpha).is_not(None))
+    if version is not None:
+        query = query.filter(PredictionLog.model_version == version)
+    return query.all()
+
+
+def summary_stats(db: Session, horizon: str = "3m", version: str | None = None) -> dict:
     """Aggregate P&L stats: mean alpha, hit rate, n_evaluated.
 
     Args:
         horizon: '1m' | '3m' | '6m'.
+        version: solo le previsioni di questa versione sigillata (None = tutte).
+            Dopo un nuovo sigillo il track record riparte: mescolare le versioni
+            attribuirebbe al modello nuovo i risultati di quello vecchio.
 
     Returns:
         dict con mean_alpha, hit_rate (% volte alpha > 0), n_evaluated.
@@ -188,9 +198,7 @@ def summary_stats(db: Session, horizon: str = "3m") -> dict:
     attr_alpha = f"alpha_{horizon}"
     attr_ret = f"realized_return_{horizon}"
 
-    rows = db.query(PredictionLog).filter(
-        getattr(PredictionLog, attr_alpha).is_not(None)
-    ).all()
+    rows = _evaluated(db, attr_alpha, version)
 
     if not rows:
         return {
@@ -213,13 +221,11 @@ def summary_stats(db: Session, horizon: str = "3m") -> dict:
     }
 
 
-def stats_by_regime(db: Session, horizon: str = "3m") -> dict[str, dict]:
+def stats_by_regime(db: Session, horizon: str = "3m", version: str | None = None) -> dict[str, dict]:
     """Stats per regime: dove il modello fa bene/male?"""
     _ensure_table_exists()
     attr_alpha = f"alpha_{horizon}"
-    rows = db.query(PredictionLog).filter(
-        getattr(PredictionLog, attr_alpha).is_not(None)
-    ).all()
+    rows = _evaluated(db, attr_alpha, version)
 
     by_regime: dict[str, list[float]] = {}
     for r in rows:

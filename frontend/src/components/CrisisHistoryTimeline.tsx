@@ -18,10 +18,18 @@ const CRISIS_COLORS: Record<CrisisType, string> = {
 };
 
 const CRISIS_LABELS: Record<CrisisType, string> = {
-  no_crisis: "No crisis",
-  deflation_crash: "Deflation crash",
-  stagflation_debasement: "Stagflation / debasement",
-  bubble_goldilocks: "Bubble / goldilocks",
+  no_crisis: "Nessuna crisi",
+  deflation_crash: "Crollo deflazionario",
+  stagflation_debasement: "Stagflazione e svalutazione",
+  bubble_goldilocks: "Bolla da compiacenza",
+};
+
+const LEVEL_IT: Record<string, string> = {
+  low: "basso",
+  moderate: "moderato",
+  elevated: "elevato",
+  high: "alto",
+  extreme: "estremo",
 };
 
 // SVG coordinate system (responsive via width:100% + preserveAspectRatio)
@@ -104,7 +112,7 @@ export function CrisisHistoryTimeline({ data }: Props) {
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Rischio crisi negli ultimi 10 anni</h2>
         <div style={{ fontSize: 13, color: "var(--muted)" }}>
-          Dati insufficienti per il timeline ({data.n_points} punti).
+          Dati insufficienti per il grafico ({data.n_points} rilevazioni).
         </div>
       </div>
     );
@@ -148,8 +156,8 @@ export function CrisisHistoryTimeline({ data }: Props) {
       >
         <h2 style={{ margin: 0 }}>Rischio crisi negli ultimi 10 anni</h2>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>
-          {data.date_from} → {data.date_to} · {data.n_points} punti ·{" "}
-          {data.notable_episodes.length} episodi
+          {data.date_from} → {data.date_to} · {data.n_points} rilevazioni ·{" "}
+          {data.notable_episodes.length === 1 ? "1 episodio" : `${data.notable_episodes.length} episodi`}
         </span>
       </div>
 
@@ -243,8 +251,8 @@ export function CrisisHistoryTimeline({ data }: Props) {
               opacity={0.10}
             >
               <title>
-                {b.ep.start} → {b.ep.end} · {CRISIS_LABELS[b.ep.crisis_type]} · peak{" "}
-                {b.ep.peak_risk_score.toFixed(2)}
+                {b.ep.start} → {b.ep.end} · {CRISIS_LABELS[b.ep.crisis_type]} · picco{" "}
+                {(b.ep.peak_risk_score * 100).toFixed(0)}%
               </title>
             </rect>
           ))}
@@ -299,7 +307,7 @@ export function CrisisHistoryTimeline({ data }: Props) {
             textAnchor="middle"
             transform={`rotate(-90, 6, ${PAD_T + PLOT_H / 2})`}
           >
-            risk score
+            rischio %
           </text>
         </svg>
 
@@ -325,13 +333,13 @@ export function CrisisHistoryTimeline({ data }: Props) {
               {CRISIS_LABELS[hovered.pt.crisis_type]}
             </div>
             <div style={{ color: "var(--muted)" }}>
-              risk_level: <strong>{hovered.pt.risk_level}</strong>
+              Rischio: <strong>{LEVEL_IT[hovered.pt.risk_level] ?? hovered.pt.risk_level}</strong>
             </div>
             <div style={{ color: "var(--muted)" }}>
-              score: <strong>{(hovered.pt.risk_score * 100).toFixed(0)}%</strong>
+              Punteggio: <strong>{(hovered.pt.risk_score * 100).toFixed(0)}%</strong>
             </div>
             <div style={{ color: "var(--muted)" }}>
-              triggers: {hovered.pt.triggers_fired}/{hovered.pt.triggers_total}
+              Segnali accesi: {hovered.pt.triggers_fired}/{hovered.pt.triggers_total}
             </div>
           </div>
         )}
@@ -350,7 +358,7 @@ export function CrisisHistoryTimeline({ data }: Props) {
               marginBottom: 6,
             }}
           >
-            Episodi notabili ({data.notable_episodes.length})
+            Episodi di rischio alto ({data.notable_episodes.length})
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {data.notable_episodes.map((ep, i) => (
@@ -372,9 +380,9 @@ export function CrisisHistoryTimeline({ data }: Props) {
         }}
       >
         <span>
-          <strong>Levels:</strong>{" "}
+          <strong>Tempo passato a ogni livello:</strong>{" "}
           {Object.entries(data.level_distribution)
-            .map(([k, v]) => `${k} ${(v.pct * 100).toFixed(1)}%`)
+            .map(([k, v]) => `${LEVEL_IT[k] ?? k} ${(v.pct * 100).toFixed(1).replace(".", ",")}%`)
             .join(" · ")}
         </span>
       </div>
@@ -411,7 +419,7 @@ function EpisodeRow({ ep }: { ep: CrisisHistoryEpisode }) {
         {CRISIS_LABELS[ep.crisis_type]}
       </span>
       <span style={{ fontSize: 11, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
-        peak {(ep.peak_risk_score * 100).toFixed(0)}% · {ep.duration_points} pt
+        picco {(ep.peak_risk_score * 100).toFixed(0)}% · {ep.duration_points} rilevazioni
       </span>
     </div>
   );
