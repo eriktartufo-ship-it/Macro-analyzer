@@ -221,9 +221,12 @@ export const api = {
     ),
   // subRegime + regime2D rimossi 2026-05-28 (code audit: no frontend consumer)
   // CRITICAL #1+#2 council 2026-05-27: live track record + model snapshot lock
-  predictionLogStats: (horizon: "1m" | "3m" | "6m" = "3m") =>
+  // version: solo le previsioni di quel sigillo ("active" = in vigore); assente = tutte
+  predictionLogStats: (horizon: "1m" | "3m" | "6m" = "3m", version?: string) =>
     request<PredictionLogStats>(
-      `/prediction-log/stats?horizon=${horizon}`, undefined, { retries: 0 },
+      `/prediction-log/stats?horizon=${horizon}${version ? `&version=${encodeURIComponent(version)}` : ""}`,
+      undefined,
+      { retries: 0 },
     ),
   predictionLogRecent: (limit = 30) =>
     request<PredictionLogRecent[]>(

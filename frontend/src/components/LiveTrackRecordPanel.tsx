@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type {
-  ActiveModelInfo,
-  PredictionLogRecent,
-  PredictionLogStats,
-} from "../types";
+import type { PredictionLogRecent } from "../types";
 import { fmtPctSigned, regimeLabel } from "../lib/assets";
+import { loadTrackRecord, sealDate, type TrackRecord } from "../lib/trackRecord";
 
 const HORIZON_LABEL = { "1m": "1 mese", "3m": "3 mesi", "6m": "6 mesi" } as const;
 
@@ -21,9 +18,8 @@ const HORIZON_LABEL = { "1m": "1 mese", "3m": "3 mesi", "6m": "6 mesi" } as cons
  */
 export function LiveTrackRecordPanel() {
   const [horizon, setHorizon] = useState<"1m" | "3m" | "6m">("3m");
-  const [stats, setStats] = useState<PredictionLogStats | null>(null);
+  const [track, setTrack] = useState<TrackRecord | null>(null);
   const [recent, setRecent] = useState<PredictionLogRecent[]>([]);
-  const [model, setModel] = useState<ActiveModelInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,16 +27,11 @@ export function LiveTrackRecordPanel() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([
-      api.predictionLogStats(horizon),
-      api.predictionLogRecent(10),
-      api.activeModel(),
-    ])
-      .then(([s, r, m]) => {
+    Promise.all([loadTrackRecord(horizon), api.predictionLogRecent(10)])
+      .then(([t, r]) => {
         if (cancelled) return;
-        setStats(s);
+        setTrack(t);
         setRecent(r);
-        setModel(m);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -63,10 +54,13 @@ export function LiveTrackRecordPanel() {
     return "var(--text-muted)";
   };
 
+  const model = track?.model ?? null;
+  const stats = track?.active ?? null;
+  const prev = track?.previous ?? null;
   const n = stats?.summary.n_evaluated ?? 0;
   // L'impronta salvata quando il modello è stato sigillato: se diversa da quella attuale,
   // le previsioni recenti non vengono più dal modello sigillato e va detto.
-  const sealedHash = model?.snapshots.find((s) => s.version === model.active_version)?.classifier_hash ?? null;
+  const sealedHash = track?.activeSnapshot?.classifier_hash ?? null;
 
   return (
     <div className="card">
@@ -87,7 +81,8 @@ export function LiveTrackRecordPanel() {
       </div>
 
       <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: 12 }}>
-        Modello congelato: <code>{model?.active_version ?? "—"}</code> · impronta del classificatore{" "}
+        Modello in vigore: <code>{model?.active_version ?? "—"}</code>, sigillato il {sealDate(track?.activeSnapshot ?? null)} ·
+        impronta del classificatore{" "}
         <code>{model?.current_classifier_hash?.slice(0, 8) ?? "—"}</code>
         {sealedHash && model && sealedHash !== model.current_classifier_hash && (
           <>
@@ -98,6 +93,7 @@ export function LiveTrackRecordPanel() {
           </>
         )}
         . Ogni previsione si confronta con un portafoglio 60/40 (60% azioni, 40% bond) a {HORIZON_LABEL[horizon]}.
+        {track?.previousSnapshot && <> I numeri qui sotto sono solo di questo sigillo: il track record è ripartito.</>}
       </div>
 
       {error && (
@@ -123,7 +119,7 @@ export function LiveTrackRecordPanel() {
               <div className="metric-value">{n}</div>
               {n === 0 && (
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                  In attesa della prima verifica
+                  In attesa della prima verifica: arriva {HORIZON_LABEL[horizon]} dopo la prima previsione del sigillo
                 </div>
               )}
             </div>
@@ -214,6 +210,24 @@ export function LiveTrackRecordPanel() {
         </>
       )}
 
+      {prev && track?.previousSnapshot && (
+        <div className="surface" style={{ marginTop: 16, padding: "10px 12px", fontSize: "0.85rem" }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+            Storico del sigillo precedente · <code>{track.previousSnapshot.version}</code>
+          </div>
+          {prev.summary.n_evaluated === 0 ? (
+            <span style={{ color: "var(--text-muted)" }}>Nessuna previsione verificata a {HORIZON_LABEL[horizon]}.</span>
+          ) : (
+            <span style={{ color: "var(--text-muted)" }}>
+              {prev.summary.n_evaluated} previsioni verificate · extra medio sul 60/40{" "}
+              <b style={{ color: fmtAlphaColor(prev.summary.mean_alpha ?? null) }}>{fmtPct(prev.summary.mean_alpha)}</b> ·{" "}
+              {prev.summary.hit_rate == null ? "—" : `${(prev.summary.hit_rate * 100).toFixed(0)}%`} battono il 60/40 ·
+              rendimento medio {fmtPct(prev.summary.mean_realized_return)}
+            </span>
+          )}
+        </div>
+      )}
+
       {recent.length > 0 && (
         <>
           <h3 style={{ fontSize: "0.95rem", margin: "16px 0 6px" }}>
@@ -243,7 +257,12 @@ export function LiveTrackRecordPanel() {
                       fontSize: "0.85rem",
                     }}
                   >
-                    <td style={{ padding: 6 }}>{p.date_predicted ?? "—"}</td>
+                    <td style={{ padding: 6 }}>
+                      {p.date_predicted ?? "—"}
+                      {track?.previousSnapshot && p.model_version && p.model_version !== model?.active_version && (
+                        <span className="muted-s" title={p.model_version}> · sigillo precedente</span>
+                      )}
+                    </td>
                     <td
                       style={{ padding: 6 }}
                       className={`regime-${p.regime}`}

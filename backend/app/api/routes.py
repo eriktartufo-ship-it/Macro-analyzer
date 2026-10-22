@@ -2014,6 +2014,10 @@ def trigger_refresh():
 @router.get("/prediction-log/stats")
 def get_prediction_log_stats(
     horizon: str = Query(default="3m", regex="^(1m|3m|6m)$"),
+    version: str | None = Query(
+        default=None, max_length=64,
+        description="Solo questa versione sigillata; 'active' = quella in vigore; assente = tutte",
+    ),
     db: Session = Depends(get_db),
 ):
     """Aggregate stats P&L live model vs benchmark 60/40.
@@ -2024,10 +2028,14 @@ def get_prediction_log_stats(
     from app.services.validation.prediction_logger import (
         stats_by_regime, summary_stats,
     )
-    summary = summary_stats(db, horizon=horizon)
-    by_regime = stats_by_regime(db, horizon=horizon)
+    if version == "active":
+        from app.services.validation.model_lock import get_active_version
+        version = get_active_version(db)
+    summary = summary_stats(db, horizon=horizon, version=version)
+    by_regime = stats_by_regime(db, horizon=horizon, version=version)
     return {
         "horizon": horizon,
+        "version": version,
         "summary": summary,
         "by_regime": by_regime,
     }

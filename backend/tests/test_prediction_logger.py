@@ -116,3 +116,62 @@ class TestStatsByRegime:
         assert out["reflation"]["n"] == 2
         assert out["reflation"]["mean_alpha"] == pytest.approx(0.02)
         assert out["deflation"]["n"] == 1
+
+
+class TestStatsPerVersione:
+    """Dopo un nuovo sigillo il track record riparte: le statistiche di una versione non
+    devono contenere le previsioni di un'altra (S55, risigillo v1.1)."""
+
+    def _db(self):
+        import json
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        from app.database import Base
+        from app.models.prediction_log import PredictionLog
+
+        engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        Base.metadata.create_all(bind=engine, tables=[PredictionLog.__table__])
+        s = sessionmaker(bind=engine)()
+        rows = [
+            ("v1.0-sealed-2026-05-27", "stagflation", 0.04),
+            ("v1.0-sealed-2026-05-27", "stagflation", 0.06),
+            ("v1.0-sealed-2026-05-27", "reflation", -0.01),
+            ("v1.1-sealed-2026-10-22", "stagflation", -0.02),
+            ("v1.1-sealed-2026-10-22", "stagflation", None),  # non ancora valutata
+        ]
+        for i, (ver, regime, alpha) in enumerate(rows):
+            s.add(PredictionLog(
+                date_predicted=date(2026, 6, 1) + timedelta(days=i), regime=regime, confidence=0.5,
+                probabilities_json=json.dumps({}), top5_json=json.dumps([]), model_version=ver,
+                alpha_3m=alpha, realized_return_3m=None if alpha is None else alpha + 0.01,
+            ))
+        s.commit()
+        return s
+
+    def test_una_versione_non_vede_le_altre(self):
+        db = self._db()
+        with patch("app.services.validation.prediction_logger._ensure_table_exists"):
+            tutte = summary_stats(db, horizon="3m")
+            v10 = summary_stats(db, horizon="3m", version="v1.0-sealed-2026-05-27")
+            v11 = summary_stats(db, horizon="3m", version="v1.1-sealed-2026-10-22")
+            v11_regimi = stats_by_regime(db, horizon="3m", version="v1.1-sealed-2026-10-22")
+        assert tutte["n_evaluated"] == 4
+        assert v10["n_evaluated"] == 3 and v10["hit_rate"] == pytest.approx(2 / 3, abs=0.01)
+        assert v11["n_evaluated"] == 1 and v11["mean_alpha"] == pytest.approx(-0.02)
+        assert set(v11_regimi) == {"stagflation"} and v11_regimi["stagflation"]["n"] == 1
+
+    def test_active_usa_la_versione_in_vigore(self, monkeypatch):
+        import app.api.routes as routes
+        import app.services.validation.model_lock as model_lock
+
+        db = self._db()
+        monkeypatch.setattr(model_lock, "get_active_version", lambda db=None: "v1.1-sealed-2026-10-22")
+        with patch("app.services.validation.prediction_logger._ensure_table_exists"):
+            out = routes.get_prediction_log_stats(horizon="3m", version="active", db=db)
+            tutte = routes.get_prediction_log_stats(horizon="3m", version=None, db=db)
+        assert out["version"] == "v1.1-sealed-2026-10-22"
+        assert out["summary"]["n_evaluated"] == 1
+        assert tutte["version"] is None and tutte["summary"]["n_evaluated"] == 4
