@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Iterable
 
 from sqlalchemy.orm import Session
@@ -356,7 +356,12 @@ def fill_pending(db: Session, strategy: str, market: Market, today: date) -> int
                                        RbMovement.status == "pending").all()
     ready = []
     for mv in pend:
-        bar = first_bar_on_or_after(market, INSTRUMENTS[mv.instrument_key].yahoo, mv.decided_on, today)
+        # deciso DOPO l'apertura di quel giorno ⇒ la prima apertura utile è il giorno dopo
+        # (2026-10-22: un giro rilanciato a mano a metà mattina non può comprare al prezzo delle 09:00)
+        start = mv.decided_on
+        if mv.decided_at and mv.decided_at > open_time_utc(mv.decided_on):
+            start = mv.decided_on + timedelta(days=1)
+        bar = first_bar_on_or_after(market, INSTRUMENTS[mv.instrument_key].yahoo, start, today)
         if bar is not None:
             ready.append((bar, mv))
     # in ordine di seduta; nella stessa seduta prima le vendite (liberano cassa)

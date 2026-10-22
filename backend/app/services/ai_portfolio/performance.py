@@ -85,21 +85,21 @@ def _real_portfolio_daily_return(
 
 
 def _portfolio_return_between(weights: dict[str, float], probabilities: dict[str, float],
-                              prev_run_date: date, run_date: date) -> float:
+                              from_close: date, to_close: date) -> float:
     """Come `_real_portfolio_daily_return`, ma fra la chiusura già contata e quella nuova."""
     total = 0.0
     for asset, w in weights.items():
         if w <= 0:
             continue
-        r = pnl_tracker.get_return_between(asset, prev_run_date, run_date)
+        r = pnl_tracker.get_return_between(asset, from_close, to_close)
         if r is None:
             r = _estimate_daily_return_from_regime({asset: 1.0}, probabilities)
         total += w * r
     return total
 
 
-def _ticker_return_between(ticker: str, prev_run_date: date, run_date: date) -> float:
-    r = pnl_tracker.get_return_between_for_ticker(ticker, prev_run_date, run_date)
+def _ticker_return_between(ticker: str, from_close: date, to_close: date) -> float:
+    r = pnl_tracker.get_return_between_for_ticker(ticker, from_close, to_close)
     return r if r is not None else 0.0
 
 
@@ -185,11 +185,22 @@ def snapshot(
 
     # Rendimenti — prezzi REALI Yahoo, fra la chiusura già contata al giro precedente e quella
     # nuova (market_calendar, 2026-10-21). Primo snapshot: ultimo giorno di borsa.
+    from app.services.ai_portfolio.market_calendar import ref_close
+
+    closes = pnl_tracker.spy_closes(target_date)
+    price_date = ref_close(closes, target_date) if closes else None
     if prev is not None:
-        portfolio_dr = _portfolio_return_between(weights, probabilities, prev.date, target_date)
-        cash_dr = _ticker_return_between(CASH_OVERNIGHT_TICKER, prev.date, target_date)
-        sp_dr = _ticker_return_between(SP500_BENCHMARK_TICKER, prev.date, target_date)
-        b60_dr = 0.6 * sp_dr + 0.4 * _ticker_return_between(BONDS_LONG_BENCHMARK_TICKER, prev.date, target_date)
+        # chiusura già contata = quella salvata dal giro precedente (2026-10-22); per gli snapshot
+        # vecchi senza price_date si ricostruisce dal calendario
+        done = getattr(prev, "price_date", None) or (ref_close(closes, prev.date) if closes else None)
+        if price_date is None or done is None or price_date <= done:
+            portfolio_dr = cash_dr = sp_dr = b60_dr = 0.0  # nessuna chiusura nuova: niente da contare
+            price_date = done or price_date
+        else:
+            portfolio_dr = _portfolio_return_between(weights, probabilities, done, price_date)
+            cash_dr = _ticker_return_between(CASH_OVERNIGHT_TICKER, done, price_date)
+            sp_dr = _ticker_return_between(SP500_BENCHMARK_TICKER, done, price_date)
+            b60_dr = 0.6 * sp_dr + 0.4 * _ticker_return_between(BONDS_LONG_BENCHMARK_TICKER, done, price_date)
     else:
         portfolio_dr = _real_portfolio_daily_return(weights, probabilities)
         cash_dr = _cash_overnight_daily_return()
@@ -233,6 +244,7 @@ def snapshot(
         existing.top_position_weight_pct = top_w
         existing.benchmark_60_40_return_pct = b60_cum
         existing.benchmark_sp500_return_pct = sp_cum
+        existing.price_date = price_date
         snap = existing
     else:
         snap = AiPortfolioPerformance(
@@ -248,6 +260,7 @@ def snapshot(
             top_position_weight_pct=top_w,
             benchmark_60_40_return_pct=b60_cum,
             benchmark_sp500_return_pct=sp_cum,
+            price_date=price_date,
         )
         db.add(snap)
     db.commit()

@@ -31,17 +31,41 @@ ETF = _series({date(2026, 10, 15): 100.0, date(2026, 10, 16): 102.0,
 # 1-3. Calendario: una chiusura conta una volta sola
 # ---------------------------------------------------------------------------
 
+def _giri(serie: pd.Series, giri: list[date], ritardo: int = 0) -> tuple[float, list]:
+    """Simula i giri notturni: a ogni giro si vedono le chiusure < giro (meno `ritardo` giorni di
+    pubblicazione), si conta il rendimento dalla chiusura SALVATA al giro prima a quella nuova."""
+    cum, done, log = 1.0, None, []
+    for g in giri:
+        visibili = serie[[pd.Timestamp(i).date() < g - pd.Timedelta(days=ritardo).to_pytimedelta()
+                          for i in serie.index]]
+        now = mc.ref_close(mc.close_dates(visibili), g)
+        if done is not None and now is not None and now > done:
+            cum *= 1 + mc.return_between(visibili, done, now)
+            log.append((g, done, now))
+        if done is None or (now is not None and now > done):
+            done = now
+    return cum, log
+
+
 def test_il_venerdi_conta_una_volta_sola():
     giri = [date(2026, 10, 16), date(2026, 10, 17), date(2026, 10, 18), date(2026, 10, 19), date(2026, 10, 20),
             date(2026, 10, 21)]
-    cum = 1.0
-    for prev, run in zip(giri, giri[1:]):
-        cum *= 1 + mc.return_between(ETF, prev, run)
+    cum, log = _giri(ETF, giri)
     # dal giro di venerdì (vede giovedì 100) a quello di mercoledì (vede martedì 103)
     assert cum == pytest.approx(103 / 100)
-    # e i giri di domenica e lunedì notte non aggiungono niente
-    assert mc.return_between(ETF, date(2026, 10, 17), date(2026, 10, 18)) == 0
-    assert mc.return_between(ETF, date(2026, 10, 18), date(2026, 10, 19)) == 0
+    assert [g for g, *_ in log] == [date(2026, 10, 17), date(2026, 10, 20), date(2026, 10, 21)]  # dom e lun: niente
+    assert mc.return_between(ETF, date(2026, 10, 16), date(2026, 10, 16)) == 0
+
+
+def test_dato_in_ritardo_nessun_buco_nello_storico():
+    # il guasto del 22/10: alle 00:30 UTC Yahoo non aveva ancora la chiusura del giorno prima
+    giri = [date(2026, 10, 16) + pd.Timedelta(days=i).to_pytimedelta() for i in range(8)]
+    puntuale, _ = _giri(ETF, giri)
+    in_ritardo, log = _giri(ETF, giri, ritardo=1)
+    # con un giorno di ritardo si arriva una seduta indietro, ma senza perdere rendimenti per strada:
+    # ogni intervallo contato comincia esattamente dove finiva il precedente
+    assert all(a[2] == b[1] for a, b in zip(log, log[1:]))
+    assert puntuale == pytest.approx(103 / 100) and in_ritardo == pytest.approx(103 / 100)
 
 
 def test_controllo_positivo_il_vecchio_metodo_lo_contava_tre_volte():
@@ -57,10 +81,11 @@ def test_controllo_positivo_il_vecchio_metodo_lo_contava_tre_volte():
 
 
 def test_il_bitcoin_prende_il_movimento_vero_del_weekend():
-    btc = _series({date(2026, 10, 16): 100.0, date(2026, 10, 17): 110.0, date(2026, 10, 18): 99.0})
-    tot = (1 + mc.return_between(btc, date(2026, 10, 17), date(2026, 10, 18))) * \
-          (1 + mc.return_between(btc, date(2026, 10, 18), date(2026, 10, 19)))
-    assert tot == pytest.approx(99 / 100)
+    btc = _series({date(2026, 10, 16): 100.0, date(2026, 10, 17): 110.0, date(2026, 10, 18): 99.0,
+                   date(2026, 10, 19): 101.0})
+    # fra la chiusura di venerdì e quella di lunedì (date del calendario di Wall Street) il bitcoin
+    # porta con sé il suo weekend vero
+    assert mc.return_between(btc, date(2026, 10, 16), date(2026, 10, 19)) == pytest.approx(0.01)
 
 
 @pytest.mark.parametrize("today,prev,run", [
@@ -126,6 +151,49 @@ def test_cancello_del_giro_notturno(db, monkeypatch):
     run, why = mc.bots_should_run(db, today=date(2026, 10, 18))
     assert run is False and "nessuna chiusura nuova" in why
     assert mc.bots_should_run(db, today=date(2026, 10, 20))[0] is True
+
+
+def test_il_cancello_confronta_con_la_chiusura_salvata(db, monkeypatch):
+    # stanotte: lo snapshot del 21/10 aveva usato la chiusura del 20; un dato del 21 arrivato tardi
+    # deve far girare i bot, non sembrare «già contato»
+    from app.models.ai_portfolio import AiPortfolioPerformance
+    from app.services.ai_portfolio import pnl_tracker
+
+    serie = _series({date(2026, 10, 19): 100.0, date(2026, 10, 20): 101.0, date(2026, 10, 21): 102.0})
+
+    class F:
+        def fetch(self, *a, **k):
+            return serie
+
+    monkeypatch.setattr(pnl_tracker, "_fetcher", lambda: F())
+    row = AiPortfolioPerformance(date=date(2026, 10, 22), strategy_type="model_driven", nav=100_000.0,
+                                 price_date=date(2026, 10, 20))
+    db.add(row)
+    db.commit()
+    assert mc.bots_should_run(db, today=date(2026, 10, 23))[0] is True
+    row.price_date = date(2026, 10, 21)
+    db.commit()
+    assert mc.bots_should_run(db, today=date(2026, 10, 23))[0] is False
+
+
+def test_lo_snapshot_salva_la_chiusura_usata(db, monkeypatch):
+    from app.models.ai_portfolio import AiPortfolioPerformance
+    from app.services.ai_portfolio import performance as P
+    from app.services.ai_portfolio import pnl_tracker
+
+    # il giro del 21 aveva visto solo la chiusura del 19 (dato in ritardo): ricostruita sui dati di
+    # oggi sembrerebbe il 20, e il rendimento 19→20 andrebbe perso
+    db.add(AiPortfolioPerformance(date=date(2026, 10, 21), strategy_type="model_driven", nav=100_000.0,
+                                  peak_nav=100_000.0, price_date=date(2026, 10, 19)))
+    db.commit()
+    monkeypatch.setattr(pnl_tracker, "spy_closes",
+                        lambda d, days=25: [date(2026, 10, 19), date(2026, 10, 20), date(2026, 10, 21)])
+    visti = []
+    monkeypatch.setattr(P, "_portfolio_return_between", lambda w, pr, a, b: visti.append((a, b)) or 0.01)
+    monkeypatch.setattr(P, "_ticker_return_between", lambda *a: 0.0)
+    snap = P.snapshot(db, target_date=date(2026, 10, 22), strategy_type="model_driven")
+    assert snap.price_date == date(2026, 10, 21) and visti == [(date(2026, 10, 19), date(2026, 10, 21))]
+    assert snap.nav == pytest.approx(101_000)
 
 
 # ---------------------------------------------------------------------------

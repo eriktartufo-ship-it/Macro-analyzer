@@ -107,3 +107,14 @@ def test_stato_delle_notizie_dice_da_quando_sono_ferme(monkeypatch):
     db.commit()
     st = get_news_status(db=db)
     assert st["days_since"] == 34 and st["groq_configured"] is True
+
+
+def test_gemini_4_usa_thinking_level():
+    # 2026-10-22: `gemini-4-argon` riceveva la config dei 2.x (temperature + thinkingBudget),
+    # accettata con un 200 e ignorata: la leva sembrava accesa
+    from app.services.llm import settings as S
+
+    assert S.generation_config(model="gemini-4-argon", max_output_tokens=10)["thinkingConfig"] == {"thinkingLevel": "low"}
+    assert "temperature" not in S.generation_config(model="gemini-4-argon", max_output_tokens=10)
+    assert "thinkingBudget" in S.generation_config(model="gemini-2.5-flash", max_output_tokens=10)["thinkingConfig"]
+    assert "gemini-4-argon" in S.AVAILABLE_MODELS and S.DEFAULT_MODEL == "gemini-3.8-flash"

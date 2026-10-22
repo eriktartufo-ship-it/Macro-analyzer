@@ -123,6 +123,10 @@ class AiPortfolioPerformance(Base):
     portfolio_vol_30d: Mapped[float | None] = mapped_column(Float, nullable=True)
     benchmark_60_40_return_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     benchmark_sp500_return_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 2026-10-22: data della chiusura di Wall Street che questo snapshot ha DAVVERO usato. Il giro
+    # dopo riparte da qui: ricalcolarla sui dati di oggi sbaglia quando il dato arriva in ritardo
+    # (alle 00:30 UTC del 22/10 Yahoo non aveva ancora la chiusura del 21).
+    price_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

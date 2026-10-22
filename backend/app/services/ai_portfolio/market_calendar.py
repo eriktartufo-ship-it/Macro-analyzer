@@ -51,10 +51,16 @@ def price_asof(series: pd.Series, d: date) -> float | None:
     return vals[-1] if vals else None
 
 
-def return_between(series: pd.Series, prev_run_date: date, run_date: date) -> float | None:
-    """Rendimento fra la chiusura vista al giro `prev_run_date` e quella vista a `run_date`."""
-    p1 = price_asof(series, run_date - timedelta(days=1))
-    p0 = price_asof(series, prev_run_date - timedelta(days=1))
+def return_between(series: pd.Series, from_close: date, to_close: date) -> float | None:
+    """Rendimento fra due DATE DI CHIUSURA (quella già contata e quella nuova).
+
+    2026-10-22: prima prendeva le date dei GIRI e ricalcolava la chiusura «vista allora» sui dati di
+    oggi. Con un dato arrivato in ritardo quella ricostruzione è sbagliata e lascia un buco (un
+    rendimento mai contato). Ora la chiusura già contata è quella salvata nello snapshot."""
+    if to_close <= from_close:
+        return 0.0
+    p1 = price_asof(series, to_close)
+    p0 = price_asof(series, from_close)
     if not p1 or not p0:
         return None
     return p1 / p0 - 1.0
@@ -76,12 +82,13 @@ def bots_should_run(db, today: date | None = None) -> tuple[bool, str]:
 
     today = today or date.today()
     prev = (
-        db.query(AiPortfolioPerformance.date)
+        db.query(AiPortfolioPerformance)
         .filter(AiPortfolioPerformance.date < today)
         .order_by(AiPortfolioPerformance.date.desc())
         .first()
     )
-    prev_date = prev[0] if prev else None
+    prev_date = prev.date if prev else None
+    prev_price_date = getattr(prev, "price_date", None) if prev else None
     try:
         # force_refresh: la cache su disco tollera dati vecchi di 3 giorni e potrebbe non avere
         # ancora la chiusura di venerdì; il dato fresco aggiorna anche il disco per i bot.
@@ -92,7 +99,11 @@ def bots_should_run(db, today: date | None = None) -> tuple[bool, str]:
     if s is None or s.empty:
         return True, "chiusure SPY non disponibili: giro fatto comunque"
     dates = close_dates(s)
-    if has_new_close(dates, today, prev_date):
-        return True, f"chiusura nuova: {ref_close(dates, today)}"
-    return False, (f"nessuna chiusura nuova di Wall Street dopo il {ref_close(dates, today)} "
-                   f"(ultimo giro {prev_date}): i bot non decidono")
+    now = ref_close(dates, today)
+    # la chiusura già contata è quella SALVATA dall'ultimo giro; per gli snapshot vecchi (senza
+    # price_date) si ricostruisce, come prima
+    done = prev_price_date or (ref_close(dates, prev_date) if prev_date else None)
+    if now is not None and (done is None or now > done):
+        return True, f"chiusura nuova: {now} (già contata: {done})"
+    return False, (f"nessuna chiusura nuova di Wall Street dopo il {done} "
+                   f"(ultimo giro {prev_date}, ultima disponibile {now}): i bot non decidono")

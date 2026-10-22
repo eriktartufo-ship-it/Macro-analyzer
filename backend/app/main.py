@@ -63,6 +63,15 @@ async def lifespan(app: FastAPI):
                 conn.commit()
             except Exception:
                 pass  # already exists or not supported (SQLite)
+            try:
+                # 2026-10-22: chiusura di Wall Street usata da ogni snapshot dei bot (additiva, NULL ok)
+                conn.execute(text(
+                    "ALTER TABLE ai_portfolio_performance "
+                    "ADD COLUMN IF NOT EXISTS price_date DATE"
+                ))
+                conn.commit()
+            except Exception:
+                conn.rollback()
 
         n = load_runtime_flags_from_db()
         if n > 0:
