@@ -281,7 +281,7 @@ export function FlowsPage() {
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div className="card" style={{ position: "sticky", top: 8, zIndex: 5 }}>
-        <h2 style={{ marginBottom: 2 }}>Flussi — dove si muove il capitale nel tempo</h2>
+        <h2 style={{ marginBottom: 2 }}>Rotazione: dove si muove il capitale</h2>
         <p style={{ color: "var(--muted)", fontSize: 13, margin: "0 0 12px", maxWidth: 680 }}>
           Sposta il cursore (o premi Play) per vedere l'evoluzione settimana per settimana. Colore = area
           geografica. Rotazione relativa, non $. In <strong style={{ color: "#facc15" }}>giallo</strong> i candidati
@@ -307,7 +307,7 @@ export function FlowsPage() {
       </div>
 
       <div className="card">
-        <h2>Rotation Graph (RRG)</h2>
+        <h2>Grafico di rotazione (RRG)</h2>
         <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: -4 }}>I 25 asset nei 4 quadranti · scia = ultime 8 settimane.</p>
         <RrgChart frames={tl.frames} wi={wi} meta={meta} order={rrgOrder} />
       </div>
@@ -321,7 +321,7 @@ export function FlowsPage() {
       </div>
 
       <div className="card">
-        <h2>Spettro rischio — dal safe al risky</h2>
+        <h2>Spettro del rischio: dai rifugi agli asset rischiosi</h2>
         <p style={{ color: "var(--muted)", fontSize: 12.5, marginTop: -4 }}>
           Ogni asset alla sua rischiosità (safe → risky), altezza = flusso. Cerchiati in <strong style={{ color: "#facc15" }}>giallo</strong> i candidati asimmetrici.
         </p>

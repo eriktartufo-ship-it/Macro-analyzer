@@ -111,7 +111,7 @@ export function LlmSettingsModal({ open, onClose, onSaved }: Props) {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-          <h2 style={{ margin: 0 }}>🧠 LLM Settings — Gemini Analisi Macro</h2>
+          <h2 style={{ margin: 0 }}>Modello AI per l'analisi macro</h2>
           <button
             onClick={onClose}
             style={{

@@ -168,7 +168,7 @@ export function FOMCSentimentPanel() {
   if (error)
     return (
       <div className="card">
-        <h2>FOMC sentiment (LLM-driven hawkish/dovish)</h2>
+        <h2>Tono della Fed: falco o colomba (letto dall'AI)</h2>
         <div className="error" style={{ fontSize: 13, marginBottom: 8 }}>{error}</div>
         <button onClick={() => load(false)} style={btnStyle}>Riprova</button>
       </div>
@@ -177,7 +177,7 @@ export function FOMCSentimentPanel() {
   if (!data && loading)
     return (
       <div className="card">
-        <h2>FOMC sentiment (LLM-driven hawkish/dovish)</h2>
+        <h2>Tono della Fed: falco o colomba (letto dall'AI)</h2>
         <div className="loading">Fetching FOMC documents…</div>
       </div>
     );
@@ -188,7 +188,7 @@ export function FOMCSentimentPanel() {
 
   return (
     <div className="card">
-      <h2>FOMC sentiment (LLM-driven hawkish/dovish)</h2>
+      <h2>Tono della Fed: falco o colomba (letto dall'AI)</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Statements e minutes Federal Reserve analizzati da LLM (
         {modelloCorrente ?? "modello configurato"} prio, Groq fallback)

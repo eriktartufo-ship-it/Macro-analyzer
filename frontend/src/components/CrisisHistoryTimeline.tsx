@@ -102,7 +102,7 @@ export function CrisisHistoryTimeline({ data }: Props) {
   if (!chart) {
     return (
       <div className="card" style={{ marginTop: 16 }}>
-        <h2>Crisis Risk Timeline</h2>
+        <h2>Rischio crisi negli ultimi 10 anni</h2>
         <div style={{ fontSize: 13, color: "var(--muted)" }}>
           Dati insufficienti per il timeline ({data.n_points} punti).
         </div>
@@ -146,7 +146,7 @@ export function CrisisHistoryTimeline({ data }: Props) {
           marginBottom: 8,
         }}
       >
-        <h2 style={{ margin: 0 }}>Crisis Risk Timeline (Backtest)</h2>
+        <h2 style={{ margin: 0 }}>Rischio crisi negli ultimi 10 anni</h2>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>
           {data.date_from} → {data.date_to} · {data.n_points} punti ·{" "}
           {data.notable_episodes.length} episodi

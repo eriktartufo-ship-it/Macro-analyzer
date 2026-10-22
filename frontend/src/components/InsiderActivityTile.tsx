@@ -39,7 +39,7 @@ export function InsiderActivityTile({ data }: Props) {
           marginBottom: 6,
         }}
       >
-        <h2 style={{ margin: 0 }}>Insider Activity (SEC Form 4)</h2>
+        <h2 style={{ margin: 0 }}>Acquisti e vendite degli insider (SEC Form 4)</h2>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>
           {data.period_start && data.period_end
             ? `${data.period_start} → ${data.period_end}`

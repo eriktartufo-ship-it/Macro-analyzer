@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDedollarBonus } from "../hooks/useDedollarBonus";
 import { ptClearSession, usePtSession } from "../hooks/usePtSession";
-import type { Page } from "./Header";
+import { Icon } from "./Icon";
 import { FeatureFlagsPanel } from "./FeatureFlagsPanel";
 import { LlmSettingsModal } from "./LlmSettingsModal";
 import { AdminAccessModal } from "./AdminAccessModal";
@@ -13,10 +13,10 @@ import { Switch } from "./Switch";
  * impostazioni macro (LLM, flag, dedollar). Riusato in topbar (mobile) e
  * sidebar (desktop, placement="up"). */
 export function SettingsMenu({
-  onNavigate,
+  onOpenPortfolio,
   placement = "down",
 }: {
-  onNavigate?: (p: Page) => void;
+  onOpenPortfolio?: () => void;
   placement?: "down" | "up";
 }) {
   const [open, setOpen] = useState(false);
@@ -57,7 +57,7 @@ export function SettingsMenu({
         title="Impostazioni"
         aria-expanded={open}
       >
-        ⚙
+        <Icon name="sliders" size={18} />
       </button>
 
       {open && (
@@ -99,10 +99,10 @@ export function SettingsMenu({
             </div>
           ) : (
             <MenuItem
-              label="◆ Accedi ai Portafogli"
+              label="Accedi ai Portafogli"
               sub="Il tuo portafoglio personale"
               onClick={() => {
-                onNavigate?.("portfolio");
+                onOpenPortfolio?.();
                 setOpen(false);
               }}
             />
@@ -111,7 +111,7 @@ export function SettingsMenu({
           <div className="mac-menu-divider" />
 
           <MenuItem
-            label="🔑 Accesso admin"
+            label="Accesso admin"
             sub={hasAdmin ? "Attivo su questo dispositivo" : "Serve per modificare flag, LLM e refresh"}
             onClick={() => {
               setAdminOpen(true);
@@ -119,7 +119,7 @@ export function SettingsMenu({
             }}
           />
           <MenuItem
-            label="🧠 LLM Settings"
+            label="Modello AI"
             sub="API key + modello Gemini"
             onClick={() => {
               setLlmOpen(true);
@@ -127,7 +127,7 @@ export function SettingsMenu({
             }}
           />
           <MenuItem
-            label="🚩 Feature Flags"
+            label="Feature flag"
             sub="Toggle pilastri classifier"
             onClick={() => {
               setFlagsOpen(true);
@@ -135,7 +135,7 @@ export function SettingsMenu({
             }}
           />
           <MenuToggle
-            label="💵 Dedollar bonus"
+            label="Bonus dollaro"
             sub={dedollarOn ? "ATTIVO: score con bias dedollar" : "Score puro data-driven"}
             on={dedollarOn}
             onChange={(v) => setDedollarOn(v)}

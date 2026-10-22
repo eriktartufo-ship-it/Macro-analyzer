@@ -68,7 +68,7 @@ export function LiveTrackRecordPanel() {
   return (
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <h2 style={{ margin: 0 }}>📊 Live Track Record</h2>
+        <h2 style={{ margin: 0 }}>Track record delle previsioni</h2>
         <div style={{ display: "flex", gap: 6 }}>
           {(["1m", "3m", "6m"] as const).map((h) => (
             <button

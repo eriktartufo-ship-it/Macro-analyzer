@@ -62,7 +62,7 @@ export function MacroLlmAnalysisPanel() {
   if (loading) {
     return (
       <div className="card" style={{ marginTop: 16 }}>
-        <h2 style={{ margin: 0, marginBottom: 6 }}>🧠 Analisi macro AI</h2>
+        <h2 style={{ margin: 0, marginBottom: 6 }}>Analisi macro AI</h2>
         <div style={{ color: "var(--muted)", fontSize: 13 }}>Generazione analisi in corso…</div>
       </div>
     );
@@ -71,7 +71,7 @@ export function MacroLlmAnalysisPanel() {
   if (error || !data) {
     return (
       <div className="card" style={{ marginTop: 16 }}>
-        <h2 style={{ margin: 0, marginBottom: 6 }}>🧠 Analisi macro AI</h2>
+        <h2 style={{ margin: 0, marginBottom: 6 }}>Analisi macro AI</h2>
         <div style={{ color: "var(--muted)", fontSize: 13 }}>
           {error ?? "Analisi non disponibile (Gemini API key mancante o errore di rete)."}
         </div>
@@ -94,7 +94,7 @@ export function MacroLlmAnalysisPanel() {
         }}
       >
         <h2 style={{ margin: 0 }}>
-          🧠 Analisi macro AI
+          Analisi macro AI
           <span
             style={{
               fontSize: 11,

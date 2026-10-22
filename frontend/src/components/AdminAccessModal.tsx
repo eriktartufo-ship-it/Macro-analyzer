@@ -74,7 +74,7 @@ export function AdminAccessModal({ open, onClose }: Props) {
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
-          <h2 style={{ margin: 0 }}>🔑 Accesso admin</h2>
+          <h2 style={{ margin: 0 }}>Accesso admin</h2>
           <button onClick={onClose} aria-label="Chiudi"
             style={{ background: "transparent", border: "none", fontSize: 22, color: "var(--muted)", cursor: "pointer", lineHeight: 1 }}>
             ×

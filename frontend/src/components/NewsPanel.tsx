@@ -49,7 +49,7 @@ function EmptyNews() {
   else if (st) msg = `Nessuna notizia valutata finora (modello Groq in uso: ${st.model}).`;
   return (
     <div className="card">
-      <h2>News Sentiment</h2>
+      <h2>Notizie e sentiment</h2>
       <div style={{ color: "var(--muted)", fontSize: 13, padding: "12px 0", lineHeight: 1.5 }}>{msg}</div>
     </div>
   );
@@ -66,7 +66,7 @@ export function NewsPanel({ news }: Props) {
 
   return (
     <div className="card">
-      <h2>News Sentiment</h2>
+      <h2>Notizie e sentiment</h2>
 
       {/* Summary bar */}
       <div

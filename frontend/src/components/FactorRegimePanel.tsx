@@ -69,14 +69,14 @@ export function FactorRegimePanel() {
   if (error)
     return (
       <div className="card">
-        <h2>Fama-French factor performance × regime</h2>
+        <h2>Fattori Fama-French per regime</h2>
         <div className="error" style={{ fontSize: 13 }}>{error}</div>
       </div>
     );
 
   return (
     <div className="card">
-      <h2>Fama-French factor performance × regime</h2>
+      <h2>Fattori Fama-French per regime</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Performance annualizzata dei 4 fattori (Mkt-RF, SMB, HML, Mom) per regime macro.
         Heatmap su Sharpe (verde = factor funziona, rosso = factor perde). Fonte: Kenneth

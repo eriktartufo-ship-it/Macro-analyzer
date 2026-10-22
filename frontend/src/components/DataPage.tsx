@@ -11,16 +11,13 @@ import { RegimeEnsemblePanel } from "./RegimeEnsemblePanel";
 import { SmoothedIndicatorsPanel } from "./SmoothedIndicatorsPanel";
 import { TermPremiumPanel } from "./TermPremiumPanel";
 import { ScrollShadow } from "./ScrollShadow";
+import { LazyDetails } from "./LazyDetails";
 import type { DataSnapshot, Regime } from "../types";
+import { assetName, REGIME_LABEL as REGIME_LABELS } from "../lib/assets";
 
 const REGIMES: Regime[] = ["reflation", "stagflation", "deflation", "goldilocks"];
 
-const REGIME_LABELS: Record<Regime, string> = {
-  reflation: "Reflation",
-  stagflation: "Stagflation",
-  deflation: "Deflation",
-  goldilocks: "Goldilocks",
-};
+export type DataSection = "ragiona" | "modelli" | "dati";
 
 function formatName(name: string): string {
   return name.replace(/_/g, " ");
@@ -41,7 +38,54 @@ function sensitivityColor(v: number): string {
   return "var(--muted)";
 }
 
-export function DataPage() {
+/**
+ * S54: la vecchia pagina «Data» (21.600 px, 24 schermate) è divisa nelle schede di
+ * Metodo: «Come ragiona» (formule, pesi, matrice), «Modelli» (ognuno si apre a
+ * richiesta) e «Dati grezzi» (le due tabelle, con ricerca).
+ */
+export function DataPage({ section = "ragiona" }: { section?: DataSection }) {
+  if (section === "modelli") return <ModelsList />;
+  return <SnapshotView section={section} />;
+}
+
+const MODELS: { title: string; sub: string; render: () => JSX.Element }[] = [
+  { title: "Tre modelli a confronto", sub: "regole, HMM e MS-VAR votano il regime", render: () => <RegimeEnsemblePanel /> },
+  { title: "Tono della Fed", sub: "comunicati FOMC letti dall'AI: falco o colomba", render: () => <FOMCSentimentPanel /> },
+  { title: "Monte Carlo e scenari di shock", sub: "dove può andare il regime, e cosa succede con uno shock", render: () => <MonteCarloPanel /> },
+  { title: "Indicatori filtrati", sub: "filtro di Kalman: il segnale senza il rumore", render: () => <SmoothedIndicatorsPanel /> },
+  { title: "Term premium", sub: "scomposizione Adrian-Crump-Moench dei rendimenti", render: () => <TermPremiumPanel /> },
+  { title: "Transizioni fra regimi", sub: "matrice empirica e classificatore HMM", render: () => <RegimeDynamicsPanel /> },
+  { title: "Calibrazione degli asset", sub: "ipotesi iniziali contro dati misurati", render: () => <AssetCalibrationPanel /> },
+  { title: "Fattori per regime", sub: "Fama-French: quali stili rendono in quale regime", render: () => <FactorRegimePanel /> },
+  { title: "Backtest e anticipo sulle recessioni", sub: "come avrebbe allocato in passato", render: () => <BacktestPanel /> },
+];
+
+function ModelsList() {
+  return (
+    <div className="models-list">
+      <p className="muted-s" style={{ margin: "0 0 4px" }}>
+        I modelli di supporto al classificatore. Ognuno si apre e si carica solo quando lo tocchi.
+      </p>
+      {MODELS.map((m) => (
+        <LazyDetails
+          key={m.title}
+          className="card model-acc"
+          summary={
+            <span className="model-sum">
+              <span>{m.title}</span>
+              <span className="muted-s">{m.sub}</span>
+            </span>
+          }
+        >
+          {m.render()}
+        </LazyDetails>
+      ))}
+    </div>
+  );
+}
+
+function SnapshotView({ section }: { section: "ragiona" | "dati" }) {
+  const [query, setQuery] = useState("");
   const [data, setData] = useState<DataSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,12 +107,33 @@ export function DataPage() {
   if (error) return <div className="error">{error}</div>;
   if (!data) return <div className="loading">Caricamento dati…</div>;
 
-  const macroEntries = Object.entries(data.current_indicators).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-  const dedollarEntries = Object.entries(data.current_dedollar_indicators).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
+  if (section === "dati") {
+    const q = query.trim().toLowerCase().replace(/\s+/g, "_");
+    const match = ([k]: [string, number]) => !q || k.toLowerCase().includes(q);
+    const macro = Object.entries(data.current_indicators).sort(([a], [b]) => a.localeCompare(b)).filter(match);
+    const dollar = Object.entries(data.current_dedollar_indicators).sort(([a], [b]) => a.localeCompare(b)).filter(match);
+    return (
+      <div>
+        <div className="card">
+          <h2>Dati grezzi</h2>
+          <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>
+            I valori che entrano nel modello, aggiornati al {data.date ?? "—"}.
+          </div>
+          <input
+            type="search"
+            className="search-input"
+            placeholder="Cerca un indicatore (es. cpi, spread, gold)"
+            aria-label="Cerca un indicatore"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <RawTable title={`Indicatori macro (${macro.length})`} rows={macro} />
+        <RawTable title={`Indicatori del dollaro (${dollar.length})`} rows={dollar} />
+      </div>
+    );
+  }
+
   const assetEntries = Object.entries(data.current_asset_scores).sort((a, b) => b[1] - a[1]);
   const sensEntries = Object.entries(data.asset_dedollar_sensitivity).sort(
     (a, b) => b[1] - a[1],
@@ -79,9 +144,9 @@ export function DataPage() {
   return (
     <div>
       <div className="card">
-        <h2>Data — Formule & Valori Raw</h2>
+        <h2>Come ragiona il modello</h2>
         <div style={{ fontSize: 13, color: "var(--muted)" }}>
-          Tutti i valori grezzi e le formule che determinano regime e asset ranking.
+          Le formule e i pesi che decidono il regime e la classifica degli asset.
           Aggiornato al {data.date ?? "—"}.
         </div>
       </div>
@@ -207,13 +272,13 @@ export function DataPage() {
       </div>
 
       <div className="card">
-        <h2>Asset × Regime — matrice di performance</h2>
+        <h2>Asset × regime: come è andato ogni asset</h2>
         <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
-          Hit rate, rendimento medio 12m, volatilità, Sharpe — dati storici hardcoded
-          usati come prior di scoring.
+          Hit = volte in cui ha battuto l'inflazione · Rend. = rendimento reale medio annuo ·
+          Vol = volatilità · Sharpe. Dati storici fissati nel codice, usati come punto di partenza dello score.
         </div>
         <ScrollShadow innerClassName="table-wrap">
-          <table className="table table-responsive">
+          <table className="table table-nowrap">
             <thead>
               <tr>
                 <th>Asset</th>
@@ -230,7 +295,7 @@ export function DataPage() {
                     Hit%
                   </th>,
                   <th key={`${r}-ret`} className="num" style={{ fontSize: 11 }}>
-                    Ret%
+                    Rend.%
                   </th>,
                   <th key={`${r}-vol`} className="num" style={{ fontSize: 11 }}>
                     Vol%
@@ -246,7 +311,7 @@ export function DataPage() {
                 const row = data.asset_regime_data[asset];
                 return (
                   <tr key={asset}>
-                    <td data-label="Asset">{formatName(asset)}</td>
+                    <td data-label="Asset">{assetName(asset)}</td>
                     {REGIMES.flatMap((r) => {
                       const s = row[r];
                       return [
@@ -343,7 +408,7 @@ export function DataPage() {
       </div>
 
       <div className="card">
-        <h2>Asset scores correnti</h2>
+        <h2>Score correnti degli asset</h2>
         <ScrollShadow innerClassName="table-wrap">
           <table className="table">
             <thead>
@@ -368,28 +433,18 @@ export function DataPage() {
         </ScrollShadow>
       </div>
 
-      <RegimeEnsemblePanel />
-
-      <FOMCSentimentPanel />
-
-      <MonteCarloPanel />
-
-      <SmoothedIndicatorsPanel />
-
-      <TermPremiumPanel />
-
-      <RegimeDynamicsPanel />
-
-      <AssetCalibrationPanel />
-
-      <FactorRegimePanel />
-
       <DedollarComparisonPanel />
+    </div>
+  );
+}
 
-      <BacktestPanel />
-
-      <div className="card">
-        <h2>Macro indicators ({macroEntries.length})</h2>
+function RawTable({ title, rows }: { title: string; rows: [string, number][] }) {
+  return (
+    <div className="card">
+      <h2>{title}</h2>
+      {rows.length === 0 ? (
+        <div style={{ fontSize: 13, color: "var(--muted)" }}>Nessun indicatore con questo nome.</div>
+      ) : (
         <ScrollShadow innerClassName="table-wrap">
           <table className="table">
             <thead>
@@ -399,7 +454,7 @@ export function DataPage() {
               </tr>
             </thead>
             <tbody>
-              {macroEntries.map(([k, v]) => (
+              {rows.map(([k, v]) => (
                 <tr key={k}>
                   <td>{formatName(k)}</td>
                   <td className="num">{formatValue(v, 4)}</td>
@@ -408,29 +463,7 @@ export function DataPage() {
             </tbody>
           </table>
         </ScrollShadow>
-      </div>
-
-      <div className="card">
-        <h2>Dedollarization indicators ({dedollarEntries.length})</h2>
-        <ScrollShadow innerClassName="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Indicatore</th>
-                <th className="num">Valore</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dedollarEntries.map(([k, v]) => (
-                <tr key={k}>
-                  <td>{formatName(k)}</td>
-                  <td className="num">{formatValue(v, 4)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </ScrollShadow>
-      </div>
+      )}
     </div>
   );
 }

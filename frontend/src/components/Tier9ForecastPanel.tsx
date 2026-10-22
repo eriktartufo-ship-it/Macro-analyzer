@@ -31,7 +31,7 @@ export function Tier9ForecastPanel() {
   if (!data && !loading) {
     return (
       <div className="card">
-        <h3 style={{ margin: 0, marginBottom: 8 }}>Forecast 1-12 mesi (T9)</h3>
+        <h3 style={{ margin: 0, marginBottom: 8 }}>Previsione del regime a 1-12 mesi</h3>
         <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: 12 }}>
           ML forecast con transition matrix empirica. On-demand per ridurre
           page load latency.
@@ -49,7 +49,7 @@ export function Tier9ForecastPanel() {
   return (
     <div className="card">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Forecast 1-12 mesi (T9)</h3>
+        <h3 style={{ margin: 0 }}>Previsione del regime a 1-12 mesi</h3>
         {data.ml_blend_active && (
           <span style={{
             padding: "2px 8px",

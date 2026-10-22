@@ -94,7 +94,7 @@ export function CrisisRiskPanel({ data }: Props) {
           marginBottom: 6,
         }}
       >
-        <h2 style={{ margin: 0 }}>Crisis Risk Indicator</h2>
+        <h2 style={{ margin: 0 }}>Rischio crisi</h2>
         <span style={{ fontSize: 12, color: "var(--muted)" }}>As of {data.date}</span>
       </div>
 

@@ -124,14 +124,14 @@ export function TermPremiumPanel() {
   if (error)
     return (
       <div className="card">
-        <h2>Term premium decomposition (Adrian-Crump-Moench)</h2>
+        <h2>Term premium (scomposizione Adrian-Crump-Moench)</h2>
         <div className="error" style={{ fontSize: 13 }}>{error}</div>
       </div>
     );
 
   return (
     <div className="card">
-      <h2>Term premium decomposition (Adrian-Crump-Moench)</h2>
+      <h2>Term premium (scomposizione Adrian-Crump-Moench)</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Decompone <strong>fitted 10Y yield</strong> in <strong>expected path</strong>{" "}
         (cosa il mercato si aspetta dalla Fed) + <strong>term premium</strong> (compensation

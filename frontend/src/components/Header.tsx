@@ -1,111 +1,74 @@
-import { useRef, useEffect, useState } from "react";
 import { SettingsMenu } from "./SettingsMenu";
+import { Icon } from "./Icon";
+import { SECTIONS, to, type Route } from "../lib/nav";
 
-export type Page = "dashboard" | "ai-portfolio" | "flows" | "cycle" | "portfolio" | "sentiment" | "dedollar" | "assets" | "data";
 export type Theme = "light" | "dark";
 
 interface Props {
   date?: string;
   onRefresh?: () => void; // S51: assente per chi non ha il token admin
   refreshing: boolean;
-  page: Page;
-  onPageChange: (p: Page) => void;
+  route: Route;
+  navigate: (r: Route) => void;
   theme: Theme;
   onThemeToggle: () => void;
 }
 
-export interface Tab {
-  id: Page;
-  label: string;
-  short: string;
-  icon: string;
-}
-
-export const TABS: Tab[] = [
-  { id: "dashboard", label: "Dashboard", short: "Home", icon: "▣" },
-  { id: "ai-portfolio", label: "AI Portfolio", short: "AI", icon: "🤖" },
-  { id: "flows", label: "Flussi", short: "Flussi", icon: "⇄" },
-  { id: "cycle", label: "Ciclo", short: "Ciclo", icon: "◵" },
-  { id: "portfolio", label: "Portafogli", short: "Miei", icon: "◆" },
-  { id: "sentiment", label: "Sentiment", short: "News", icon: "◈" },
-  { id: "dedollar", label: "Dedollarizzazione", short: "USD", icon: "◉" },
-  { id: "assets", label: "Asset Ranking", short: "Assets", icon: "≡" },
-  { id: "data", label: "Data", short: "Data", icon: "▤" },
-];
-
-/** Header MOBILE (topbar + bottom-nav). Su desktop (≥900px) lo shell usa la
- * Sidebar e questo header è nascosto via CSS. */
-export function Header({ date, onRefresh, refreshing, page, onPageChange, theme, onThemeToggle }: Props) {
-  const [mobilePillStyle, setMobilePillStyle] = useState({ left: 0, width: 0, opacity: 0 });
-  const mobileTabsRef = useRef<(HTMLButtonElement | null)[]>([]);
-
-  useEffect(() => {
-    const activeIndex = TABS.findIndex((t) => t.id === page);
-    const activeMobileTab = mobileTabsRef.current[activeIndex];
-    const timeout = setTimeout(() => {
-      if (activeMobileTab) {
-        setMobilePillStyle({
-          left: activeMobileTab.offsetLeft,
-          width: activeMobileTab.clientWidth,
-          opacity: 1,
-        });
-      }
-    }, 10);
-    return () => clearTimeout(timeout);
-  }, [page]);
+/** Header MOBILE (topbar + barra in basso a 5 voci). Su desktop (≥900px) lo shell
+ * usa la Sidebar e questo header è nascosto via CSS. */
+export function Header({ date, onRefresh, refreshing, route, navigate, theme, onThemeToggle }: Props) {
+  const current = SECTIONS.find((s) => s.id === route.section) ?? SECTIONS[0];
 
   return (
     <>
       <div className="header">
         <div className="header-titles">
-          <h1>Macro Analyzer</h1>
-          <div className="subtitle">
-            {date ? `Last updated: ${date}` : "Regime classification & asset scoring"}
-          </div>
+          <h1>{current.label}</h1>
+          <div className="subtitle">{date ? `Dati del ${formatDate(date)}` : "Macro Analyzer"}</div>
         </div>
         <div className="header-actions">
-          <SettingsMenu onNavigate={onPageChange} />
+          <SettingsMenu onOpenPortfolio={() => navigate(to("portafogli", "miei"))} />
           <button
             className="theme-toggle glass-active"
             onClick={onThemeToggle}
             aria-label={theme === "dark" ? "Passa al tema chiaro" : "Passa al tema scuro"}
             title={theme === "dark" ? "Tema chiaro" : "Tema scuro"}
           >
-            {theme === "dark" ? "☀" : "☾"}
+            <Icon name={theme === "dark" ? "sun" : "moon"} size={18} />
           </button>
           {onRefresh && (
-            <button className="btn glass-btn" onClick={onRefresh} disabled={refreshing}>
-              {refreshing ? "Refreshing…" : "Refresh data"}
+            <button
+              className="theme-toggle glass-active"
+              onClick={onRefresh}
+              disabled={refreshing}
+              aria-label="Aggiorna i dati"
+              title="Aggiorna i dati"
+            >
+              <Icon name="refresh" size={18} />
             </button>
           )}
         </div>
       </div>
 
-      <nav className="nav-bottom" role="tablist" style={{ position: "fixed" }}>
-        <div
-          className="nav-bottom-highlight"
-          style={{
-            left: mobilePillStyle.left,
-            width: mobilePillStyle.width,
-            opacity: mobilePillStyle.opacity,
-          }}
-        />
-        {TABS.map((tab, i) => (
+      <nav className="nav-bottom" aria-label="Navigazione">
+        {SECTIONS.map((s) => (
           <button
-            key={tab.id}
-            ref={(el) => {
-              mobileTabsRef.current[i] = el;
-            }}
-            role="tab"
-            aria-selected={page === tab.id}
-            className={`nav-bottom-tab ${page === tab.id ? "active" : ""}`}
-            onClick={() => onPageChange(tab.id)}
+            key={s.id}
+            aria-current={route.section === s.id ? "page" : undefined}
+            className={`nav-bottom-tab ${route.section === s.id ? "active" : ""}`}
+            onClick={() => navigate(to(s.id))}
           >
-            <span className="icon">{tab.icon}</span>
-            <span>{tab.short}</span>
+            <Icon name={s.icon} size={21} />
+            <span>{s.label}</span>
           </button>
         ))}
       </nav>
     </>
   );
+}
+
+/** "2026-10-22" → "22/10" */
+export function formatDate(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return d && m ? `${d}/${m}` : iso;
 }
