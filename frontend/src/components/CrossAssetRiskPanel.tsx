@@ -94,7 +94,7 @@ export function CrossAssetRiskPanel() {
 
   return (
     <div className="card">
-      <h2>Flussi — Risk-on / Risk-off cross-asset</h2>
+      <h2>Propensione al rischio: si compra rischio o si cerca riparo?</h2>
       <p style={{ color: "var(--muted)", fontSize: 13, marginTop: -4, maxWidth: 660 }}>
         Il mercato è in modalità <strong style={{ color: RISK_COL }}>rischio</strong> (azioni/cripto
         guidano) o <strong style={{ color: OFF_COL }}>rifugio</strong> (oro/bond/cash)? E quale rifugio

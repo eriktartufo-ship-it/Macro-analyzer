@@ -98,7 +98,7 @@ export function RegimeTimelineChart({ history, projected }: Props) {
   return (
     <div className="card regime-chart-card">
       <h2>
-        Regime Timeline
+        Probabilità dei regimi
         <span className="regime-chart-sub">— 12 mesi storici + proiezione 3 mesi</span>
       </h2>
 

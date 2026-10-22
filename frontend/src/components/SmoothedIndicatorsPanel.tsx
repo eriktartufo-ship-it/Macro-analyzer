@@ -109,7 +109,7 @@ export function SmoothedIndicatorsPanel() {
 
   return (
     <div className="card">
-      <h2>Indicatori smoothed (Kalman 1D filter)</h2>
+      <h2>Indicatori filtrati (filtro di Kalman)</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         State-space filter <code>x_t = x_(t-1) + w_t</code>, <code>y_t = x_t + v_t</code> con
         <code> lambda = R/Q</code> tunabile. Riduce rumore senza perdere segnale (es. il bug

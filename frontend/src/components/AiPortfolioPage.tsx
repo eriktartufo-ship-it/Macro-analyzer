@@ -3,6 +3,8 @@ import { api } from "../api/client";
 import { ScrollShadow } from "./ScrollShadow";
 import { useCurrentLlmModel } from "../hooks/useCurrentLlmModel";
 import { RealBookPanel } from "./RealBookPanel";
+import { Switch } from "./Switch";
+import { assetName } from "../lib/assets";
 import type {
   AiPortfolioDecision,
   AiPortfolioLearning,
@@ -63,15 +65,24 @@ function money(v: number | null | undefined): string {
   return `$${v.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 function formatAsset(a: string): string {
-  return a.replace(/_/g, " ");
+  return assetName(a);
 }
 
-export function AiPortfolioPage() {
+// Azioni che non muovono il portafoglio: nel registro sono la grande maggioranza
+// (misurato il 22/10: 492 righe su 500 del bot Modello), quindi di base si nascondono.
+const QUIET_ACTIONS = new Set(["HOLD", "SKIP_NO_SIGNAL"]);
+const LOG_PAGE = 20;
+
+/** S54: la pagina è divisa in due schede di Portafogli — «Bot» (gara, analisi,
+ * posizioni, registro) e «Libro reale» (lo stesso bot su ETF in euro). */
+export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
   const modelloCorrente = useCurrentLlmModel();
   const [activeStrategy, setActiveStrategy] = useState<StrategyType>("model_driven");
   const [leaderboard, setLeaderboard] = useState<Record<string, unknown> | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showQuiet, setShowQuiet] = useState(false);
+  const [logLimit, setLogLimit] = useState(LOG_PAGE);
 
   // Per ogni strategia tengo lo stato
   const [posByStrat, setPosByStrat] = useState<Record<StrategyType, AiPortfolioPosition[]>>({
@@ -152,6 +163,8 @@ export function AiPortfolioPage() {
 
   const positions = posByStrat[activeStrategy];
   const decisions = decByStrat[activeStrategy];
+  const realDecisions = decisions.filter((d) => !QUIET_ACTIONS.has(d.action));
+  const logRows = showQuiet ? decisions : realDecisions;
   const reasoning = reasoningByStrat[activeStrategy];
   const learnings = learnByStrat[activeStrategy];
   const meta = STRATEGY_META[activeStrategy];
@@ -168,10 +181,11 @@ export function AiPortfolioPage() {
       {error && <div className="error">{error}</div>}
 
       {/* Header + scan button */}
+      {view === "bot" && (
       <div className="card" style={{ marginTop: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
           <div>
-            <h2 style={{ margin: 0 }}>🏇 AI Portfolio Horserace</h2>
+            <h2 style={{ margin: 0 }}>Gara dei bot</h2>
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
               3 strategie competono, $100k capitale separato ciascuna. Stesso universe 24 asset.
             </div>
@@ -293,6 +307,7 @@ export function AiPortfolioPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Strategy selector tabs */}
       <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
@@ -326,11 +341,11 @@ export function AiPortfolioPage() {
       </div>
 
       {/* AI Reasoning per strategia selezionata */}
-      {reasoning && (
+      {view === "bot" && reasoning && (
         <div className="card" style={{ marginTop: 12, borderLeft: `3px solid ${meta.color}` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
             <h2 style={{ margin: 0 }}>
-              🧠 Analisi AI · {meta.label} · {reasoning.date}
+              Analisi del giorno · {meta.label} · {reasoning.date}
             </h2>
             <RegimeChallengeBadge agree={reasoning.ai_agrees} alt={reasoning.ai_alternative_regime} />
           </div>
@@ -358,8 +373,10 @@ export function AiPortfolioPage() {
       )}
 
       {/* Libro reale: lo stesso bot su ETF UCITS in euro (2026-10-21) */}
-      <RealBookPanel strategy={activeStrategy} label={meta.label} color={meta.color} />
+      {view === "libro" && <RealBookPanel strategy={activeStrategy} label={meta.label} color={meta.color} />}
 
+      {view === "bot" && (
+      <>
       {/* Positions table */}
       <div className="card" style={{ marginTop: 12 }}>
         <h2 style={{ margin: 0, marginBottom: 8 }}>
@@ -371,7 +388,7 @@ export function AiPortfolioPage() {
           </div>
         ) : (
           <ScrollShadow innerClassName="table-wrap">
-            <table className="table table-responsive">
+            <table className="table table-responsive log-table">
               <thead>
                 <tr>
                   <th>Asset</th>
@@ -407,14 +424,25 @@ export function AiPortfolioPage() {
 
       {/* Decisions log */}
       <div className="card" style={{ marginTop: 12 }}>
-        <h2 style={{ margin: 0, marginBottom: 8 }}>
-          Log decisioni · <span style={{ color: meta.color }}>{meta.label}</span>
-        </h2>
-        {decisions.length === 0 ? (
-          <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>Nessuna decisione ancora.</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+          <h2 style={{ margin: 0 }}>
+            Registro decisioni · <span style={{ color: meta.color }}>{meta.label}</span>
+          </h2>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--muted)", cursor: "pointer" }}>
+            Mostra anche «nessun segnale» e «mantieni» ({decisions.length - realDecisions.length})
+            <Switch on={showQuiet} onChange={(v) => { setShowQuiet(v); setLogLimit(LOG_PAGE); }} label="Mostra anche le decisioni senza operazioni" />
+          </label>
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+          {realDecisions.length} operazioni negli ultimi 30 giorni su {decisions.length} decisioni.
+        </div>
+        {logRows.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>
+            {decisions.length === 0 ? "Nessuna decisione ancora." : "Nessuna operazione negli ultimi 30 giorni."}
+          </div>
         ) : (
           <ScrollShadow innerClassName="table-wrap">
-            <table className="table table-responsive">
+            <table className="table table-responsive log-table">
               <thead>
                 <tr>
                   <th>Data</th>
@@ -427,7 +455,7 @@ export function AiPortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {decisions.slice(0, 100).map((d, i) => (
+                {logRows.slice(0, logLimit).map((d, i) => (
                   <tr key={i}>
                     <td style={{ fontSize: 11, color: "var(--muted)" }}>{d.date}</td>
                     <td style={{ fontSize: 12 }}>{formatAsset(d.asset_class)}</td>
@@ -457,12 +485,17 @@ export function AiPortfolioPage() {
             </table>
           </ScrollShadow>
         )}
+        {logRows.length > logLimit && (
+          <button className="btn-more" onClick={() => setLogLimit((n) => n + LOG_PAGE)}>
+            Mostra altre {Math.min(LOG_PAGE, logRows.length - logLimit)} (ne restano {logRows.length - logLimit})
+          </button>
+        )}
       </div>
 
       {learnings.length > 0 && (
         <div className="card" style={{ marginTop: 12 }}>
           <h2 style={{ margin: 0, marginBottom: 8 }}>
-            📚 Learnings post-mortem · <span style={{ color: meta.color }}>{meta.label}</span>
+            Lezioni dagli errori · <span style={{ color: meta.color }}>{meta.label}</span>
           </h2>
           <ScrollShadow innerClassName="table-wrap">
             <table className="table table-responsive">
@@ -495,6 +528,8 @@ export function AiPortfolioPage() {
             </table>
           </ScrollShadow>
         </div>
+      )}
+      </>
       )}
     </div>
   );

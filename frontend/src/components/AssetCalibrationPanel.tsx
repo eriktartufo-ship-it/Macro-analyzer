@@ -68,7 +68,7 @@ export function AssetCalibrationPanel() {
   if (error)
     return (
       <div className="card">
-        <h2>Asset calibration (Phase 2)</h2>
+        <h2>Calibrazione degli asset</h2>
         <div style={{ color: "var(--deflation)", fontSize: 13, marginBottom: 8 }}>{error}</div>
         <button onClick={onRun} disabled={loading} style={btnStyle}>
           {loading ? "Generazione…" : "Genera calibrazione"}
@@ -79,7 +79,7 @@ export function AssetCalibrationPanel() {
   if (!data)
     return (
       <div className="card">
-        <h2>Asset calibration (Phase 2)</h2>
+        <h2>Calibrazione degli asset</h2>
         <div className="loading">Caricamento…</div>
       </div>
     );
@@ -93,7 +93,7 @@ export function AssetCalibrationPanel() {
 
   return (
     <div className="card">
-      <h2>Asset calibration — prior vs measured vs calibrated</h2>
+      <h2>Calibrazione: ipotesi iniziale, misura, valore usato</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Confronto tra hardcoded (mio prior expert), measured (rendimento reale 12m forward
         deflazionato CPI, dai prezzi Yahoo + bond TR sintetizzato), e calibrated (shrinkage

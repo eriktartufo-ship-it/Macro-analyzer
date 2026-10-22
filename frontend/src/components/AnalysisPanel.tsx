@@ -196,7 +196,7 @@ export function AnalysisPanel({ explain }: Props) {
 
   return (
     <div className="card">
-      <h2>Analysis — Why {explain.regime}?</h2>
+      <h2>Perché questo regime: le condizioni</h2>
 
       {/* Driving forces */}
       {hasForces && (

@@ -531,7 +531,7 @@ export function DedollarizationPage({ data }: Props) {
 
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0, marginBottom: 16 }}>Dedollarization — Analisi completa</h2>
+      <h2 style={{ marginTop: 0, marginBottom: 16 }}>Dedollarizzazione: il dollaro perde peso?</h2>
 
       {/* Top scores grid */}
       <div className="grid grid-6" style={{ gap: 12, marginBottom: 20 }}>

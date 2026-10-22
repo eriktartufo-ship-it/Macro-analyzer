@@ -183,7 +183,7 @@ export function RegimeEnsemblePanel() {
 
   return (
     <div className="card">
-      <h2>Regime ensemble — 3 modelli indipendenti</h2>
+      <h2>Tre modelli indipendenti a confronto</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Combina rule-based, HMM-Market e MS-VAR. JS divergence pairwise misura il
         disaccordo: alto disaccordo = incertezza, prudenza nell'allocation.

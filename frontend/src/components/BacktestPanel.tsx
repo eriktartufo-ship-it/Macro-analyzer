@@ -136,7 +136,7 @@ export function BacktestPanel() {
 
   return (
     <div className="card">
-      <h2>Backtest portfolio + recession lead time</h2>
+      <h2>Backtest del portafoglio e anticipo sulle recessioni</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Strategy macro score-weighted (top-N asset, monthly rebalance, 10bp cost) vs 3 benchmarks
         (60/40, SPY buy-hold, equal-weight). Senza lookahead bias: pesi al mese t basati su info t-1.
@@ -234,7 +234,7 @@ export function BacktestPanel() {
 
       {leadTime && (
         <div style={{ marginTop: 18 }}>
-          <h3 style={{ marginBottom: 6 }}>Recession lead time (NBER)</h3>
+          <h3 style={{ marginBottom: 6 }}>Anticipo sulle recessioni (NBER)</h3>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
             Soglia P(deflation o stagflation) ≥ {leadTime.threshold} · lookback{" "}
             {leadTime.lookback_months}m · {leadTime.n_recessions_analyzed} recessioni · hit rate{" "}

@@ -62,7 +62,7 @@ export function RegimeDynamicsPanel() {
   return (
     <>
       <div className="card">
-        <h2>Transition matrix empirica</h2>
+        <h2>Matrice di transizione empirica</h2>
         <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
           Probabilita osservate P(r<sub>t+h</sub> | r<sub>t</sub>) sui record di
           RegimeClassification in DB. Richiede backfill storico per essere statisticamente
@@ -181,7 +181,7 @@ export function RegimeDynamicsPanel() {
       </div>
 
       <div className="card">
-        <h2>HMM regime classifier (Gaussian, 4 stati)</h2>
+        <h2>Classificatore HMM (gaussiano, 4 stati)</h2>
         <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
           Distribuzione posteriore sullo stato corrente via Baum-Welch sulle feature
           (gdp_roc, cpi_yoy, unrate, pmi, yield_curve_10y2y, lei_roc) standardizzate.

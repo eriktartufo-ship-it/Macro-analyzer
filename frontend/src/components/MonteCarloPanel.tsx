@@ -231,7 +231,7 @@ export function MonteCarloPanel() {
 
   return (
     <div className="card">
-      <h2>Monte Carlo forecast + shock scenarios</h2>
+      <h2>Monte Carlo e scenari di shock</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Cone forecast a N step della distribuzione regime via N traiettorie campionate
         dalla transition matrix empirica. Bande p10/p25/p75/p90 + median.
@@ -364,7 +364,7 @@ export function MonteCarloPanel() {
 
       {/* Shock scenarios */}
       <div style={{ marginTop: 18 }}>
-        <h3 style={{ marginBottom: 6 }}>Shock scenarios — what-if analysis</h3>
+        <h3 style={{ marginBottom: 6 }}>Scenari di shock: cosa succede se…</h3>
         <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
           Modifica indicatori correnti e ri-applica il classifier. Vedi come cambiano regime e asset score.
         </div>

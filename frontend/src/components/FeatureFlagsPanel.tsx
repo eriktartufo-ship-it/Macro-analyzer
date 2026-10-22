@@ -175,7 +175,7 @@ export function FeatureFlagsPanel({ open, onClose }: Props) {
             marginBottom: 12,
           }}
         >
-          <h2 style={{ margin: 0 }}>Feature Flags</h2>
+          <h2 style={{ margin: 0 }}>Feature flag</h2>
           <button
             onClick={onClose}
             style={{

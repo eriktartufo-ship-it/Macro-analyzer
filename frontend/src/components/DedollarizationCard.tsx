@@ -185,7 +185,7 @@ export function DedollarizationCard({ data, rawIndicators }: Props) {
 
   return (
     <div className="card">
-      <h2>Dedollarization Index</h2>
+      <h2>Indice di dedollarizzazione</h2>
 
       {/* Header scores */}
       <div className="grid grid-4" style={{ gap: 12, marginBottom: 20 }}>

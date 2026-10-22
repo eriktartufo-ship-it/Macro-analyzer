@@ -43,7 +43,7 @@ export function Tier9TransitionPanel() {
   if (error || !data) {
     return (
       <div className="card">
-        <h3>Transition Check</h3>
+        <h3>Controllo di transizione</h3>
         <p style={{ color: "var(--text-muted)" }}>
           Endpoint /regime/transition-check non disponibile (flag OFF). Errore: {error}
         </p>
@@ -58,7 +58,7 @@ export function Tier9TransitionPanel() {
   return (
     <div className="card" style={{ background: bgColor }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
-        <h3 style={{ margin: 0 }}>Transition Check (T9)</h3>
+        <h3 style={{ margin: 0 }}>Controllo di transizione</h3>
         <span style={{
           padding: "4px 12px",
           borderRadius: 6,

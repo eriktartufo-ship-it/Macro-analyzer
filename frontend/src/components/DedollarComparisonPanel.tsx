@@ -52,14 +52,14 @@ export function DedollarComparisonPanel() {
   if (error)
     return (
       <div className="card">
-        <h2>Asset scores — pure data-driven vs with dedollar bonus</h2>
+        <h2>Score degli asset senza e con il bonus dollaro</h2>
         <div className="error" style={{ fontSize: 13 }}>{error}</div>
       </div>
     );
   if (!data)
     return (
       <div className="card">
-        <h2>Asset scores — pure data-driven vs with dedollar bonus</h2>
+        <h2>Score degli asset senza e con il bonus dollaro</h2>
         <div className="loading">Caricamento…</div>
       </div>
     );
@@ -71,7 +71,7 @@ export function DedollarComparisonPanel() {
 
   return (
     <div className="card">
-      <h2>Asset scores — pure data-driven vs with dedollar bonus</h2>
+      <h2>Score degli asset senza e con il bonus dollaro</h2>
       <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12 }}>
         Il <strong>pure score</strong> e' calcolato solo da regime probabilities × performance hardcoded
         (data-driven puro). L'<strong>adjusted score</strong> aggiunge il bonus dedollar (sensitivity ×

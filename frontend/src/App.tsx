@@ -2,36 +2,37 @@ import { useEffect, useState, useCallback, lazy, Suspense } from "react";
 import { getAdminToken, onAdminTokenChange } from "./api/adminToken";
 import { api } from "./api/client";
 import { useDedollarBonus } from "./hooks/useDedollarBonus";
+import { useRoute } from "./hooks/useRoute";
 import type { CrisisHistory, CrisisRiskAssessment, CurrentRegime, Dedollarization, InsiderActivity, NewsItem, RegimeExplain, RegimeHistoryItem, Scoreboard } from "./types";
-import { Header, type Page, type Theme } from "./components/Header";
+import { Header, type Theme } from "./components/Header";
 import { Sidebar } from "./components/Sidebar";
+import { SectionTabs } from "./components/SectionTabs";
 import { ptEnsureLoaded } from "./hooks/usePtSession";
-import { RegimeCard } from "./components/RegimeCard";
-import { ProbabilityBars } from "./components/ProbabilityBars";
-import { RegimeTimelineChart } from "./components/RegimeTimelineChart";
-import { CrisisRiskPanel } from "./components/CrisisRiskPanel";
-import { LiveTrackRecordPanel } from "./components/LiveTrackRecordPanel";
-import { MacroLlmAnalysisPanel } from "./components/MacroLlmAnalysisPanel";
-import { ProjectedAssetsPanel } from "./components/ProjectedAssetsPanel";
+import { OggiPage } from "./components/OggiPage";
 import { LazyDetails } from "./components/LazyDetails";
 
-// Lazy-loaded — heavy / off-dashboard / collapsible
-const DedollarizationPage = lazy(() => import("./components/DedollarizationPage").then(m => ({ default: m.DedollarizationPage })));
-const AssetRankingTable = lazy(() => import("./components/AssetRankingTable").then(m => ({ default: m.AssetRankingTable })));
-const DataPage = lazy(() => import("./components/DataPage").then(m => ({ default: m.DataPage })));
-const DataQualityStrip = lazy(() => import("./components/DataQualityStrip").then(m => ({ default: m.DataQualityStrip })));
-const EuropeEnergyPanel = lazy(() => import("./components/EuropeEnergyPanel").then(m => ({ default: m.EuropeEnergyPanel })));
+// Lazy-loaded: tutto ciò che non è la home
+const ClassificaPanel = lazy(() => import("./components/ClassificaPanel").then(m => ({ default: m.ClassificaPanel })));
+const AssetDetailPage = lazy(() => import("./components/AssetDetailPage").then(m => ({ default: m.AssetDetailPage })));
 const FlowsPage = lazy(() => import("./components/FlowsPage").then(m => ({ default: m.FlowsPage })));
-const CyclePage = lazy(() => import("./components/CyclePage").then(m => ({ default: m.CyclePage })));
-const AiPortfolioPage = lazy(() => import("./components/AiPortfolioPage").then(m => ({ default: m.AiPortfolioPage })));
 const NewsPanel = lazy(() => import("./components/NewsPanel").then(m => ({ default: m.NewsPanel })));
-const AnalysisPanel = lazy(() => import("./components/AnalysisPanel").then(m => ({ default: m.AnalysisPanel })));
-const CrisisHistoryTimeline = lazy(() => import("./components/CrisisHistoryTimeline").then(m => ({ default: m.CrisisHistoryTimeline })));
 const InsiderActivityTile = lazy(() => import("./components/InsiderActivityTile").then(m => ({ default: m.InsiderActivityTile })));
+const MacroLlmAnalysisPanel = lazy(() => import("./components/MacroLlmAnalysisPanel").then(m => ({ default: m.MacroLlmAnalysisPanel })));
+const RegimeTimelineChart = lazy(() => import("./components/RegimeTimelineChart").then(m => ({ default: m.RegimeTimelineChart })));
 const Tier9TransitionPanel = lazy(() => import("./components/Tier9TransitionPanel").then(m => ({ default: m.Tier9TransitionPanel })));
 const Tier9ForecastPanel = lazy(() => import("./components/Tier9ForecastPanel").then(m => ({ default: m.Tier9ForecastPanel })));
-const FailureLearningsPanel = lazy(() => import("./components/FailureLearningsPanel").then(m => ({ default: m.FailureLearningsPanel })));
+const AnalysisPanel = lazy(() => import("./components/AnalysisPanel").then(m => ({ default: m.AnalysisPanel })));
+const CyclePage = lazy(() => import("./components/CyclePage").then(m => ({ default: m.CyclePage })));
+const DedollarizationPage = lazy(() => import("./components/DedollarizationPage").then(m => ({ default: m.DedollarizationPage })));
+const CrisisRiskPanel = lazy(() => import("./components/CrisisRiskPanel").then(m => ({ default: m.CrisisRiskPanel })));
+const CrisisHistoryTimeline = lazy(() => import("./components/CrisisHistoryTimeline").then(m => ({ default: m.CrisisHistoryTimeline })));
+const EuropeEnergyPanel = lazy(() => import("./components/EuropeEnergyPanel").then(m => ({ default: m.EuropeEnergyPanel })));
+const AiPortfolioPage = lazy(() => import("./components/AiPortfolioPage").then(m => ({ default: m.AiPortfolioPage })));
 const PortfolioPage = lazy(() => import("./components/PortfolioPage").then(m => ({ default: m.PortfolioPage })));
+const LiveTrackRecordPanel = lazy(() => import("./components/LiveTrackRecordPanel").then(m => ({ default: m.LiveTrackRecordPanel })));
+const DataQualityStrip = lazy(() => import("./components/DataQualityStrip").then(m => ({ default: m.DataQualityStrip })));
+const FailureLearningsPanel = lazy(() => import("./components/FailureLearningsPanel").then(m => ({ default: m.FailureLearningsPanel })));
+const DataPage = lazy(() => import("./components/DataPage").then(m => ({ default: m.DataPage })));
 
 const THEME_KEY = "macro-theme";
 
@@ -73,12 +74,7 @@ export default function App() {
   useEffect(() => onAdminTokenChange(() => setIsAdmin(Boolean(getAdminToken()))), []);
   const [dedollarFlag] = useDedollarBonus();
   const [loading, setLoading] = useState(true);
-  // Deep-link: macro.pieranlab.cloud/portfolio apre direttamente i Portafogli
-  const [page, setPage] = useState<Page>(() =>
-    typeof window !== "undefined" && window.location.pathname.startsWith("/portfolio")
-      ? "portfolio"
-      : "dashboard",
-  );
+  const [route, navigate] = useRoute();
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   useEffect(() => {
@@ -98,7 +94,7 @@ export default function App() {
   const load = useCallback(async () => {
     setError(null);
 
-    // PHASE 1 — critical above-the-fold (regime + scores + explain + crisis)
+    // FASE 1 — ciò che serve alla home (regime + score + explain + crisi)
     const [r, s, e, c] = await Promise.all([
       safe(api.currentRegime()),
       safe(api.scoreboard()),
@@ -110,11 +106,11 @@ export default function App() {
     setExplain(e);
     setCrisis(c);
     if (!r && !s) {
-      setError("Dati non ancora disponibili — attendi il refresh giornaliero (o premi Refresh data, se hai l'accesso admin).");
+      setError("Dati non ancora disponibili — attendi l'aggiornamento giornaliero (o premi Aggiorna, se hai l'accesso admin).");
     }
     setLoading(false);
 
-    // PHASE 2 — secondary (timeline + dedollar + news), no blocking UI
+    // FASE 2 — storia + dollaro + notizie, senza bloccare la pagina
     Promise.all([
       safe(api.regimeHistory(365 * 5)),
       safe(api.dedollarization()),
@@ -126,7 +122,7 @@ export default function App() {
     });
   }, []);
 
-  // Lazy fetch — only when the collapsible details opens
+  // Caricati solo quando si apre la scheda che li mostra
   const loadInsider = useCallback(async () => {
     if (insider) return;
     const i = await safe(api.insiderActivity({ days: 7, maxFilingsPerDay: 30 }));
@@ -151,7 +147,7 @@ export default function App() {
       await api.refresh();
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Refresh failed");
+      setError(e instanceof Error ? e.message : "Aggiornamento non riuscito");
     } finally {
       setRefreshing(false);
     }
@@ -159,15 +155,107 @@ export default function App() {
 
   const ready = regime && scoreboard;
   const fallback = <div className="loading">Caricamento…</div>;
-
   const themeToggle = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+  // I Portafogli personali non dipendono dal modello macro
+  const isMyPortfolio = route.section === "portafogli" && route.tab === "miei";
+
+  const page = (() => {
+    if (isMyPortfolio) return <PortfolioPage />;
+    if (!ready) return null;
+
+    switch (route.section) {
+      case "oggi":
+        return (
+          <OggiPage
+            regime={regime}
+            explain={explain}
+            scoreboard={scoreboard}
+            crisis={crisis}
+            history={regimeHistory}
+            navigate={navigate}
+          />
+        );
+
+      case "mercati":
+        if (route.asset) {
+          return (
+            <AssetDetailPage
+              asset={route.asset}
+              scoreboard={scoreboard}
+              explain={explain}
+              crisis={crisis}
+              news={news}
+              history={regimeHistory}
+              navigate={navigate}
+            />
+          );
+        }
+        if (route.tab === "rotazione") return <FlowsPage />;
+        if (route.tab === "notizie") {
+          return (
+            <>
+              <NewsPanel news={news} />
+              <LazyDetails summary="Acquisti e vendite degli insider (SEC Form 4)">
+                <InsiderOnOpen onMount={loadInsider} data={insider} />
+              </LazyDetails>
+            </>
+          );
+        }
+        return <ClassificaPanel scoreboard={scoreboard} explain={explain} crisis={crisis} navigate={navigate} />;
+
+      case "scenari":
+        if (route.tab === "ciclo") return <CyclePage />;
+        if (route.tab === "dollaro") {
+          return dedollar ? <DedollarizationPage data={dedollar} rawIndicators={explain?.dedollar_indicators} /> : fallback;
+        }
+        if (route.tab === "crisi") {
+          return (
+            <>
+              {crisis && <CrisisRiskPanel data={crisis} />}
+              <CrisisHistoryOnOpen onMount={loadCrisisHistory} data={crisisHistory} />
+            </>
+          );
+        }
+        if (route.tab === "europa") return <EuropeEnergyPanel />;
+        return (
+          <>
+            <MacroLlmAnalysisPanel />
+            {regimeHistory.length > 1 && (
+              <RegimeTimelineChart
+                history={regimeHistory}
+                projected={explain?.trajectory?.projected_fit_scores ?? explain?.trajectory?.projected_probabilities ?? null}
+              />
+            )}
+            <Tier9TransitionPanel />
+            <Tier9ForecastPanel />
+            {explain && <AnalysisPanel explain={explain} />}
+          </>
+        );
+
+      case "portafogli":
+        return <AiPortfolioPage view={route.tab === "libro" ? "libro" : "bot"} />;
+
+      case "metodo":
+        if (route.tab === "ragiona") return <DataPage section="ragiona" />;
+        if (route.tab === "modelli") return <DataPage section="modelli" />;
+        if (route.tab === "dati") return <DataPage section="dati" />;
+        return (
+          <>
+            <LiveTrackRecordPanel />
+            <DataQualityStrip />
+            <FailureLearningsPanel />
+          </>
+        );
+    }
+  })();
 
   return (
     <div className="app mac-shell">
       <Sidebar
         date={regime?.date}
-        page={page}
-        onPageChange={setPage}
+        route={route}
+        navigate={navigate}
         theme={theme}
         onThemeToggle={themeToggle}
         onRefresh={isAdmin ? onRefresh : undefined}
@@ -178,135 +266,26 @@ export default function App() {
           date={regime?.date}
           onRefresh={isAdmin ? onRefresh : undefined}
           refreshing={refreshing}
-          page={page}
-          onPageChange={setPage}
+          route={route}
+          navigate={navigate}
           theme={theme}
           onThemeToggle={themeToggle}
         />
 
-      {loading && page !== "portfolio" && <div className="loading">Loading macro data…</div>}
-      {error && !loading && page !== "portfolio" && <div className="error">{error}</div>}
+        {route.section !== "oggi" && !route.asset && (
+          <SectionTabs section={route.section} active={route.tab} navigate={navigate} />
+        )}
 
-      {ready && page === "dashboard" && (
-        <>
-          {/* HERO: regime corrente + probability — above the fold */}
-          <div className="grid grid-2">
-            <RegimeCard data={regime} trajectory={explain?.trajectory} />
-            <ProbabilityBars
-              probabilities={regime.probabilities}
-              projected={explain?.trajectory?.projected_probabilities}
-            />
-          </div>
+        {loading && !isMyPortfolio && <div className="loading">Caricamento dei dati…</div>}
+        {error && !loading && !isMyPortfolio && <div className="error">{error}</div>}
 
-          {/* S51: i numeri del sito contro le fonti ufficiali, verificati dopo ogni refresh */}
-          <Suspense fallback={null}>
-            <DataQualityStrip />
-          </Suspense>
-
-          {/* AI ANALYSIS — Gemini macro analysis (cached 24h, fisso) */}
-          <MacroLlmAnalysisPanel />
-
-          {/* PROOF — Live track record (validation reale) */}
-          <LiveTrackRecordPanel />
-
-          {/* TIMELINE — regime history visual (lazy: phase 2 data) */}
-          {regimeHistory.length > 1 && (
-            <RegimeTimelineChart
-              history={regimeHistory}
-              projected={
-                explain?.trajectory?.projected_fit_scores ??
-                explain?.trajectory?.projected_probabilities ??
-                null
-              }
-            />
-          )}
-
-          {/* CRISIS RISK + Asset projection — key actionable info */}
-          {crisis && <CrisisRiskPanel data={crisis} />}
-          <Suspense fallback={null}>
-            <EuropeEnergyPanel />
-          </Suspense>
-          {explain?.trajectory && (
-            <ProjectedAssetsPanel
-              trajectory={explain.trajectory}
-              currentScores={scoreboard.scores}
-            />
-          )}
-
-          {/* DETAILS — lazy mount + lazy fetch (riduce TTI + payload) */}
-          <LazyDetails summary="📊 Analytics & insights aggiuntive">
-            <Suspense fallback={fallback}>
-              <Tier9TransitionPanel />
-              <Tier9ForecastPanel />
-              <FailureLearningsPanel />
-              {explain && <AnalysisPanel explain={explain} />}
-              <CrisisHistoryOnOpen
-                onMount={loadCrisisHistory}
-                data={crisisHistory}
-              />
-              <InsiderOnOpen onMount={loadInsider} data={insider} />
-            </Suspense>
-          </LazyDetails>
-        </>
-      )}
-
-      {ready && page === "sentiment" && (
-        <Suspense fallback={fallback}>
-          <NewsPanel news={news} />
-        </Suspense>
-      )}
-
-      {ready && page === "dedollar" && dedollar && (
-        <Suspense fallback={fallback}>
-          <DedollarizationPage
-            data={dedollar}
-            rawIndicators={explain?.dedollar_indicators}
-          />
-        </Suspense>
-      )}
-
-      {ready && page === "assets" && (
-        <Suspense fallback={fallback}>
-          <AssetRankingTable scores={scoreboard.scores} />
-        </Suspense>
-      )}
-
-      {ready && page === "data" && (
-        <Suspense fallback={fallback}>
-          <DataPage />
-        </Suspense>
-      )}
-
-      {ready && page === "flows" && (
-        <Suspense fallback={fallback}>
-          <FlowsPage />
-        </Suspense>
-      )}
-
-      {ready && page === "cycle" && (
-        <Suspense fallback={fallback}>
-          <CyclePage />
-        </Suspense>
-      )}
-
-      {ready && page === "ai-portfolio" && (
-        <Suspense fallback={fallback}>
-          <AiPortfolioPage />
-        </Suspense>
-      )}
-
-      {/* Portafogli personali: indipendente da `ready` (non serve il modello macro) */}
-      {page === "portfolio" && (
-        <Suspense fallback={fallback}>
-          <PortfolioPage />
-        </Suspense>
-      )}
+        <Suspense fallback={fallback}>{page}</Suspense>
       </div>
     </div>
   );
 }
 
-// Wrapper interni che triggera fetch al primo mount (= primo open del details)
+// Wrapper interni che avviano il caricamento al primo montaggio
 function CrisisHistoryOnOpen({ onMount, data }: { onMount: () => void; data: CrisisHistory | null }) {
   useEffect(() => {
     onMount();
@@ -321,6 +300,6 @@ function InsiderOnOpen({ onMount, data }: { onMount: () => void; data: InsiderAc
     onMount();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  if (!data) return null;
+  if (!data) return <div className="loading">Caricamento…</div>;
   return <InsiderActivityTile data={data} />;
 }
