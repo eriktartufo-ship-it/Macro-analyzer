@@ -2028,6 +2028,7 @@ def get_prediction_log_stats(
     from app.services.validation.prediction_logger import (
         stats_by_regime, summary_stats,
     )
+    version = version or None  # «?version=» vuoto = tutte, non «nessuna»
     if version == "active":
         from app.services.validation.model_lock import get_active_version
         version = get_active_version(db)

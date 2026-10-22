@@ -84,7 +84,7 @@ export function FailureLearningsPanel() {
 
   return (
     <div className="card">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
         <h2 style={{ margin: 0 }}>Errori e lezioni</h2>
         <div style={{ display: "flex", gap: 6 }}>
           {(["1m", "3m", "6m"] as const).map((h) => (
