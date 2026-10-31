@@ -280,7 +280,7 @@ def test_storico_corretto_neutralizza_i_duplicati_e_ricalcola_i_benchmark():
     rows = [_Row(date(2026, 10, 17), 102_000), _Row(date(2026, 10, 18), 104_040),
             _Row(date(2026, 10, 19), 106_120.8), _Row(date(2026, 10, 20), 105_080.4)]
     out, info = corrected_history(rows, fetch=lambda t, s, e: ETF)
-    assert info == {"corrected": True, "duplicates": 2}
+    assert info == {"corrected": True, "duplicates": 2, "lost_returns": 0, "recomputed": 0}
     # solo sabato (+2%) e martedì (105.080,4/106.120,8 = −0,98%) contano
     assert out[-1]["nav"] == pytest.approx(102_000 * (105_080.4 / 106_120.8))
     # benchmark dai prezzi: base = chiusura prima di venerdì (giovedì 100), fino a lunedì (101)

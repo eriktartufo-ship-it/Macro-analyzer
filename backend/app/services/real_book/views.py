@@ -110,6 +110,30 @@ def _concentration(positions: list[dict]) -> list[dict]:
     return out
 
 
+def _bot_return_at(db: Session, strategy: str, started_on: date):
+    """Rendimento del bot dall'avvio del libro, dallo storico CORRETTO alla lettura (2026-10-31).
+
+    `rb_nav.bot_return_pct` è salvato col NAV grezzo del bot, che dal 23/10 non contava i giorni
+    persi per la cache Yahoo: il «costo della realtà» confrontava il libro con un bot fermo.
+    Stessa regola di `_latest_bot_nav`: ultimo giro del bot con data <= quella del valore."""
+    from app.services.ai_portfolio.history_view import corrected_history_for
+
+    rows, _ = corrected_history_for(db, strategy)
+    navs = [(date.fromisoformat(r["date"]), r["nav"]) for r in rows]
+
+    def nav_on(d: date) -> float | None:
+        before = [n for day, n in navs if day <= d]
+        return before[-1] if before else None
+
+    start = nav_on(started_on)
+
+    def at(d: date) -> float | None:
+        now = nav_on(d)
+        return (now / start - 1) if (now and start) else None
+
+    return at
+
+
 def overview(db: Session, admin: bool) -> dict:
     books = {b.strategy_type: b for b in db.query(RbBook).all()}
     result = {}
@@ -120,6 +144,7 @@ def overview(db: Session, admin: bool) -> dict:
             continue
         nav = (db.query(RbNav).filter(RbNav.strategy_type == strategy)
                .order_by(RbNav.date.desc()).first())
+        bot_ret = _bot_return_at(db, strategy, book.started_on)(nav.date) if nav else None
         snaps = {s.asset_class: s for s in db.query(RbBotSnapshot)
                  .filter(RbBotSnapshot.strategy_type == strategy).all()}
         positions = json.loads(nav.positions_json) if nav else []
@@ -151,7 +176,7 @@ def overview(db: Session, admin: bool) -> dict:
             "nav": None if nav is None else {
                 "date": str(nav.date), "nav_eur": nav.nav_eur, "cash_eur": nav.cash_eur,
                 "invested_eur": nav.invested_eur, "n_positions": nav.n_positions,
-                "bot_return_pct": nav.bot_return_pct,
+                "bot_return_pct": bot_ret,
                 "fees_cum_eur": nav.fees_cum_eur, "spread_cum_eur": nav.spread_cum_eur,
                 "dividends_cum_eur": nav.dividends_cum_eur,
                 "taxes_cum_eur": nav.taxes_cum_eur, "latent_tax_eur": nav.latent_tax_eur,
@@ -162,16 +187,16 @@ def overview(db: Session, admin: bool) -> dict:
                     "return_pct": nav.return_gross_pct,
                     "sp500_pct": nav.bench_sp_gross_pct, "acwi_pct": nav.bench_acwi_gross_pct,
                     "6040_pct": nav.bench_6040_gross_pct,
-                    "reality_gap_pct": (nav.return_gross_pct - nav.bot_return_pct)
-                    if nav.bot_return_pct is not None else None,
+                    "reality_gap_pct": (nav.return_gross_pct - bot_ret)
+                    if bot_ret is not None else None,
                 },
                 "net": {
                     "value_eur": nav.nav_eur - nav.latent_tax_eur,
                     "return_pct": nav.return_net_pct,
                     "sp500_pct": nav.bench_sp_net_pct, "acwi_pct": nav.bench_acwi_net_pct,
                     "6040_pct": nav.bench_6040_net_pct,
-                    "reality_gap_pct": (nav.return_net_pct - nav.bot_return_pct)
-                    if nav.bot_return_pct is not None else None,
+                    "reality_gap_pct": (nav.return_net_pct - bot_ret)
+                    if bot_ret is not None else None,
                 },
             },
             "positions": pos_view,
@@ -187,8 +212,10 @@ def nav_series(db: Session, strategy: str, days: int) -> list[dict]:
     since = date.today() - timedelta(days=days)
     rows = (db.query(RbNav).filter(RbNav.strategy_type == strategy, RbNav.date >= since)
             .order_by(RbNav.date).all())
+    book = db.query(RbBook).filter(RbBook.strategy_type == strategy).first()
+    bot_at = _bot_return_at(db, strategy, book.started_on) if (book and rows) else (lambda d: None)
     return [{"date": str(r.date), "nav_eur": r.nav_eur, "return_gross_pct": r.return_gross_pct,
-             "return_net_pct": r.return_net_pct, "bot_return_pct": r.bot_return_pct,
+             "return_net_pct": r.return_net_pct, "bot_return_pct": bot_at(r.date),
              "sp500_gross_pct": r.bench_sp_gross_pct, "sp500_net_pct": r.bench_sp_net_pct,
              "acwi_gross_pct": r.bench_acwi_gross_pct, "acwi_net_pct": r.bench_acwi_net_pct,
              "6040_gross_pct": r.bench_6040_gross_pct, "6040_net_pct": r.bench_6040_net_pct} for r in rows]

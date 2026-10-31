@@ -30,17 +30,22 @@ def _fetcher() -> YahooFetcher:
     return _fetcher_singleton
 
 
-def get_latest_price(asset_class: str) -> Optional[float]:
-    """Ritorna l'ultimo close Yahoo per l'asset, o None se fallisce."""
+def get_latest_price(asset_class: str, today=None) -> Optional[float]:
+    """Ritorna l'ultimo close Yahoo per l'asset, o None se fallisce.
+
+    Deve essere la chiusura dell'ultima seduta (2026-10-31): decide stop, take profit e prezzo
+    d'ingresso, e la cache su disco poteva servire quella di due sedute prima."""
     ticker = asset_to_ticker(asset_class)
     if not ticker:
         return None
     try:
         from datetime import date, timedelta
 
-        end = date.today()
+        from app.services.ai_portfolio.market_calendar import last_weekday_before
+
+        end = today or date.today()
         start = end - timedelta(days=10)
-        s = _fetcher().fetch(ticker, start_date=start, end_date=end)
+        s = _fetcher().fetch(ticker, start_date=start, end_date=end, need_through=last_weekday_before(end))
         if s is None or s.empty:
             return None
         return float(s.iloc[-1])
@@ -91,8 +96,13 @@ def get_return_between_for_ticker(ticker: str, from_close, to_close) -> Optional
 
     from app.services.ai_portfolio.market_calendar import return_between
 
+    # 2026-10-31: la serie deve contenere `to_close` (`need_through`), sennò il prezzo «nuovo» era
+    # quello già contato e il rendimento usciva 0 (NAV di Modello e LLM fermi dal 23/10).
+    if to_close <= from_close:
+        return 0.0
     try:
-        s = _fetcher().fetch(ticker, start_date=from_close - timedelta(days=15), end_date=to_close)
+        s = _fetcher().fetch(ticker, start_date=from_close - timedelta(days=15), end_date=to_close,
+                             need_through=to_close)
         if s is None or s.empty:
             return None
         return return_between(s, from_close, to_close)
