@@ -14,6 +14,8 @@ tra le condizioni.
 from typing import Any
 
 from app.services.config_flags import (
+    annualize_qoq,
+    use_gdp_annualized,
     use_adaptive_thresholds,
     use_cross_asset_pillars,
     use_cyclical_pillar,
@@ -580,7 +582,7 @@ def _evaluate_condition(
             per le 13 condizioni in `_CONDITION_RECIPES` (VIX/BAA/CPI/
             yield_curve/NFCI).
     """
-    gdp = indicators.get("gdp_roc", 0.0)
+    gdp = _gdp_growth(indicators)
     # T9-AUDIT-BUG-4: NAPM (PMI) discontinuato FRED → proxy via indpro_yoy
     from app.services.common.indicator_aliases import derive_pmi_proxy
     pmi = derive_pmi_proxy(indicators)
@@ -1062,6 +1064,13 @@ def _evaluate_condition(
     return 0.5
 
 
+def _gdp_growth(indicators: dict[str, float]) -> float:
+    """Crescita del PIL per le condizioni: `gdp_roc` (trimestrale) o, con USE_GDP_ANNUALIZED,
+    il suo annualizzato — le soglie sono scritte in termini annui (S56, vedi config_flags)."""
+    q = indicators.get("gdp_roc", 0.0)
+    return annualize_qoq(q) if use_gdp_annualized() else q
+
+
 def _sigmoid(x: float, center: float, scale: float) -> float:
     """Sigmoid morbida centrata su center. Output 0-1."""
     import math
@@ -1174,7 +1183,7 @@ def classify_regime(
 
     # Cross-regime adjustments: differenziatori chiave
     cpi = indicators.get("cpi_yoy", 2.0)
-    gdp = indicators.get("gdp_roc", 0.0)
+    gdp = _gdp_growth(indicators)
     unrate = indicators.get("unrate", 4.5)
     unrate_roc = indicators.get("unrate_roc", 0.0)
     breakeven = indicators.get("breakeven_10y", 2.0)

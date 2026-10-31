@@ -788,6 +788,38 @@ def use_forward_inflation_pillar() -> bool:
     return _read_flag("USE_FORWARD_INFLATION_PILLAR", default=True)
 
 
+def use_gdp_annualized() -> bool:
+    """S56 (2026-10-31) — il PIL alle condizioni del regime in termini ANNUI.
+
+    `gdp_roc` è la variazione TRIMESTRALE del PIL reale, non annualizzata (oggi 0,55% ≈ 2,2%
+    annuo), ed è sempre stato così (dal vivo, backfill, walk-forward). Le condizioni però sono
+    scritte per una crescita annua: `gdp_weak` «< 1,5%», `gdp_strong` centrato su 2,0 (trend USA),
+    `gdp_moderate` 1,5-3%, bonus «stagflazione da manuale» PIL < 1,5, e lo z-score dell'override
+    «collasso del PIL» (media 2,5, dev. 3). Con il trimestrale la crescita risulta quasi sempre
+    «debole» e spinge verso la stagflazione.
+
+    Se True, le condizioni ricevono `(1 + q)^4 − 1`. Il blend ML resta sul trimestrale (è
+    addestrato così).
+
+    ❌ A/B walk-forward 1995-2025 del 2026-10-31 (`scripts/s56_gdp_annualized_ab.py`), criterio
+    fissato PRIMA dei numeri → FAIL, il flag resta OFF e il sigillo v1.1 non cambia:
+    - (a) settimane di stagflazione con PIL >= 2% annuo: 80,5% → 80,0% (149/185 → 120/150).
+      Il difetto che doveva togliere quasi non esiste nello storico: l'etichetta è guidata
+      dall'inflazione, non dal PIL. Il cambio di regime del 31/10 è un caso di confine.
+    - (b) recessioni NBER a parità di base rate: precisione 50/62/32/26/14% → 83/64/43/16/13%
+      (−9 pp al 30%: il criterio chiedeva >= −1 pp a ogni livello) ❌.
+    - (c) allocazione 15 vite × 10 anni: Sortino 1,162 → 1,518, alpha medio +44% → +129% ma vince
+      12/15 contro 13/15 (media trainata da pochi casi) ✅.
+    NON ritoccare il criterio o i pesi per farlo passare (hand-tuning del gate).
+    """
+    return _read_flag("USE_GDP_ANNUALIZED", default=False)
+
+
+def annualize_qoq(q_pct: float) -> float:
+    """Variazione trimestrale % → tasso annualizzato % (composto)."""
+    return ((1.0 + q_pct / 100.0) ** 4 - 1.0) * 100.0
+
+
 def use_ml_regime_blend() -> bool:
     """Tier 8 ML REGIME BLEND: se True, le probabilities regime sono blendate
     con un ensemble ML (RandomForest + GradientBoosting trained su 18 episodi
