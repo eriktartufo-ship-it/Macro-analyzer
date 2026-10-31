@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 from app.models.ai_portfolio import AiPortfolioDecision, AiPortfolioPosition
 from app.models.regime_classifications import RegimeClassification
 from app.services.ai_portfolio import learning, momentum, pnl_tracker
+from app.services.ai_portfolio.market_calendar import last_weekday_before
 from app.services.llm import settings as llm_settings
 from app.services.scoring.engine import ASSET_CLASSES
 
@@ -464,7 +465,8 @@ def _fetch_price_history_for_universe() -> dict[str, pd.Series]:
         if not ticker:
             continue
         try:
-            s = fetcher.fetch(ticker, start_date=start, end_date=end)
+            # 2026-10-31: l'ultima seduta deve esserci (la cache delle 00:00 poteva non averla)
+            s = fetcher.fetch(ticker, start_date=start, end_date=end, need_through=last_weekday_before(end))
             if s is not None and not s.empty:
                 out[asset] = s.dropna()
         except Exception as e:

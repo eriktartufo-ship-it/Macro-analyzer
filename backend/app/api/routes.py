@@ -1405,7 +1405,7 @@ def get_ai_portfolio_performance(
     """
     from datetime import timedelta
     from app.models.ai_portfolio import AiPortfolioPerformance
-    from app.services.ai_portfolio.history_view import corrected_history
+    from app.services.ai_portfolio.history_view import corrected_history_for
 
     snaps = (
         db.query(AiPortfolioPerformance)
@@ -1413,7 +1413,8 @@ def get_ai_portfolio_performance(
         .order_by(AiPortfolioPerformance.date)
         .all()
     )
-    corrected, info = corrected_history(snaps)
+    # 2026-10-31: anche i rendimenti persi per la cache (NAV fermi dal 23/10) si ricalcolano qui
+    corrected, info = corrected_history_for(db, strategy, snaps)
     cutoff = str(date.today() - timedelta(days=days))
     latest, last = (snaps[-1], corrected[-1]) if snaps else (None, None)
     return {
@@ -1584,7 +1585,7 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
     """Confronto 3-way: model vs LLM vs S&P-a-rischio-gestito (NAV + alpha vs benchmarks)."""
     from app.models.ai_portfolio import AiPortfolioPerformance
 
-    from app.services.ai_portfolio.history_view import corrected_history
+    from app.services.ai_portfolio.history_view import corrected_history_for
 
     out = {}
     for strategy in ("model_driven", "llm_driven", "risk_managed_sp"):
@@ -1599,7 +1600,7 @@ def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
             continue
         latest = snaps[-1]
         # 2026-10-21: storico corretto alla lettura (venerdì ricontato) + MSCI ACWI dai prezzi
-        corrected, info = corrected_history(snaps)
+        corrected, info = corrected_history_for(db, strategy, snaps)
         c = corrected[-1]
 
         def alpha(key: str):

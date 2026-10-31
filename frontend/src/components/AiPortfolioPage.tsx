@@ -297,7 +297,8 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
           const nSp = beats("benchmark_sp500_return_pct");
           const n60 = beats("benchmark_60_40_return_pct");
           const nAcwi = beats("benchmark_acwi_return_pct");
-          const corr = (perfByStrat.model_driven as any)?.correction as { corrected: boolean; duplicates: number } | undefined;
+          const corr = (perfByStrat.model_driven as any)?.correction as
+            { corrected: boolean; duplicates: number; lost_returns?: number; recomputed?: number; recompute_skipped?: string } | undefined;
           const verdict = (label: string, n: number) => (
             <span style={{ color: n > withPerf / 2 ? "var(--reflation)" : "var(--deflation)", fontWeight: 600 }}>
               {n > withPerf / 2 ? "✅" : "❌"} {label} {n}/{withPerf}
@@ -318,6 +319,18 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
                 <div style={{ marginTop: 6, color: "var(--subtle)" }}>
                   Storico corretto il 21/10: fino a quel giorno il valore ricontava il venerdì nei giri senza una
                   chiusura nuova ({corr.duplicates} giorni neutralizzati). I benchmark sono ricalcolati dai prezzi.
+                </div>
+              )}
+              {corr?.corrected && (corr.recomputed ?? 0) > 0 && (
+                <div style={{ marginTop: 4, color: "var(--subtle)" }}>
+                  Storico corretto il 31/10: dal 23/10 {corr.recomputed} giri non avevano contato il movimento del
+                  giorno (prezzi vecchi in memoria). Ricalcolati dai prezzi veri, con i pesi che il bot aveva quel giorno.
+                </div>
+              )}
+              {corr?.corrected && (corr.lost_returns ?? 0) > (corr.recomputed ?? 0) && (
+                <div style={{ marginTop: 4, color: "var(--deflation)" }}>
+                  {(corr.lost_returns ?? 0) - (corr.recomputed ?? 0)} giri senza il movimento del giorno non sono
+                  ricalcolabili{corr.recompute_skipped ? `: ${corr.recompute_skipped}` : ""}.
                 </div>
               )}
             </div>

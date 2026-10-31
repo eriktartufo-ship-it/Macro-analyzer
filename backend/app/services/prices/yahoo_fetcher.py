@@ -34,6 +34,15 @@ def _cache_path(ticker: str) -> Path:
     return _CACHE_ROOT / f"{safe}.parquet"
 
 
+def _covers(s: Optional[pd.Series], need_through: Optional[date]) -> bool:
+    """True se la serie arriva almeno alla chiusura `need_through` (o se non serve)."""
+    if need_through is None:
+        return True
+    if s is None or s.empty:
+        return False
+    return pd.Timestamp(s.index.max()).date() >= need_through
+
+
 def _is_fresh(path: Path) -> bool:
     if not path.exists():
         return False
@@ -135,8 +144,15 @@ class YahooFetcher:
         start_date: Optional[date] = None,
         end_date: Optional[date] = None,
         force_refresh: bool = False,
+        need_through: Optional[date] = None,
     ) -> pd.Series:
         """Scarica serie chiusura adjusted per `ticker`.
+
+        `need_through`: la serie deve contenere almeno quella chiusura, sennò si riscarica.
+        2026-10-31: il refresh delle 00:00 UTC salva i prezzi quando Yahoo spesso non ha ancora
+        la chiusura del giorno prima; alle 05:30 i bot riusavano quel file (età < 6 h, fine
+        entro 3 giorni) e contavano rendimento 0 fra due chiusure diverse. Lo passa chi ha
+        bisogno di una chiusura PRECISA (i bot); il resto dell'app resta com'era.
 
         Default range: max storia disponibile (start = 1970-01-01).
         Returns: Series con index DatetimeIndex e valori close adjusted.
@@ -161,9 +177,9 @@ class YahooFetcher:
 
         if not force_refresh and cache_key in self._mem_cache:
             ts, s = self._mem_cache[cache_key]
-            if (time.time() - ts) < _MEM_TTL_SECONDS:
+            if (time.time() - ts) < _MEM_TTL_SECONDS and _covers(s, need_through):
                 return s
-            # mem-cache scaduto, ricarica
+            # mem-cache scaduto (o senza la chiusura richiesta), ricarica
             self._mem_cache.pop(cache_key, None)
 
         if not force_refresh:
@@ -174,8 +190,10 @@ class YahooFetcher:
                 # Filtra alla data richiesta per coerenza con il cache_key
                 if end_date is not None:
                     disk = disk[disk.index <= pd.Timestamp(end_date)]
-                self._mem_cache[cache_key] = (time.time(), disk)
-                return disk
+                if _covers(disk, need_through):
+                    self._mem_cache[cache_key] = (time.time(), disk)
+                    return disk
+                logger.info(f"Yahoo disk cache for {ticker} senza la chiusura del {need_through}: riscarico")
 
         # Import lazy: yfinance ha import slow
         import yfinance as yf
@@ -210,6 +228,9 @@ class YahooFetcher:
                 close.name = "close"
                 self._mem_cache[cache_key] = (time.time(), close)
                 self._save_disk(ticker, close)
+                if not _covers(close, need_through):
+                    # festivo USA o seduta non ancora pubblicata: si usa l'ultima disponibile
+                    logger.info(f"Yahoo: {ticker} non ha ancora la chiusura del {need_through}")
                 return close
             except Exception as e:
                 last_err = e

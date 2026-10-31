@@ -32,6 +32,16 @@ def ref_close(dates: list[date], run_date: date) -> date | None:
     return before[-1] if before else None
 
 
+def last_weekday_before(d: date) -> date:
+    """Ultimo giorno feriale prima di `d`: la chiusura che un giro del giorno `d` deve avere.
+    I festivi USA non sono esclusi (non c'è un calendario scritto a mano): quel giorno si
+    riscarica una volta in più e si usa l'ultima chiusura disponibile."""
+    p = d - timedelta(days=1)
+    while p.weekday() >= 5:
+        p -= timedelta(days=1)
+    return p
+
+
 def has_new_close(dates: list[date], today: date, prev_run_date: date | None) -> bool:
     """True se dall'ultimo giro è arrivata una chiusura nuova (o se non c'è un giro precedente)."""
     if prev_run_date is None:
