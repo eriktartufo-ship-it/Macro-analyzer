@@ -120,6 +120,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Libro reale: init tabelle saltato: {e}")
 
+    # Libro dei bot (bot_*, 2026-11-15): quote e cassa in dollari, tabelle nuove e additive.
+    try:
+        from app.database import Base, engine
+        from app.models import BotBook, BotIntentSnapshot, BotMovement, BotNav  # noqa: F401
+
+        Base.metadata.create_all(bind=engine, tables=[
+            BotBook.__table__, BotMovement.__table__, BotIntentSnapshot.__table__, BotNav.__table__,
+        ])
+    except Exception as e:
+        logger.warning(f"Libro dei bot: init tabelle saltato: {e}")
+
     # CRITICAL #2 council 2026-05-27: lock initial model snapshot se non esiste.
     # Versione sealed iniziale = "v1.0-sealed-YYYY-MM-DD". Successivi lock
     # manuali via POST /api/v1/model/lock.

@@ -8,6 +8,7 @@ from app.models.ai_portfolio import (
 from app.models.asset_regime_calibrations import AssetRegimeCalibration
 from app.models.asset_regime_performance import AssetRegimePerformance
 from app.models.backtest_results import BacktestResult
+from app.models.bot_book import BotBook, BotIntentSnapshot, BotMovement, BotNav
 from app.models.daily_signals import DailySignal
 from app.models.discretionary_overrides import DiscretionaryOverride
 from app.models.macro_indicators import MacroIndicator
@@ -31,6 +32,10 @@ __all__ = [
     "AiPortfolioPerformance",
     "AiPortfolioPosition",
     "AiPortfolioReasoning",
+    "BotBook",
+    "BotIntentSnapshot",
+    "BotMovement",
+    "BotNav",
     "AssetRegimeCalibration",
     "AssetRegimePerformance",
     "BacktestResult",

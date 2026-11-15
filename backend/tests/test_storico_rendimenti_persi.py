@@ -188,16 +188,11 @@ def test_pesi_che_non_quadrano_non_si_usano_e_lo_dice(db):
     assert "non quadrano" in info["recompute_skipped"]
 
 
-def test_classifica_e_costo_della_realta_leggono_lo_storico_ricalcolato(db):
-    from app.services.real_book import views
-
+def test_lo_storico_a_pesi_resta_ricalcolabile_per_l_archivio(db):
+    # 2026-11-15: classifica e «costo della realtà» non leggono più lo storico a pesi: leggono il
+    # libro dei bot in quote e cassa (test_bot_book::test_il_libro_reale_legge_il_valore_del_bot...).
+    # La correzione resta: serve a riassumere la curva archiviata alla ripartenza.
     _positions(db, W27)
     out, info = hv.corrected_history_for(db, "model_driven")
     assert info["recomputed"] == 3
-    ov = views.overview(db, admin=False)["strategies"]["model_driven"]["nav"]
-    atteso = out[-1]["nav"] / out[0]["nav"] - 1
-    assert ov["bot_return_pct"] == pytest.approx(atteso)
-    assert ov["bot_return_pct"] > 0.02  # non più l'1% salvato col NAV fermo
-    assert ov["gross"]["reality_gap_pct"] == pytest.approx(0.015 - atteso)
-    [nav] = views.nav_series(db, "model_driven", days=3650)
-    assert nav["bot_return_pct"] == pytest.approx(atteso)
+    assert out[-1]["nav"] / out[0]["nav"] - 1 > 0.02  # non più l'1% salvato col NAV fermo

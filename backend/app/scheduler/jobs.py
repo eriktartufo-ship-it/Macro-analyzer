@@ -2051,54 +2051,18 @@ def ai_portfolio_daily_scan():
     RegimeClassification già aggiornati) e con la chiusura di Wall Street già pubblicata da Yahoo.
     """
     from app.database import SessionLocal
-    from app.services.ai_portfolio import (
-        strategist,
-        llm_strategist,
-        risk_managed_sp,
-        performance as perf,
-        llm_reasoner,
-    )
+    from app.services.ai_portfolio import bot_book
 
-    logger.info("AI portfolio HORSERACE daily scan starting...")
+    logger.info("AI portfolio: giro del libro dei bot...")
     with SessionLocal() as db:
-        # 2026-10-21: senza una chiusura nuova i bot decidevano due volte sugli stessi prezzi
-        # (weekend) e lo snapshot ricontava il venerdì. Weekend e festivi si saltano da soli.
-        from app.services.ai_portfolio.market_calendar import bots_should_run
-
-        run, why = bots_should_run(db)
-        logger.info(f"AI portfolio: {why}")
-        if not run:
+        # 2026-11-15: un libro in quote e cassa per bot (bot_book). Per ognuno: esegue all'apertura
+        # gli ordini di ieri, chiude i conti all'ultima chiusura (con la quadratura), poi decide e
+        # scrive gli ordini nuovi. Senza chiusura nuova o con i conti che non quadrano NON decide.
+        # Prima: prima si decideva e poi si contava la seduta già chiusa (look-ahead).
+        summary = bot_book.run_giro(db)
+        logger.info(f"AI portfolio: {summary}")
+        if not any(isinstance(v, dict) and "nuovi_ordini" in v for v in summary.values()):
             return
-        # 3 strategie indipendenti — capitale $100k cadauno
-        # (data_driven rimosso 2026-07-15; risk_managed_sp aggiunto 2026-07-15)
-        for strategist_mod, label in (
-            (strategist, "model_driven"),
-            (llm_strategist, "llm_driven"),
-            (risk_managed_sp, "risk_managed_sp"),
-        ):
-            try:
-                summary = strategist_mod.daily_scan(db)
-                logger.info(f"AI portfolio scan {label} complete: {summary}")
-                snap = perf.snapshot(db, strategy_type=label)
-                if snap:
-                    logger.info(
-                        f"AI portfolio NAV {label}: ${snap.nav:.2f}, "
-                        f"cum_ret: {snap.cumulative_return_pct*100:.2f}%, "
-                        f"DD: {snap.drawdown_pct*100:.2f}%, n_pos: {snap.n_positions}"
-                    )
-                try:
-                    reasoning = llm_reasoner.generate_reasoning(
-                        db, strategy_type=label,
-                    )
-                    if reasoning:
-                        logger.info(
-                            f"AI portfolio LLM {label}: ai_agrees={reasoning.ai_agrees}, "
-                            f"alt_regime={reasoning.ai_alternative_regime}"
-                        )
-                except Exception as e:
-                    logger.warning(f"LLM reasoning {label} failed (non-fatal): {e}")
-            except Exception as e:
-                logger.exception(f"AI portfolio scan {label} failed: {e}")
 
         # Libro reale: i bot hanno deciso, il libro crea gli ordini per l'apertura.
         from app.services.config_flags import use_real_book

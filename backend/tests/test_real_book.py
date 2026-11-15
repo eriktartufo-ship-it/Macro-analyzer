@@ -241,6 +241,11 @@ def db():
         RegimeClassification.__table__, RbBook.__table__, RbMovement.__table__,
         RbBotSnapshot.__table__, RbNav.__table__,
     ])
+    # 2026-11-15: il libro reale legge il valore del bot dal libro dei bot (bot_nav)
+    from app.models.bot_book import BotBook, BotIntentSnapshot, BotMovement, BotNav
+    Base.metadata.create_all(bind=engine, tables=[
+        BotBook.__table__, BotMovement.__table__, BotIntentSnapshot.__table__, BotNav.__table__,
+    ])
     s = sessionmaker(bind=engine)()
     s.add(RegimeClassification(
         date=date(2026, 10, 16), regime="stagflation", probability_reflation=0.385,

@@ -59,6 +59,41 @@ export interface AiPortfolioPosition {
   last_action: string;
   last_action_date: string;
   days_held: number;
+  // 2026-11-15: dal libro dei bot in quote e cassa. current_weight_pct = peso REALE (valore/NAV),
+  // target_weight_pct = peso che il bot vuole (intento)
+  status?: "in portafoglio" | "ordine in attesa" | "in uscita" | string;
+  qty?: number | null;
+  price_usd?: number | null;
+  value_usd?: number | null;
+  cost_usd?: number | null;
+  avg_cost_usd?: number | null;
+  pnl_usd?: number | null;
+}
+
+/** Movimento del libro del bot (2026-11-15): ordine, esecuzione all'apertura, cedola. */
+export interface AiPortfolioMovement {
+  id: number;
+  asset_class: string;
+  side: "buy" | "sell" | "dividend" | "interest" | string;
+  kind: string;
+  kind_label: string;
+  status: "pending" | "filled" | "cancelled" | "skipped" | string;
+  status_label: string;
+  decided_on: string;
+  fill_date: string | null;
+  weight_delta_pct: number;
+  sell_fraction: number | null;
+  amount_usd: number | null;
+  quantity: number;
+  fill_price_usd: number | null;
+  gross_usd: number;
+  fee_usd: number;
+  spread_usd: number;
+  realized_pnl_usd: number | null;
+  realized_pnl_pct: number | null;
+  cash_after_usd: number | null;
+  reason: string | null;
+  note: string | null;
 }
 
 export interface AiPortfolioDecision {
@@ -95,6 +130,29 @@ export interface AiPortfolioPerformanceCurrent extends AiPortfolioPerformanceSna
   deployed_pct: number;
   top_position_asset: string | null;
   top_position_weight_pct: number | null;
+  // 2026-11-15: conti del libro. Quadratura: nav − capitale = realizzato + latente + cedole + interessi
+  cash_usd?: number;
+  invested_usd?: number;
+  initial_capital_usd?: number;
+  realized_pnl_usd?: number;
+  unrealized_pnl_usd?: number;
+  dividends_usd?: number;
+  interest_usd?: number;
+  fees_usd?: number;
+  spread_usd?: number;
+  reconciled?: boolean;
+  reconciliation_gap_usd?: number;
+  reconciliation_note?: string | null;
+}
+
+export interface AiPortfolioBookInfo {
+  started_on: string;
+  start_close: string | null;
+  initial_capital_usd: number;
+  archive: {
+    label?: string;
+    old_curve?: { date: string; nav: number; cumulative_return_pct: number; since: string } | null;
+  };
 }
 
 export interface AiPortfolioReasoning {
@@ -123,6 +181,7 @@ export interface AiPortfolioLearning {
 export interface AiPortfolioPerformanceResponse {
   current: AiPortfolioPerformanceCurrent | null;
   history: AiPortfolioPerformanceSnap[];
+  book?: AiPortfolioBookInfo | null;
 }
 
 export interface LlmSettings {

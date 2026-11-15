@@ -24,7 +24,7 @@ from typing import Iterable
 
 from sqlalchemy.orm import Session
 
-from app.models.ai_portfolio import AiPortfolioDecision, AiPortfolioPerformance, AiPortfolioPosition
+from app.models.ai_portfolio import AiPortfolioDecision, AiPortfolioPosition
 from app.models.real_book import RbBook, RbBotSnapshot, RbMovement, RbNav
 from app.models.regime_classifications import RegimeClassification
 from app.services.real_book import ledger as L
@@ -197,11 +197,11 @@ def _book(db: Session, strategy: str) -> RbBook | None:
 
 
 def _latest_bot_nav(db: Session, strategy: str, on: date | None = None) -> float | None:
-    q = db.query(AiPortfolioPerformance).filter(AiPortfolioPerformance.strategy_type == strategy)
-    if on is not None:
-        q = q.filter(AiPortfolioPerformance.date <= on)
-    row = q.order_by(AiPortfolioPerformance.date.desc()).first()
-    return row.nav if row else None
+    """Valore del bot dal suo libro in quote e cassa (2026-11-15), all'ultima chiusura <= `on`."""
+    from app.services.ai_portfolio.bot_book import latest_nav
+
+    row = latest_nav(db, strategy, on)
+    return row.nav_usd if row else None
 
 
 # ---------------------------------------------------------------------------

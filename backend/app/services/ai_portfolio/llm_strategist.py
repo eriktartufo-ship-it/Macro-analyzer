@@ -475,15 +475,9 @@ def _fetch_price_history_for_universe() -> dict[str, pd.Series]:
 
 
 def _refresh_real_pnl(position: AiPortfolioPosition) -> float:
-    current_price = pnl_tracker.get_latest_price(position.asset_class)
-    if current_price is None:
-        return position.estimated_pnl_pct
-    if position.avg_entry_price is None or position.avg_entry_price == 0:
-        position.avg_entry_price = current_price
-        position.current_price = current_price
-        return 0.0
-    position.current_price = current_price
-    return pnl_tracker.compute_pnl_pct(position.avg_entry_price, current_price)
+    """Guadagno dal LIBRO dei bot (2026-11-15, `bot_book.sync_positions` prima della decisione):
+    quote valorizzate contro il loro costo, frazionamenti compresi. Vedi `strategist`."""
+    return position.estimated_pnl_pct
 
 
 def daily_scan(
@@ -761,20 +755,6 @@ def _apply(
 
     elif action in ("FULL_CLOSE", "STOP_LOSS", "TAKE_PROFIT"):
         if position is not None:
-            try:
-                last_decision = AiPortfolioDecision(
-                    date=target_date,
-                    asset_class=asset,
-                    strategy_type=STRATEGY_TYPE,
-                    action=action,
-                    momentum_signal="NEUTRAL",
-                    score=score,
-                    confidence=0.0,
-                    regime=regime,
-                    reason_short="llm-closed",
-                )
-                learning.record_closed_position(db, last_decision, position)
-            except Exception as e:
-                logger.warning(f"llm learning record failed: {e}")
+            # 2026-11-15: apprendimento all'esecuzione della vendita, con l'utile realizzato (bot_book)
             db.delete(position)
             summary["n_closures"] += 1

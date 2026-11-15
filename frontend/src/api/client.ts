@@ -22,6 +22,7 @@ import type {
   HMMPrediction,
   AiPortfolioDecision,
   AiPortfolioLearning,
+  AiPortfolioMovement,
   AiPortfolioPerformanceResponse,
   AiPortfolioPosition,
   AiPortfolioReasoning,
@@ -155,6 +156,8 @@ export const api = {
     request<AiPortfolioDecision[]>(`/ai-portfolio/decisions?days=${days}&strategy=${strategy}`),
   aiPortfolioPerformance: (days = 180, strategy: "model_driven" | "llm_driven" | "risk_managed_sp" = "model_driven") =>
     request<AiPortfolioPerformanceResponse>(`/ai-portfolio/performance?days=${days}&strategy=${strategy}`),
+  aiPortfolioMovements: (strategy: "model_driven" | "llm_driven" | "risk_managed_sp" = "model_driven", limit = 200) =>
+    request<AiPortfolioMovement[]>(`/ai-portfolio/movements?strategy=${strategy}&limit=${limit}`),
   realBookOverview: () => request<RealBookOverview>("/real-book/overview"),
   realBookJournal: (strategy: "model_driven" | "llm_driven" | "risk_managed_sp", limit = 60) =>
     request<RealBookMovement[]>(`/real-book/journal?strategy=${strategy}&limit=${limit}`),

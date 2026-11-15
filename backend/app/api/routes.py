@@ -1321,33 +1321,23 @@ def get_ai_portfolio_positions(
     strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """Posizioni attuali AI Portfolio + metriche per strategy_type."""
-    from app.models.ai_portfolio import AiPortfolioPosition
-    positions = (
-        db.query(AiPortfolioPosition)
-        .filter(AiPortfolioPosition.strategy_type == strategy)
-        .order_by(AiPortfolioPosition.current_weight_pct.desc())
-        .all()
-    )
-    return [
-        {
-            "asset_class": p.asset_class,
-            "strategy_type": p.strategy_type,
-            "target_weight_pct": p.target_weight_pct,
-            "current_weight_pct": p.current_weight_pct,
-            "tranches_filled": p.tranches_filled,
-            "tranches_total": p.tranches_total,
-            "entry_regime": p.entry_regime,
-            "avg_entry_score": p.avg_entry_score,
-            "estimated_pnl_pct": p.estimated_pnl_pct,
-            "took_partial_tp": p.took_partial_tp,
-            "opened_at": str(p.opened_at),
-            "last_action": p.last_action,
-            "last_action_date": str(p.last_action_date),
-            "days_held": (date.today() - p.opened_at).days,
-        }
-        for p in positions
-    ]
+    """Posizioni del bot (2026-11-15): ciò che il LIBRO possiede all'ultima chiusura (quote, valore,
+    costo, guadagno) accanto a ciò che il bot vuole (`target_weight_pct` = peso di intento)."""
+    from app.services.ai_portfolio import bot_book
+    return bot_book.positions_view(db, strategy)
+
+
+@router.get("/ai-portfolio/movements")
+def get_ai_portfolio_movements(
+    strategy: str = Query(default="model_driven"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    include_interest: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    """Movimenti del libro del bot (2026-11-15): ordini, esecuzioni all'apertura con quantità,
+    prezzo, importo e utile realizzato, cedole. La curva è la somma di questi, al dollaro."""
+    from app.services.ai_portfolio import bot_book
+    return bot_book.movements_view(db, strategy, limit=limit, include_interest=include_interest)
 
 
 @router.get("/ai-portfolio/decisions")
@@ -1398,87 +1388,42 @@ def get_ai_portfolio_performance(
     strategy: str = Query(default="model_driven"),
     db: Session = Depends(get_db),
 ):
-    """Equity curve + DD + benchmark (60/40, S&P 500, MSCI ACWI) per strategy_type.
-
-    2026-10-21: valori corretti ALLA LETTURA (`history_view`): fino a quel giorno lo snapshot
-    ricontava il venerdì nei giri senza chiusura nuova. I dati salvati non vengono riscritti.
-    """
-    from datetime import timedelta
-    from app.models.ai_portfolio import AiPortfolioPerformance
-    from app.services.ai_portfolio.history_view import corrected_history_for
-
-    snaps = (
-        db.query(AiPortfolioPerformance)
-        .filter(AiPortfolioPerformance.strategy_type == strategy)
-        .order_by(AiPortfolioPerformance.date)
-        .all()
-    )
-    # 2026-10-31: anche i rendimenti persi per la cache (NAV fermi dal 23/10) si ricalcolano qui
-    corrected, info = corrected_history_for(db, strategy, snaps)
-    cutoff = str(date.today() - timedelta(days=days))
-    latest, last = (snaps[-1], corrected[-1]) if snaps else (None, None)
-    return {
-        "current": (
-            {
-                **last,
-                "n_positions": latest.n_positions,
-                "deployed_pct": latest.deployed_pct,
-                "top_position_asset": latest.top_position_asset,
-                "top_position_weight_pct": latest.top_position_weight_pct,
-            }
-            if latest
-            else None
-        ),
-        "history": [row for row in corrected if row["date"] >= cutoff],
-        "correction": info,
-    }
+    """Curva del bot dal suo LIBRO in quote e cassa (2026-11-15), con S&P 500, MSCI ACWI e 60/40
+    dalla stessa chiusura di partenza, e la quadratura dei conti nel `current`:
+    valore − capitale = realizzato + latente + cedole + interessi."""
+    from app.services.ai_portfolio import bot_book
+    return bot_book.performance_view(db, strategy, days=days)
 
 
 @router.post("/ai-portfolio/manual-scan", dependencies=[Depends(require_admin)])
 def trigger_ai_portfolio_scan(db: Session = Depends(get_db)):
-    """Trigger manuale daily scan di TUTTE le strategie + performance + LLM reasoning."""
-    from app.services.ai_portfolio import (
-        strategist,
-        llm_strategist,
-        risk_managed_sp,
-        performance as perf,
-        llm_reasoner,
-    )
-    import traceback as _tb
-    results = {}
-    for mod, label in (
-        (strategist, "model_driven"),
-        (llm_strategist, "llm_driven"),
-        (risk_managed_sp, "risk_managed_sp"),
-    ):
+    """Giro manuale del libro dei bot (2026-11-15): stesso giro delle 05:30 UTC. Senza una
+    chiusura nuova di Wall Street non decide (la decisione sarebbe sugli stessi prezzi)."""
+    from app.services.ai_portfolio import bot_book
+    results = bot_book.run_giro(db)
+    from app.services.config_flags import use_real_book
+    if use_real_book() and any(isinstance(v, dict) and "nuovi_ordini" in v for v in results.values()):
         try:
-            summary = mod.daily_scan(db)
-        except Exception as e:
-            results[label] = {"error": str(e), "trace": _tb.format_exc()[-800:]}
-            db.rollback()
-            continue
-        try:
-            snap = perf.snapshot(db, strategy_type=label)
-        except Exception as e:
-            snap = None
-        try:
-            llm_reasoner.generate_reasoning(db, strategy_type=label)
-        except Exception:
-            pass
-        results[label] = {
-            "scan_summary": summary,
-            "performance": (
-                {
-                    "date": str(snap.date),
-                    "nav": snap.nav,
-                    "cumulative_return_pct": snap.cumulative_return_pct,
-                    "n_positions": snap.n_positions,
-                }
-                if snap
-                else None
-            ),
-        }
+            from app.services.real_book import book as real_book
+            results["libro_reale"] = real_book.run_after_scan(db)
+        except Exception as e:  # noqa: BLE001
+            results["libro_reale"] = {"errore": str(e)}
     return results
+
+
+@router.post("/ai-portfolio/restart", dependencies=[Depends(require_admin)])
+def restart_ai_portfolio(confirm: str = Query(default=""), db: Session = Depends(get_db)):
+    """Ripartenza da zero (Erik 2026-11-15): COPIA in tabelle `arch_<data>_*` e svuota la
+    contabilità a pesi, il libro reale e l'eventuale libro dei bot precedente, poi apre un libro
+    nuovo per ogni bot. Richiede `?confirm=RIPARTI`. Rifiuta se l'archivio di oggi esiste già."""
+    if confirm != "RIPARTI":
+        raise HTTPException(status_code=400, detail="Passa ?confirm=RIPARTI per ripartire da zero.")
+    from app.services.ai_portfolio import bot_book
+    try:
+        return bot_book.restart(db, today=date.today())
+    except (ValueError, RuntimeError) as e:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @router.get("/ai-portfolio/reasoning")
@@ -1561,14 +1506,21 @@ def reset_ai_portfolio(
         AiPortfolioPosition,
         AiPortfolioReasoning,
     )
+    from app.models.bot_book import BotBook, BotIntentSnapshot, BotMovement, BotNav
 
     counts = {}
+    # 2026-11-15: anche il libro dei bot, sennò resterebbero quote senza un intento. Dopo un reset
+    # i bot non girano finché non si fa la ripartenza (POST /ai-portfolio/restart, che ARCHIVIA).
     for model in (
         AiPortfolioReasoning,
         AiPortfolioLearning,
         AiPortfolioPerformance,
         AiPortfolioDecision,
         AiPortfolioPosition,
+        BotNav,
+        BotMovement,
+        BotIntentSnapshot,
+        BotBook,
     ):
         q = db.query(model)
         if strategy:
@@ -1576,53 +1528,22 @@ def reset_ai_portfolio(
         n = q.count()
         q.delete(synchronize_session=False)
         counts[model.__tablename__] = n
+    # il bot (o i bot) ripartono subito con un libro nuovo: senza, un reset li spegnerebbe per sempre
+    from app.services.ai_portfolio.bot_book import INITIAL_CAPITAL_USD, STRATEGIES
+    for s in ((strategy,) if strategy else STRATEGIES):
+        if s in STRATEGIES:
+            db.add(BotBook(strategy_type=s, started_on=date.today(), initial_capital_usd=INITIAL_CAPITAL_USD))
     db.commit()
     return {"status": "reset_complete", "scope": strategy or "ALL", "deleted": counts}
 
 
 @router.get("/ai-portfolio/leaderboard")
 def get_ai_portfolio_leaderboard(db: Session = Depends(get_db)):
-    """Confronto 3-way: model vs LLM vs S&P-a-rischio-gestito (NAV + alpha vs benchmarks)."""
-    from app.models.ai_portfolio import AiPortfolioPerformance
+    """Confronto 3-way: model vs LLM vs S&P-a-rischio-gestito (NAV + alpha vs benchmarks),
+    dal libro dei bot in quote e cassa (2026-11-15)."""
+    from app.services.ai_portfolio import bot_book
 
-    from app.services.ai_portfolio.history_view import corrected_history_for
-
-    out = {}
-    for strategy in ("model_driven", "llm_driven", "risk_managed_sp"):
-        snaps = (
-            db.query(AiPortfolioPerformance)
-            .filter(AiPortfolioPerformance.strategy_type == strategy)
-            .order_by(AiPortfolioPerformance.date)
-            .all()
-        )
-        if not snaps:
-            out[strategy] = None
-            continue
-        latest = snaps[-1]
-        # 2026-10-21: storico corretto alla lettura (venerdì ricontato) + MSCI ACWI dai prezzi
-        corrected, info = corrected_history_for(db, strategy, snaps)
-        c = corrected[-1]
-
-        def alpha(key: str):
-            v = c.get(key)
-            return None if v is None else c["cumulative_return_pct"] - v
-
-        out[strategy] = {
-            "date": str(latest.date),
-            "nav": c["nav"],
-            "cumulative_return_pct": c["cumulative_return_pct"],
-            "drawdown_pct": c["drawdown_pct"],
-            "peak_nav": c["peak_nav"],
-            "n_positions": latest.n_positions,
-            "deployed_pct": latest.deployed_pct,
-            "benchmark_60_40_return_pct": c["benchmark_60_40_return_pct"],
-            "benchmark_sp500_return_pct": c["benchmark_sp500_return_pct"],
-            "benchmark_acwi_return_pct": c["benchmark_acwi_return_pct"],
-            "alpha_vs_60_40": alpha("benchmark_60_40_return_pct"),
-            "alpha_vs_sp500": alpha("benchmark_sp500_return_pct"),
-            "alpha_vs_acwi": alpha("benchmark_acwi_return_pct"),
-            "correction": info,
-        }
+    out = bot_book.leaderboard_rows(db)
 
     # 3-way ranking
     ranked = sorted(
