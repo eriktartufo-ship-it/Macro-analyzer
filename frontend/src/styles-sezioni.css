@@ -286,3 +286,7 @@
 @media (max-width: 640px) {
   .seg-regimi button { font-size: 11.5px; padding: 9px 2px; overflow-wrap: normal; word-break: keep-all; hyphens: none; }
 }
+/* Conti del bot (S57, 2026-11-15): 2 colonne al telefono, 4 da tablet in su */
+.bot-conti { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.bot-conto { background: var(--surface-sunk); border: 1px solid var(--stroke); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+@media (min-width: 640px) { .bot-conti { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

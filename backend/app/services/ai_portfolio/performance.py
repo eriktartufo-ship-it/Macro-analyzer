@@ -1,5 +1,10 @@
 """AI Portfolio Performance Tracker.
 
+⚠️ DAL 2026-11-15 NON GOVERNA PIU' LA CURVA DEI BOT: valore, benchmark e quadratura vengono dal
+libro in quote e cassa (`bot_book.settle`). Qui restavano due difetti (rendimento della seduta
+applicato ai pesi DOPO le decisioni = look-ahead; pesi che non seguono il prezzo). Il modulo resta
+per i test e per `idle_cash_contribution`; non richiamarlo dal giro.
+
 Computa NAV portafoglio daily + cumulative return + DD + benchmarks 60/40
 e S&P500. **Usa prezzi reali Yahoo Finance** (refactor 2026-06-17 Erik):
 - Portfolio NAV: sum(weight × daily_return_reale) per ogni position

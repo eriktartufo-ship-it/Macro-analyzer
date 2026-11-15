@@ -1,0 +1,42 @@
+# S57 (2026-11-15): ripartenza da zero dei portafogli dei bot sul libro in quote e cassa.
+# Erik: «procedi con A e riparti da zero i vari portafogli».
+# Gira dentro il container del backend (stessa funzione dell'endpoint POST /ai-portfolio/restart,
+# senza token): COPIA in tabelle arch_<data>_* la contabilità a pesi, il libro reale e l'eventuale
+# libro dei bot precedente, controlla le righe copiate, poi svuota e apre i libri nuovi.
+# Rifiuta una seconda ripartenza nello stesso giorno (l'archivio di quel giorno esiste già).
+name: Bot - ripartenza da zero
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Scrivi RIPARTI per archiviare e far ripartire da zero i portafogli dei bot"
+        required: true
+
+jobs:
+  restart:
+    runs-on: [self-hosted, linux, vps-macro]
+    env:
+      CONFIRM: ${{ inputs.confirm }}
+    steps:
+      - name: Conferma
+        run: |
+          if [ "$CONFIRM" != "RIPARTI" ]; then echo "Conferma mancante: scrivi RIPARTI"; exit 1; fi
+
+      - name: Ripartenza (archivio + libri nuovi)
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          docker compose exec -T backend python -c "import json; from datetime import date; from app.database import SessionLocal; from app.services.ai_portfolio import bot_book; db = SessionLocal(); print(json.dumps(bot_book.restart(db, today=date.today()), indent=1, default=str)); db.close()"
+
+      - name: Primo giro dei bot (decisioni sull'ultima chiusura, ordini per la prossima apertura)
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          docker compose exec -T backend python -c "from app.scheduler.jobs import ai_portfolio_daily_scan; ai_portfolio_daily_scan()"
+
+      - name: Esito
+        run: |
+          set -euo pipefail
+          cd /opt/macro
+          docker compose exec -T backend python -c "import json, urllib.request; base = 'http://localhost:8000/api/v1/ai-portfolio'; lb = json.load(urllib.request.urlopen(base + '/leaderboard', timeout=30)); print(json.dumps(lb['by_strategy'], indent=1)); [print(s, [(m['asset_class'], m['kind'], m['status'], round(m['amount_usd'] or 0)) for m in json.load(urllib.request.urlopen(base + '/movements?strategy=' + s, timeout=30))]) for s in ('model_driven', 'llm_driven', 'risk_managed_sp')]"

@@ -8,6 +8,7 @@ import { assetName, regimeLabel } from "../lib/assets";
 import type {
   AiPortfolioDecision,
   AiPortfolioLearning,
+  AiPortfolioMovement,
   AiPortfolioPerformanceResponse,
   AiPortfolioPosition,
   AiPortfolioReasoning,
@@ -95,6 +96,17 @@ function money(v: number | null | undefined): string {
 function formatAsset(a: string): string {
   return assetName(a);
 }
+/** Dollari con decimali (prezzi, utili, costi). */
+function usd(v: number | null | undefined, digits = 2): string {
+  if (v == null) return "—";
+  const sign = v < 0 ? "−" : "";
+  return `${sign}$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+}
+function signColor(v: number | null | undefined): string {
+  if (v == null || v === 0) return "var(--muted)";
+  return v > 0 ? "var(--reflation)" : "var(--deflation)";
+}
+const MOVEMENT_PAGE = 20;
 
 // Azioni che non muovono il portafoglio: nel registro sono la grande maggioranza
 // (misurato il 22/10: 492 righe su 500 del bot Modello), quindi di base si nascondono.
@@ -138,16 +150,24 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
     llm_driven: [],
     risk_managed_sp: [],
   });
+  const [movByStrat, setMovByStrat] = useState<Record<StrategyType, AiPortfolioMovement[]>>({
+    model_driven: [],
+    llm_driven: [],
+    risk_managed_sp: [],
+  });
+  const [movLimit, setMovLimit] = useState(MOVEMENT_PAGE);
 
   const loadFor = async (strategy: StrategyType) => {
     try {
-      const [pos, dec, perf, learns] = await Promise.all([
+      const [pos, dec, perf, learns, movs] = await Promise.all([
         api.aiPortfolioPositions(strategy),
         api.aiPortfolioDecisions(30, strategy),
         api.aiPortfolioPerformance(180, strategy),
         api.aiPortfolioLearnings(20, strategy).catch(() => [] as AiPortfolioLearning[]),
+        api.aiPortfolioMovements(strategy, 200).catch(() => [] as AiPortfolioMovement[]),
       ]);
       setPosByStrat((s) => ({ ...s, [strategy]: pos }));
+      setMovByStrat((s) => ({ ...s, [strategy]: movs }));
       setDecByStrat((s) => ({ ...s, [strategy]: dec }));
       setPerfByStrat((s) => ({ ...s, [strategy]: perf }));
       setLearnByStrat((s) => ({ ...s, [strategy]: learns }));
@@ -195,6 +215,8 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
   const logRows = showQuiet ? decisions : realDecisions;
   const reasoning = reasoningByStrat[activeStrategy];
   const learnings = learnByStrat[activeStrategy];
+  const movements = movByStrat[activeStrategy];
+  const current = perfByStrat[activeStrategy]?.current ?? null;
   const meta = STRATEGY_META[activeStrategy];
 
   const lbHead = (leaderboard as any)?.head_to_head as
@@ -215,7 +237,8 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
           <div>
             <h2 style={{ margin: 0 }}>Gara dei bot</h2>
             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
-              3 strategie competono, $100k capitale separato ciascuna. Stesso universe 24 asset.
+              3 strategie competono, $100k capitale separato ciascuna. Ogni ordine si esegue all'apertura
+              della seduta dopo la decisione, con spread e commissioni; il valore è cassa più quote alla chiusura.
             </div>
             {spyMarket && spyMarket.price != null && (
               <div
@@ -297,8 +320,9 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
           const nSp = beats("benchmark_sp500_return_pct");
           const n60 = beats("benchmark_60_40_return_pct");
           const nAcwi = beats("benchmark_acwi_return_pct");
-          const corr = (perfByStrat.model_driven as any)?.correction as
-            { corrected: boolean; duplicates: number; lost_returns?: number; recomputed?: number; recompute_skipped?: string } | undefined;
+          const book = perfByStrat.model_driven?.book ?? null;
+          const oldCurves = STRATEGY_ORDER.map((st) => ({ st, c: perfByStrat[st]?.book?.archive?.old_curve ?? null }))
+            .filter((x) => x.c != null);
           const verdict = (label: string, n: number) => (
             <span style={{ color: n > withPerf / 2 ? "var(--reflation)" : "var(--deflation)", fontWeight: 600 }}>
               {n > withPerf / 2 ? "✅" : "❌"} {label} {n}/{withPerf}
@@ -315,22 +339,22 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
                   Le AI battono: {verdict("S&P 500", nSp)} · {verdict("MSCI ACWI", nAcwi)} · {verdict("60/40", n60)}
                 </div>
               )}
-              {corr?.corrected && corr.duplicates > 0 && (
-                <div style={{ marginTop: 6, color: "var(--subtle)" }}>
-                  Storico corretto il 21/10: fino a quel giorno il valore ricontava il venerdì nei giri senza una
-                  chiusura nuova ({corr.duplicates} giorni neutralizzati). I benchmark sono ricalcolati dai prezzi.
-                </div>
-              )}
-              {corr?.corrected && (corr.recomputed ?? 0) > 0 && (
-                <div style={{ marginTop: 4, color: "var(--subtle)" }}>
-                  Storico corretto il 31/10: dal 23/10 {corr.recomputed} giri non avevano contato il movimento del
-                  giorno (prezzi vecchi in memoria). Ricalcolati dai prezzi veri, con i pesi che il bot aveva quel giorno.
-                </div>
-              )}
-              {corr?.corrected && (corr.lost_returns ?? 0) > (corr.recomputed ?? 0) && (
-                <div style={{ marginTop: 4, color: "var(--deflation)" }}>
-                  {(corr.lost_returns ?? 0) - (corr.recomputed ?? 0)} giri senza il movimento del giorno non sono
-                  ricalcolabili{corr.recompute_skipped ? `: ${corr.recompute_skipped}` : ""}.
+              {book && (
+                <div style={{ marginTop: 6, color: "var(--subtle)", lineHeight: 1.5 }}>
+                  Ripartiti da zero il {book.started_on} su un libro in quote e cassa: curva e movimenti escono dagli
+                  stessi conti.
+                  {oldCurves.length > 0 && (
+                    <>
+                      {" "}La curva precedente è archiviata e non è confrontabile, perché contava le sedute prima degli
+                      acquisti e leggeva i frazionamenti come perdite:{" "}
+                      {oldCurves.map((x, i) => (
+                        <span key={x.st}>
+                          {i > 0 ? " · " : ""}{STRATEGY_META[x.st].label} {pct(x.c!.cumulative_return_pct, 1)}
+                        </span>
+                      ))}
+                      .
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -418,10 +442,41 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
 
       {view === "bot" && (
       <>
+      {/* Conti del bot: la curva scomposta nei movimenti (2026-11-15) */}
+      {current && current.cash_usd != null && (
+        <div className="card" style={{ marginTop: 12 }}>
+          <h2 style={{ margin: 0, marginBottom: 8 }}>
+            Conti del bot · <span style={{ color: meta.color }}>{meta.label}</span> · chiusura del {current.date}
+          </h2>
+          <div className="bot-conti">
+            <ContoVoce label="Valore" value={usd(current.nav, 0)} />
+            <ContoVoce label="Liquidità" value={usd(current.cash_usd, 0)} />
+            <ContoVoce label="Investito" value={usd(current.invested_usd, 0)} />
+            <ContoVoce label="Utile realizzato" value={usd(current.realized_pnl_usd)} color={signColor(current.realized_pnl_usd)} />
+            <ContoVoce label="Utile latente" value={usd(current.unrealized_pnl_usd)} color={signColor(current.unrealized_pnl_usd)} />
+            <ContoVoce label="Cedole" value={usd(current.dividends_usd)} />
+            <ContoVoce label="Interessi" value={usd(current.interest_usd)} />
+            <ContoVoce label="Costi pagati" value={usd((current.fees_usd ?? 0) + (current.spread_usd ?? 0))}
+              hint="commissioni + spread, già dentro gli utili" />
+          </div>
+          <div style={{ fontSize: 12, marginTop: 10, color: current.reconciled ? "var(--muted)" : "var(--deflation)", fontWeight: current.reconciled ? 400 : 700 }}>
+            {current.reconciled ? "✓ " : "✗ "}
+            Valore − capitale ({usd(current.nav - (current.initial_capital_usd ?? 100000))}) = realizzato + latente + cedole
+            + interessi
+            {current.reconciled
+              ? ` (scarto ${usd(current.reconciliation_gap_usd)})`
+              : ` — conti NON verificati: il bot non decide finché non tornano`}
+          </div>
+          {!current.reconciled && current.reconciliation_note && (
+            <div style={{ fontSize: 11, marginTop: 4, color: "var(--deflation)" }}>{current.reconciliation_note}</div>
+          )}
+        </div>
+      )}
+
       {/* Positions table */}
       <div className="card" style={{ marginTop: 12 }}>
         <h2 style={{ margin: 0, marginBottom: 8 }}>
-          Posizioni attive · <span style={{ color: meta.color }}>{meta.label}</span>
+          Posizioni · <span style={{ color: meta.color }}>{meta.label}</span>
         </h2>
         {positions.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>
@@ -435,8 +490,9 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
                   <th>Asset</th>
                   <th className="num">Peso</th>
                   <th className="num">Obiettivo</th>
+                  <th className="num">Valore</th>
+                  <th className="num">Guadagno</th>
                   <th className="num">Tranche</th>
-                  <th className="num">Guadagno stimato</th>
                   <th>Regime all'ingresso</th>
                   <th className="num">Score all'ingresso</th>
                   <th className="num">Giorni</th>
@@ -445,13 +501,19 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
               <tbody>
                 {positions.map((p) => (
                   <tr key={p.asset_class}>
-                    <td className="td-main">{formatAsset(p.asset_class)}</td>
+                    <td className="td-main">
+                      {formatAsset(p.asset_class)}
+                      {p.status && p.status !== "in portafoglio" && (
+                        <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 400 }}>{p.status}</div>
+                      )}
+                    </td>
                     <td className="num" data-label="Peso">{pct(p.current_weight_pct, 1)}</td>
                     <td className="num" data-label="Obiettivo">{pct(p.target_weight_pct, 1)}</td>
-                    <td className="num" data-label="Tranche">{p.tranches_filled}/{p.tranches_total}</td>
-                    <td className="num" data-label="Guadagno" style={{ color: p.estimated_pnl_pct >= 0 ? "var(--reflation)" : "var(--deflation)" }}>
-                      {pct(p.estimated_pnl_pct, 1)}
+                    <td className="num" data-label="Valore">{p.value_usd != null ? usd(p.value_usd, 0) : "—"}</td>
+                    <td className="num" data-label="Guadagno" style={{ color: signColor(p.pnl_usd ?? p.estimated_pnl_pct) }}>
+                      {p.pnl_usd != null ? `${usd(p.pnl_usd, 0)} · ${pct(p.estimated_pnl_pct, 1)}` : "—"}
                     </td>
+                    <td className="num" data-label="Tranche">{p.tranches_filled}/{p.tranches_total}</td>
                     <td data-label="Regime ingresso">{regimeLabel(p.entry_regime)}</td>
                     <td className="num" data-label="Score ingresso">{p.avg_entry_score.toFixed(1)}</td>
                     <td className="num" data-label="Giorni">{p.days_held}</td>
@@ -460,6 +522,69 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
               </tbody>
             </table>
           </ScrollShadow>
+        )}
+      </div>
+
+      {/* Movimenti del libro: ciò che è stato comprato e venduto davvero (2026-11-15) */}
+      <div className="card" style={{ marginTop: 12 }}>
+        <h2 style={{ margin: 0, marginBottom: 4 }}>
+          Movimenti · <span style={{ color: meta.color }}>{meta.label}</span>
+        </h2>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 8 }}>
+          Ogni acquisto e vendita eseguiti all'apertura, con quantità, prezzo e utile. Sommati, danno la curva.
+        </div>
+        {movements.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--muted)", fontStyle: "italic" }}>
+            Nessun movimento ancora: il primo ordine si esegue all'apertura dopo la prima decisione.
+          </div>
+        ) : (
+          <ScrollShadow innerClassName="table-wrap">
+            <table className="table table-responsive log-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Asset</th>
+                  <th>Operazione</th>
+                  <th className="num">Quantità</th>
+                  <th className="num">Prezzo</th>
+                  <th className="num">Importo</th>
+                  <th className="num">Utile</th>
+                  <th>Perché</th>
+                </tr>
+              </thead>
+              <tbody>
+                {movements.slice(0, movLimit).map((m) => (
+                  <tr key={m.id} style={{ opacity: m.status === "cancelled" || m.status === "skipped" ? 0.55 : 1 }}>
+                    <td className="td-date" style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {m.fill_date ?? m.decided_on}
+                      {m.status !== "filled" && <div style={{ fontSize: 10 }}>{m.status_label}</div>}
+                    </td>
+                    <td className="td-main" style={{ fontSize: 12 }}>{formatAsset(m.asset_class)}</td>
+                    <td data-label="Operazione" style={{ fontSize: 12, fontWeight: 600, color: m.side === "sell" ? "var(--stagflation)" : m.side === "buy" ? "var(--reflation)" : "var(--text)" }}>
+                      {m.kind_label}
+                    </td>
+                    <td className="num" data-label="Quantità">{m.status === "filled" && m.side !== "interest" ? m.quantity.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}</td>
+                    <td className="num" data-label="Prezzo">{m.status === "filled" ? usd(m.fill_price_usd) : "—"}</td>
+                    <td className="num" data-label="Importo">
+                      {m.status === "filled" ? usd(m.gross_usd, 0) : m.amount_usd != null ? `~${usd(m.amount_usd, 0)}` : "—"}
+                    </td>
+                    <td className="num" data-label="Utile" style={{ color: signColor(m.realized_pnl_usd) }}>
+                      {m.realized_pnl_usd != null ? `${usd(m.realized_pnl_usd, 0)} · ${pct(m.realized_pnl_pct, 1)}` : "—"}
+                    </td>
+                    <td className="td-wide" style={{ fontSize: 11, color: "var(--muted)" }}>
+                      {m.reason ?? "—"}
+                      {m.note && <div style={{ marginTop: 2, fontStyle: "italic" }}>{m.note}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollShadow>
+        )}
+        {movements.length > movLimit && (
+          <button className="btn-more" onClick={() => setMovLimit((n) => n + MOVEMENT_PAGE)}>
+            Mostra altri {Math.min(MOVEMENT_PAGE, movements.length - movLimit)} (ne restano {movements.length - movLimit})
+          </button>
         )}
       </div>
 
@@ -573,6 +698,15 @@ export function AiPortfolioPage({ view = "bot" }: { view?: "bot" | "libro" }) {
       )}
       </>
       )}
+    </div>
+  );
+}
+
+function ContoVoce({ label, value, color, hint }: { label: string; value: string; color?: string; hint?: string }) {
+  return (
+    <div className="bot-conto" title={hint}>
+      <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: color ?? "var(--text)", marginTop: 2 }}>{value}</div>
     </div>
   );
 }

@@ -55,6 +55,11 @@ def seeded():
         AiPortfolioPerformance.__table__, AiPortfolioReasoning.__table__,
         AiPortfolioLearning.__table__,
     ])
+    # 2026-11-15: il reset svuota anche il libro dei bot
+    from app.models.bot_book import BotBook, BotIntentSnapshot, BotMovement, BotNav
+    Base.metadata.create_all(bind=engine, tables=[
+        BotBook.__table__, BotMovement.__table__, BotIntentSnapshot.__table__, BotNav.__table__,
+    ])
     db = sessionmaker(bind=engine)()
 
     _pos(db, "gold", "data_driven")

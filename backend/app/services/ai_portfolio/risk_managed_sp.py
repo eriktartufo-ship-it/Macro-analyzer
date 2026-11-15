@@ -188,13 +188,8 @@ def daily_scan(db: Session, target_date: date | None = None) -> dict:
     summary = {"n_decisions": 0, "n_open_tranches": 0, "n_closures": 0,
                "target": target_asset, "reason": reason}
 
+    # il guadagno della posizione arriva dal libro dei bot (bot_book.sync_positions, 2026-11-15)
     current = positions[0] if positions else None
-    if current is not None:
-        px = pnl_tracker.get_latest_price(current.asset_class)
-        if px is not None and current.avg_entry_price:
-            current.current_price = px
-            current.estimated_pnl_pct = pnl_tracker.compute_pnl_pct(
-                current.avg_entry_price, px)
 
     if current is not None and current.asset_class == target_asset:
         db.add(AiPortfolioDecision(

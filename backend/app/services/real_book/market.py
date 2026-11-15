@@ -70,9 +70,12 @@ class YahooMarket:
             try:
                 import yfinance as yf
 
-                h = yf.Ticker(symbol).history(period="2y", auto_adjust=False)
+                h = yf.Ticker(symbol).history(period="5y", auto_adjust=False)  # 5 anni: la scala dei lotti vecchi (2026-11-15)
                 if h is not None and not h.empty:
-                    df = h[["Open", "Close"]].copy()
+                    # AdjClose (2026-11-15): rettificata per i dividendi, la usa il libro dei bot per
+                    # benchmark e interessi; il libro reale legge solo Open/Close.
+                    cols = ["Open", "Close"] + (["Adj Close"] if "Adj Close" in h.columns else [])
+                    df = h[cols].copy().rename(columns={"Adj Close": "AdjClose"})
                     df.index = _to_date_index(df.index)
                     df = df[(df["Open"] > 0) & (df["Close"] > 0)]
             except Exception as e:

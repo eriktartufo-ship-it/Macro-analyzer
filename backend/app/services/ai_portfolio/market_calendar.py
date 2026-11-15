@@ -83,6 +83,9 @@ def close_dates(series: pd.Series) -> list[date]:
 def bots_should_run(db, today: date | None = None) -> tuple[bool, str]:
     """Il giro notturno dei bot ha senso solo con una chiusura nuova di Wall Street.
 
+    ⚠️ Dal 2026-11-15 il giro NON passa di qui: il cancello è dentro `bot_book.settle` (chiusura nuova
+    rispetto all'ultimo valore del libro). Resta per i test della contabilità a pesi archiviata.
+
     Guarda l'ultimo snapshot di performance (qualunque strategia) e le chiusure di SPY. Se il
     dato non arriva, il giro si fa comunque (fail-open dichiarato): saltare in silenzio per un
     timeout di Yahoo fermerebbe i bot senza che nessuno se ne accorga.

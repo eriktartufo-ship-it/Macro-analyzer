@@ -79,15 +79,35 @@ def record_closed_position(
     closed_decision: AiPortfolioDecision,
     closed_position: AiPortfolioPosition,
 ) -> AiPortfolioLearning:
-    """Aggiorna learning quando una posizione viene chiusa (per strategy_type)."""
-    pattern = build_pattern_key(
+    """Aggiorna learning quando una posizione viene chiusa (per strategy_type).
+
+    2026-11-15: i bot non la chiamano più alla decisione. L'esito si registra quando la vendita
+    viene ESEGUITA dal libro dei bot (`bot_book`), con l'utile realizzato: prima entrava il
+    guadagno stimato sul prezzo d'ingresso grezzo, e il frazionamento di QUAL ci ha messo un -75%.
+    """
+    return record_outcome(
+        db,
+        strategy_type=getattr(closed_position, "strategy_type", "model_driven"),
         regime=closed_position.entry_regime,
         asset_class=closed_position.asset_class,
         momentum=closed_decision.momentum_signal or "NEUTRAL",
+        pnl=closed_position.estimated_pnl_pct,
+        seen_on=closed_decision.date,
     )
-    strategy = getattr(closed_position, "strategy_type", "model_driven")
 
-    pnl = closed_position.estimated_pnl_pct
+
+def record_outcome(
+    db: Session,
+    strategy_type: str,
+    regime: str,
+    asset_class: str,
+    momentum: str,
+    pnl: float,
+    seen_on: date,
+) -> AiPortfolioLearning:
+    """Aggiorna il pattern (regime, tipo di asset, momentum) con l'esito di una posizione chiusa."""
+    pattern = build_pattern_key(regime=regime, asset_class=asset_class, momentum=momentum)
+    strategy = strategy_type
 
     learning = db.query(AiPortfolioLearning).filter_by(
         pattern_key=pattern, strategy_type=strategy,
@@ -102,7 +122,7 @@ def record_closed_position(
             avg_pnl_pct=pnl,
             win_rate=1.0 if pnl > 0 else 0.0,
             entry_threshold_shift=0.0,  # ricalcolato sotto
-            last_pattern_seen_at=closed_decision.date,
+            last_pattern_seen_at=seen_on,
         )
         db.add(learning)
     else:
@@ -114,7 +134,7 @@ def record_closed_position(
         learning.total_pnl_pct += pnl
         learning.avg_pnl_pct = learning.total_pnl_pct / n_total
         learning.win_rate = learning.n_wins / n_total
-        learning.last_pattern_seen_at = closed_decision.date
+        learning.last_pattern_seen_at = seen_on
 
     n_total = learning.n_wins + learning.n_losses
     learning.entry_threshold_shift = _compute_threshold_shift(

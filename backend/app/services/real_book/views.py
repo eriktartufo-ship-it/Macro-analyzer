@@ -111,15 +111,13 @@ def _concentration(positions: list[dict]) -> list[dict]:
 
 
 def _bot_return_at(db: Session, strategy: str, started_on: date):
-    """Rendimento del bot dall'avvio del libro, dallo storico CORRETTO alla lettura (2026-10-31).
+    """Rendimento del bot dall'avvio del libro reale, dal LIBRO dei bot in quote e cassa
+    (2026-11-15; prima dallo storico a pesi corretto alla lettura). Ultima chiusura del bot con
+    data <= quella del valore, come `_latest_bot_nav`."""
+    from app.models.bot_book import BotNav
 
-    `rb_nav.bot_return_pct` è salvato col NAV grezzo del bot, che dal 23/10 non contava i giorni
-    persi per la cache Yahoo: il «costo della realtà» confrontava il libro con un bot fermo.
-    Stessa regola di `_latest_bot_nav`: ultimo giro del bot con data <= quella del valore."""
-    from app.services.ai_portfolio.history_view import corrected_history_for
-
-    rows, _ = corrected_history_for(db, strategy)
-    navs = [(date.fromisoformat(r["date"]), r["nav"]) for r in rows]
+    rows = (db.query(BotNav).filter(BotNav.strategy_type == strategy).order_by(BotNav.date).all())
+    navs = [(r.date, r.nav_usd) for r in rows]
 
     def nav_on(d: date) -> float | None:
         before = [n for day, n in navs if day <= d]

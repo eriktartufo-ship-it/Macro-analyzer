@@ -70,26 +70,13 @@ def _regime_top_n_assets(probabilities: dict[str, float], top_n: int = TOP_N_REG
 
 
 def _refresh_real_pnl(position: AiPortfolioPosition) -> float:
-    """Fase 2: PnL reale da Yahoo daily prices invece di stima.
+    """Guadagno della posizione per stop e prese di profitto.
 
-    Strategia:
-    - Se avg_entry_price assente (positions create pre-fase-2): cattura prezzo corrente
-      e azzera PnL (start clean tracking da qui in poi)
-    - Se presente: PnL = (current - entry) / entry
-    """
-    current_price = pnl_tracker.get_latest_price(position.asset_class)
-    if current_price is None:
-        return position.estimated_pnl_pct  # fallback: invariato
-
-    if position.avg_entry_price is None or position.avg_entry_price == 0:
-        # Backfill: posizioni pre-fase2 senza prezzo entry
-        position.avg_entry_price = current_price
-        position.current_price = current_price
-        return 0.0
-
-    position.current_price = current_price
-    pnl = pnl_tracker.compute_pnl_pct(position.avg_entry_price, current_price)
-    return pnl
+    2026-11-15: viene dal LIBRO dei bot (`bot_book.sync_positions`, chiamato dal giro prima della
+    decisione): valore delle quote contro il loro costo, commissioni e frazionamenti compresi.
+    Prima si confrontava il prezzo Yahoo con un prezzo d'ingresso grezzo: col frazionamento 4:1 di
+    QUAL (05/11) è uscito -75% e il bot ha venduto in stop loss una posizione sana."""
+    return position.estimated_pnl_pct
 
 
 def _fetch_price_history_for_universe() -> dict[str, pd.Series]:
@@ -386,22 +373,7 @@ def _apply(
 
     elif action in ("FULL_CLOSE", "STOP_LOSS", "TAKE_PROFIT"):
         if position is not None:
-            # Fase 2: record post-mortem learning prima di cancellare
-            try:
-                # Costruisci stub decision per learning input
-                last_decision = AiPortfolioDecision(
-                    date=target_date,
-                    asset_class=asset,
-                    strategy_type=STRATEGY_TYPE,
-                    action=action,
-                    momentum_signal="NEUTRAL",  # fallback; learning usa entry_regime
-                    score=score,
-                    confidence=0.0,
-                    regime=regime,
-                    reason_short="auto-closed",
-                )
-                learning.record_closed_position(db, last_decision, position)
-            except Exception as e:
-                logger.warning(f"learning recording failed for {asset}: {e}")
+            # 2026-11-15: l'apprendimento si aggiorna quando la vendita viene ESEGUITA dal libro dei
+            # bot, con l'utile realizzato (bot_book.settle), non qui col guadagno stimato.
             db.delete(position)
             summary["n_closures"] += 1
